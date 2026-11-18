@@ -217,7 +217,13 @@ export const draftApi = {
   autoPick: (worldId: string) => rpc<{ pick_index: number }>('auto_pick_current', { p_world: worldId }),
   /** Startet den Draft über die Netlify-Function (erzeugt KI-Vereine, Kader und Draft-Pool serverseitig). */
   async start(worldId: string): Promise<void> {
-    const { data } = await requireSupabase().auth.getSession();
+    const sb = requireSupabase();
+    let { data } = await sb.auth.getSession();
+    // Token erneuern, wenn es abgelaufen ist oder in der nächsten Minute abläuft
+    if (data.session && (data.session.expires_at ?? 0) * 1000 < Date.now() + 60_000) {
+      const refreshed = await sb.auth.refreshSession();
+      if (refreshed.data.session) data = { session: refreshed.data.session };
+    }
     const token = data.session?.access_token;
     if (!token) throw new ApiError('Nicht angemeldet.', 'not_authenticated');
     let res: Response;

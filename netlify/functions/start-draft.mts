@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { checkServiceKey } from '../lib/serverKey.js';
 import { handleStartDraft, json } from '../lib/startDraft.js';
 
 /**
@@ -9,21 +10,28 @@ import { handleStartDraft, json } from '../lib/startDraft.js';
  *   SUPABASE_URL                optional; sonst wird VITE_SUPABASE_URL verwendet
  */
 export default async (req: Request): Promise<Response> => {
-  const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = (process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL)?.trim().replace(/\/+$/, '');
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.replace(/^["']|["']$/g, '').trim();
   if (!url || !serviceKey) {
     return json(500, {
       error: 'server_not_configured',
       message: 'Auf Netlify fehlt die Umgebungsvariable SUPABASE_SERVICE_ROLE_KEY (siehe docs/DEPLOYMENT.md).',
     });
   }
+  const keyProblem = checkServiceKey(url, serviceKey);
+  if (keyProblem) return json(500, { error: 'server_key_invalid', message: keyProblem });
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
   try {
     return await handleStartDraft(req, {
       async getUserId(token) {
         const { data, error } = await admin.auth.getUser(token);
-        return error || !data.user ? null : data.user.id;
+        if (!error && data.user) return { userId: data.user.id };
+        // Unterscheiden: Liegt es am Server-Schlüssel oder am Login-Token?
+        const probe = await admin.from('associations').select('code').limit(1);
+        if (probe.error) return { reason: 'server_key', detail: probe.error.message };
+        console.warn('Token abgelehnt:', error?.message);
+        return { reason: 'invalid_token' };
       },
       async loadWorld(worldId) {
         const { data } = await admin.from('career_worlds').select('id, seed, status, host_user_id').eq('id', worldId).maybeSingle();

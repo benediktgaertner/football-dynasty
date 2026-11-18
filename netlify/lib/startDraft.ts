@@ -10,7 +10,8 @@ import { buildWorldInitialization, type HumanClubRef, type WorldInitPayload } fr
  * Abhängigkeiten werden injiziert, damit die Logik ohne Supabase testbar ist.
  */
 export interface StartDraftDeps {
-  getUserId(token: string): Promise<string | null>;
+  /** userId bei Erfolg; sonst reason: 'invalid_token' (Login abgelaufen) oder 'server_key' (Server-Schlüssel abgelehnt) */
+  getUserId(token: string): Promise<{ userId: string } | { reason: 'invalid_token' | 'server_key'; detail?: string }>;
   loadWorld(worldId: string): Promise<{ id: string; seed: string; status: string; host_user_id: string } | null>;
   loadHumanClubs(worldId: string): Promise<HumanClubRef[]>;
   startDraft(worldId: string, userId: string, payload: WorldInitPayload): Promise<{ data: unknown; error: { message: string; hint?: string | null } | null }>;
@@ -28,8 +29,17 @@ export async function handleStartDraft(req: Request, deps: StartDraftDeps): Prom
   const auth = req.headers.get('authorization') ?? '';
   const token = /^Bearer\s+(.+)$/i.exec(auth.trim())?.[1];
   if (!token) return json(401, { error: 'not_authenticated', message: 'Nicht angemeldet.' });
-  const userId = await deps.getUserId(token);
-  if (!userId) return json(401, { error: 'not_authenticated', message: 'Sitzung ungültig oder abgelaufen.' });
+  const who = await deps.getUserId(token);
+  if ('reason' in who) {
+    if (who.reason === 'server_key') {
+      return json(500, {
+        error: 'server_key_rejected',
+        message: `Supabase lehnt den Server-Schlüssel ab${who.detail ? ` (${who.detail})` : ''}. Bitte SUPABASE_SERVICE_ROLE_KEY in Netlify prüfen: richtiger Schlüssel, gleiches Projekt wie VITE_SUPABASE_URL, danach neu deployen.`,
+      });
+    }
+    return json(401, { error: 'session_expired', message: 'Deine Anmeldung ist abgelaufen. Bitte lade die Seite neu und versuche es erneut.' });
+  }
+  const userId = who.userId;
 
   let worldId: unknown;
   try {

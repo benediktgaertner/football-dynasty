@@ -5,7 +5,7 @@ const WORLD = '11111111-2222-3333-4444-555555555555';
 
 function deps(overrides: Partial<StartDraftDeps> = {}): StartDraftDeps {
   return {
-    getUserId: async (t) => (t === 'good' ? 'host-id' : t === 'guest' ? 'guest-id' : null),
+    getUserId: async (t) => (t === 'good' ? { userId: 'host-id' } : t === 'guest' ? { userId: 'guest-id' } : t === 'keyfail' ? { reason: 'server_key' as const, detail: 'Invalid API key' } : { reason: 'invalid_token' as const }),
     loadWorld: async () => ({ id: WORLD, seed: 'abc', status: 'lobby', host_user_id: 'host-id' }),
     loadHumanClubs: async () => [
       { id: 'c1', name: 'Test', short_name: 'TES' },
@@ -28,6 +28,13 @@ describe('POST /api/start-draft', () => {
     expect((await handleStartDraft(req('good', {}, 'GET'), deps())).status).toBe(405);
     expect((await handleStartDraft(req(null), deps())).status).toBe(401);
     expect((await handleStartDraft(req('bad'), deps())).status).toBe(401);
+  });
+  it('unterscheidet abgelaufene Anmeldung und abgelehnten Server-Schlüssel', async () => {
+    const expired = await handleStartDraft(req('bad'), deps());
+    expect(await expired.json()).toMatchObject({ error: 'session_expired' });
+    const keyfail = await handleStartDraft(req('keyfail'), deps());
+    expect(keyfail.status).toBe(500);
+    expect((await keyfail.json()).message).toContain('SUPABASE_SERVICE_ROLE_KEY');
   });
   it('prüft die worldId', async () => {
     expect((await handleStartDraft(req('good', { worldId: 'x; drop table' }), deps())).status).toBe(400);
