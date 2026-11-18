@@ -1,5 +1,5 @@
 import { TEAM_SETTINGS, readableTextColor, resolveAwayDisplayColor } from '@fd/shared';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Button, Card, ErrorBanner, Pill, Shell, Spinner } from '../components/ui';
 import { MatchPitch } from '../components/match/MatchPitch';
@@ -32,6 +32,7 @@ export function Match() {
   const { client, state, configured } = useMatch(fixtureId);
   const [panel, setPanel] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const banner = useBanner(state?.events ?? [], state?.teams ?? null);
 
   if (!configured) {
     return (
@@ -80,6 +81,19 @@ export function Match() {
           <div className="aspect-[111/74] w-full max-h-[64vh]">
             <MatchPitch client={client} teams={teams} homeColor={homeColor} awayColor={awayColor} />
           </div>
+          {banner && banner.big && (
+            <div key={banner.key} className="fd-banner pointer-events-none absolute left-1/2 top-[40%] text-center">
+              <div className="rounded-2xl px-8 py-4 shadow-2xl" style={{ background: banner.color, color: readableTextColor(banner.color) }}>
+                <div className="display text-6xl font-extrabold uppercase leading-none tracking-wide">Tor!</div>
+                <div className="display mt-1 text-2xl font-semibold uppercase">{banner.text}</div>
+              </div>
+            </div>
+          )}
+          {banner && !banner.big && (
+            <div key={banner.key} className="fd-toast pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-ink/80 px-4 py-1.5 text-sm font-semibold text-cream shadow-lg">
+              {banner.text}
+            </div>
+          )}
           {status === 'waiting' && (
             <div className="absolute inset-0 grid place-items-center rounded-xl bg-ink/55">
               <div className="text-center">
@@ -112,6 +126,27 @@ export function Match() {
       {end && <Summary result={end.result} saved={end.saved} teams={teams} homeColor={homeColor} awayColor={awayColor} worldId={worldId} />}
     </Shell>
   );
+}
+
+/** Einblendungen: großes „TOR!“ und kurze Hinweise bei Großchancen, Paraden, Karten */
+function useBanner(events: MatchEvent[], teams: { home: RosterTeam; away: RosterTeam } | null) {
+  const [banner, setBanner] = useState<{ key: number; big: boolean; text: string; color: string } | null>(null);
+  const seen = useRef(-1);
+  useEffect(() => {
+    if (!teams) return;
+    if (seen.current < 0) { seen.current = events.length; return; }
+    const fresh = events.slice(seen.current);
+    seen.current = events.length;
+    const pick = [...fresh].reverse().find((e) => ['goal', 'save', 'chance', 'woodwork', 'red', 'second_yellow', 'penalty'].includes(e.type));
+    if (!pick) return;
+    const color = pick.side === 'away' ? teams.away.color : teams.home.color;
+    const name = pick.playerId ? [...teams.home.players, ...teams.away.players].find((p) => p.id === pick.playerId)?.name : undefined;
+    const big = pick.type === 'goal';
+    setBanner({ key: pick.tick, big, text: big ? (name ?? '') : pick.text, color });
+    const t = setTimeout(() => setBanner(null), big ? 3500 : 2200);
+    return () => clearTimeout(t);
+  }, [events, teams]);
+  return banner;
 }
 
 function Scoreboard({ teams, homeColor, awayColor, score, minute, phase, status, connection, role }: {

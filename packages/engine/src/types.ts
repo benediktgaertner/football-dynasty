@@ -133,8 +133,13 @@ export interface Snapshot {
   minute: number;
   phase: 'pre' | 'first' | 'second' | 'end';
   score: [number, number];
-  ball: [number, number];
+  /** x, y, Höhe (m) */
+  ball: [number, number, number];
   possession: Side | null;
+  /** Ballführender Spieler */
+  carrier: string | null;
+  /** 0–1: wie gefährlich die Szene gerade ist (Regie verlangsamt gefährliche Szenen) */
+  intensity: number;
   /** [id, x, y] je Spieler auf dem Platz */
   players: Array<[string, number, number]>;
   red: [number, number];

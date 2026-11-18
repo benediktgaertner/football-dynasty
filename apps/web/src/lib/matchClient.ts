@@ -5,7 +5,7 @@ export type Side = 'home' | 'away';
 export type ProfileName = 'offensive' | 'neutral' | 'defensive';
 export interface Snapshot {
   tick: number; minute: number; phase: 'pre' | 'first' | 'second' | 'end'; score: [number, number];
-  ball: [number, number]; possession: Side | null; players: Array<[string, number, number]>; red: [number, number];
+  ball: [number, number, number?]; possession: Side | null; carrier?: string | null; intensity?: number; players: Array<[string, number, number]>; red: [number, number];
   activeProfile: [ProfileName, ProfileName];
 }
 export interface MatchEvent { tick: number; minute: number; type: string; side: Side | null; playerId?: string; otherId?: string; text: string; xg?: number }
@@ -151,10 +151,10 @@ export class MatchClient {
   }
 
   /** Interpolierter Zustand ~100 ms in der Vergangenheit (zwischen zwei Snapshots). */
-  interpolated(now = performance.now()): { ball: [number, number]; players: Map<string, [number, number]> } | null {
+  interpolated(now = performance.now()): { ball: [number, number, number]; carrier: string | null; players: Map<string, [number, number]> } | null {
     const b = this.buffer;
     if (b.length === 0) return null;
-    const renderAt = now - 110;
+    const renderAt = now - 140;
     let i = b.length - 1;
     while (i > 0 && b[i - 1]!.at > renderAt) i--;
     const a = b[Math.max(0, i - 1)]!;
@@ -167,6 +167,7 @@ export class MatchClient {
       const p = prev.get(id);
       players.set(id, p ? [p[0] + (x - p[0]) * k, p[1] + (y - p[1]) * k] : [x, y]);
     }
-    return { ball: [a.s.ball[0] + (c.s.ball[0] - a.s.ball[0]) * k, a.s.ball[1] + (c.s.ball[1] - a.s.ball[1]) * k], players };
+    const za = a.s.ball[2] ?? 0, zc = c.s.ball[2] ?? 0;
+    return { ball: [a.s.ball[0] + (c.s.ball[0] - a.s.ball[0]) * k, a.s.ball[1] + (c.s.ball[1] - a.s.ball[1]) * k, za + (zc - za) * k], carrier: (k < 0.5 ? a.s.carrier : c.s.carrier) ?? null, players };
   }
 }

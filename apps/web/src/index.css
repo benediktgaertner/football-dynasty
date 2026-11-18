@@ -81,3 +81,10 @@ select {
     animation: none;
   }
 }
+
+/* Einblendungen im Live-Spiel */
+@keyframes fd-banner-in { 0% { opacity: 0; transform: translate(-50%, -40%) scale(0.85); } 15% { opacity: 1; transform: translate(-50%, -50%) scale(1.04); } 25% { transform: translate(-50%, -50%) scale(1); } 85% { opacity: 1; } 100% { opacity: 0; } }
+.fd-banner { animation: fd-banner-in 3.4s ease-out both; }
+@media (prefers-reduced-motion: reduce) { .fd-banner { animation: none; } }
+@keyframes fd-toast-in { 0% { opacity: 0; } 12% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+.fd-toast { animation: fd-toast-in 2.2s ease-out both; }

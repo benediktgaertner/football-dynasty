@@ -1,5 +1,5 @@
 import type { WebSocket } from 'ws';
-import { MatchEngine, REAL_MS_PER_TICK, replay, type CommandRecord, type MatchCommand, type Side } from '@fd/engine';
+import { MatchEngine, REAL_MS_PER_TICK, TOTAL_TICKS, replay, type CommandRecord, type MatchCommand, type Side } from '@fd/engine';
 import type { Backend } from './backend.js';
 import { toEngineSetup, type DbSetup } from './setup.js';
 
@@ -27,6 +27,9 @@ export class MatchRoom {
   private timer: NodeJS.Timeout | null = null;
   private startedAt = 0;
   private startTick = 0;
+  private nextAt = 0;
+  private endAt = 0;
+  private avgWeight = 1;
   private sentEvents = 0;
   private autoStart: NodeJS.Timeout | null = null;
   private onClose: () => void;
@@ -75,16 +78,24 @@ export class MatchRoom {
     this.status = 'running';
     this.startedAt = Date.now();
     this.startTick = this.engine.tick;
+    this.nextAt = this.startedAt;
+    this.endAt = this.startedAt + ((TOTAL_TICKS - this.engine.tick) * REAL_MS_PER_TICK) / this.speed;
     this.broadcast({ t: 'status', status: 'running' });
-    this.timer = setInterval(() => this.loop(), Math.max(5, REAL_MS_PER_TICK / this.speed));
+    this.timer = setInterval(() => this.loop(), Math.max(4, 10 / this.speed));
   }
 
   private loop(): void {
-    const target = this.startTick + Math.floor(((Date.now() - this.startedAt) * this.speed) / REAL_MS_PER_TICK);
+    // Regie: gefährliche Szenen langsamer, ruhiger Aufbau schneller – Gesamtdauer bleibt 180 s
+    const now = Date.now();
     let steps = 0;
-    while (this.engine.tick < target && !this.engine.isFinished && steps < 80) {
+    while (now >= this.nextAt && !this.engine.isFinished && steps < 80) {
       this.engine.step();
       steps++;
+      const remaining = Math.max(1, TOTAL_TICKS - this.engine.tick);
+      const base = Math.max(1, (this.endAt - this.nextAt) / remaining);
+      const w = 0.7 + 0.9 * this.engine.intensity();
+      this.avgWeight = this.avgWeight * 0.995 + w * 0.005;
+      this.nextAt += Math.min(base * 3, Math.max(base * 0.3, (base * w) / this.avgWeight));
       if (this.engine.tick % SNAPSHOT_EVERY === 0) this.broadcastSnapshot();
       if (this.engine.tick % CHECKPOINT_EVERY === 0) void this.saveCheckpoint();
     }
