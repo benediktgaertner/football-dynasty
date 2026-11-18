@@ -20,6 +20,10 @@ npm run build
 | `packages/shared/test/tactics.test.ts` | 12 Tests: 12 Grundeinstellungen, Schemas, Anweisungen und Konflikte, Rolle aus Koordinaten, Auto-Aufstellung für alle 30 Formationen, Lineup-Prüfung, effektive Stärke, Trainingsmultiplikatoren |
 | `packages/shared/test/avatar.test.ts` | 4 Tests: Porträts deterministisch, sicher, graue Haare im Alter |
 | `apps/match-server/src/auth.test.ts` | 3 Tests: Token-Auslesen, Konfiguration |
+| `packages/engine/test/engine.test.ts` | 8 Tests: Determinismus, 7.200 Ticks, Statistiken, xG-Modell, Replay aus Befehlsprotokoll, Wechselregeln, ungültige Befehle, Kalibrierung (Tore, Stärke, Heimvorteil), Snapshot |
+| `apps/match-server/src/wsServer.test.ts` | 3 Tests mit echten WebSocket-Clients: fremde Origin/ungültiges Token, zwei Manager + Zuschauer in einer Partie, Zuschauer ohne Rechte, Befehlsbestätigung, Wiederverbinden, Automatik, gespeichertes Ergebnis, Fortsetzung aus Checkpoint |
+| `supabase/tests/40_matches.sql` | 31 Prüfungen: Testspiel anlegen/absagen, Rechte, Admin-Funktionen nur für den Server, Setup mit Kader/Taktik, Checkpoint, idempotentes Speichern, fremde Spieler gefiltert, Sichtbarkeit |
+| Ende-zu-Ende (Shell) | echtes DB-Setup → Match Engine → `admin_finish_match` |
 | `netlify/lib/startDraft.test.ts` | 6 Tests: Methode, Token, worldId, nur Host, Idempotenz, Fehlerweitergabe |
 | `supabase/tests/10_lobby_and_security.sql` | 73 Prüfungen, siehe unten |
 | Paritätstest (generiert aus `scripts/gen-parity-sql.mjs`) | 65 Prüfungen: `normalize_name`, Stadionkosten, Startkapital, Snake-Reihenfolge, Spieleranweisungen je Position, Anweisungskonflikte und Trainingspunkte in TS und SQL identisch |

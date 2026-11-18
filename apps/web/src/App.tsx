@@ -6,6 +6,7 @@ import { Account } from './pages/Account';
 import { ClubEditor } from './pages/ClubEditor';
 import { Draft } from './pages/Draft';
 import { Team } from './pages/Team';
+import { Match } from './pages/Match';
 import { Home } from './pages/Home';
 import { Lobby } from './pages/Lobby';
 import { Welcome } from './pages/Welcome';
@@ -22,6 +23,7 @@ function Routed() {
       <Route path="/w/:worldId/verein" element={<ClubEditor />} />
       <Route path="/w/:worldId/draft" element={<Draft />} />
       <Route path="/w/:worldId/team" element={<Team />} />
+      <Route path="/w/:worldId/match/:fixtureId" element={<Match />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

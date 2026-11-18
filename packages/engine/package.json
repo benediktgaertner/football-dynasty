@@ -1,0 +1,17 @@
+{
+  "name": "@fd/engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "calibrate": "node --enable-source-maps dist/calibrate.js"
+  },
+  "dependencies": { "@fd/shared": "0.1.0" },
+  "devDependencies": { "typescript": "^5.7.3", "vitest": "^3.0.5", "@types/node": "^22.10.0" }
+}

@@ -8,13 +8,15 @@ import { Crest } from '../components/Crest';
 import { Card, ErrorBanner, Pill, Shell, Spinner } from '../components/ui';
 import { PlayerProfile, SeasonTab, SetPiecesTab, SquadTab, TrainingTab } from '../components/team/OtherTabs';
 import { TacticsTab } from '../components/team/TacticsTab';
+import { FriendliesTab } from '../components/team/FriendliesTab';
 
-type Tab = 'tactics' | 'squad' | 'setpieces' | 'training' | 'season';
+type Tab = 'tactics' | 'squad' | 'setpieces' | 'training' | 'matches' | 'season';
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'tactics', label: 'Aufstellung & Taktik' },
   { key: 'squad', label: 'Kader' },
   { key: 'setpieces', label: 'Standards' },
   { key: 'training', label: 'Training' },
+  { key: 'matches', label: 'Spiele' },
   { key: 'season', label: 'Sponsor & Saisonstart' },
 ];
 
@@ -134,6 +136,7 @@ export function Team() {
           }}
         />
       )}
+      {tab === 'matches' && <FriendliesTab worldId={worldId} myClubId={ctx.club_id} />}
       {tab === 'season' && (
         <SeasonTab
           ctx={ctx}

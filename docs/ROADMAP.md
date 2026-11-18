@@ -65,11 +65,23 @@ Legende: ✅ fertig und getestet · 🟡 teilweise · ⬜ offen
 
 Noch nicht enthalten, weil es den Saisonkalender braucht (Phase 7): Regeneration über freie Tage, Wochenwechsel, Saisonstart. Gegnerbezogene Optionen (Pressing auf bestimmte Gegenspieler, Manndeckung) werden vor der jeweiligen Partie gesetzt (Phase 5/6). Die Umrechnung von Entwicklungspunkten in Attribute folgt mit der Spielerentwicklung (Phase 9).
 
-## Phase 5 – Match Engine ⬜
-`packages/engine` nach dem Plan in `ARCHITECTURE.md`; Headless-Läufer; Canvas-Darstellung. **Abnahme:** P7–P11, N1-Statistiken über mehrere tausend Partien.
+## Phase 5 – Match Engine ✅
+- `packages/engine`: deterministische Simulation (7.200 Ticks à 0,75 s, 25 ms Echtzeit ⇒ 180 s), ein RNG je Partie
+- Positionsspiel aus Aufstellung, Anweisungen und Ballposition; Pressing, Abseitslinie, Restverteidigung, Überladungen
+- Entscheidungen des Ballführenden (Pass, Steilpass, Dribbling, Flanke, Schuss) nach Taktik und Attributen; xG-Modell
+- Zweikämpfe, Fouls, Gelb/Gelb-Rot/Rot, Verletzungen, Elfmeter, direkte Freistöße, Ecken mit Eckballvariante
+- Fitness F7 je Tick, Leistungsabfall, 5 Wechsel in 3 Fenstern (Halbzeit zählt nicht), Torwartersatz
+- KI (K2) und Automatik (E4): Profilwechsel, Wechsel bei Müdigkeit; Spielernoten, Spieler des Spiels
+- Kalibrierung (`npm run calibrate -w @fd/engine`): ca. 2,6 Tore/Spiel, 11 Schüsse und 1,3 xG je Team, Heimvorteil, Stärke 78 gegen 66 gewinnt ca. 80 %
+- **Bekannte Abweichungen:** Remisquote (ca. 35 %) und Passzahl (ca. 650 je Team) liegen über realen Werten – Feintuning folgt mit echten Ligadaten in Phase 7.
 
-## Phase 6 – Echter Multiplayer ⬜
-Colyseus-MatchRoom, Befehle mit Tick-Stempel, Snapshots, Wiederverbinden, Überspringen, Zuschauer, gemeinsame Freigabe, Timeouts. **Abnahme:** P12–P19, N2.
+## Phase 6 – Echter Multiplayer ✅ (Testspiele)
+- WebSocket-Server `/match` (Fly.io): Token-Prüfung, Rolle aus `clubs.manager_user_id`, Zuschauer nur lesend
+- Snapshots mit 10 Hz, Befehle mit Bestätigung und Tick, Befehlslimit, Wiederverbinden mit vollständigem Zustand
+- Abwesender Manager ⇒ Automatik; Checkpoint alle 10 s (Seed + Befehlsprotokoll) ⇒ exakte Fortsetzung nach Neustart
+- Ergebnis idempotent per `admin_finish_match`; Testspiele sofort freigegeben, ohne Fitnessfolgen
+- Web: Spiele-Tab im Team, Live-Seite mit Canvas, Spielstand, Liveticker, Profiltasten, Team-Management ohne Pause, Spielbericht
+- Gemeinsame Freigabe von Pflichtspielergebnissen und Überspringen gehören zum Spieltagsablauf und folgen mit Phase 7.
 
 ## Phase 7 – Wettbewerbe und Kalender ⬜
 Spielpläne (inkl. Wochentagsregeln C8.5), Tabellen, Pokal, Relegation, vierte Liga, Fünfjahreswertung, Champions League, Europa League mit Qualifikation und Auslosungen, Prämien. **Abnahme:** P24, P29–P35.

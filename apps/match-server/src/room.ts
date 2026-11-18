@@ -1,0 +1,212 @@
+import type { WebSocket } from 'ws';
+import { MatchEngine, REAL_MS_PER_TICK, replay, type CommandRecord, type MatchCommand, type Side } from '@fd/engine';
+import type { Backend } from './backend.js';
+import { toEngineSetup, type DbSetup } from './setup.js';
+
+export interface Client {
+  ws: WebSocket;
+  userId: string;
+  role: Side | 'spectator';
+  cmdWindow: number[];
+}
+
+const SNAPSHOT_EVERY = 4; // 25 ms × 4 = 100 ms ⇒ 10 Hz
+const CHECKPOINT_EVERY = 400; // alle 10 s Echtzeit
+const START_COUNTDOWN_MS = 90_000; // spätestens 90 s nach Öffnen startet das Spiel automatisch
+
+/**
+ * Ein Raum = eine Partie. Der Server ist autoritativ: Clients senden nur Befehle,
+ * Simulation, Zufall und Ergebnis entstehen ausschließlich hier.
+ */
+export class MatchRoom {
+  readonly fixtureId: string;
+  readonly clients = new Set<Client>();
+  engine!: MatchEngine;
+  db!: DbSetup;
+  status: 'loading' | 'waiting' | 'running' | 'finished' | 'failed' = 'loading';
+  private timer: NodeJS.Timeout | null = null;
+  private startedAt = 0;
+  private startTick = 0;
+  private sentEvents = 0;
+  private autoStart: NodeJS.Timeout | null = null;
+  private onClose: () => void;
+  private finishing = false;
+
+  constructor(fixtureId: string, private backend: Backend, onClose: () => void, private speed = 1) {
+    this.fixtureId = fixtureId;
+    this.onClose = onClose;
+  }
+
+  async load(): Promise<void> {
+    this.db = await this.backend.setup(this.fixtureId);
+    const setup = toEngineSetup(this.db);
+    const cp = this.db.checkpoint;
+    if (cp && Array.isArray(cp.log) && cp.tick > 0) {
+      // Wiederaufnahme nach Neustart: Seed + Befehle deterministisch nachspielen
+      this.engine = replay(setup, cp.log as CommandRecord[], cp.tick);
+      this.sentEvents = this.engine.events.length;
+      this.begin();
+    } else {
+      this.engine = new MatchEngine(setup);
+      this.status = 'waiting';
+      this.autoStart = setTimeout(() => this.begin(), START_COUNTDOWN_MS / this.speed);
+    }
+  }
+
+  private managerOnline(side: Side): boolean {
+    for (const c of this.clients) if (c.role === side && c.ws.readyState === 1) return true;
+    return false;
+  }
+
+  private updateAutopilot(): void {
+    if (!this.engine || this.engine.isFinished) return;
+    for (const side of ['home', 'away'] as const) {
+      const team = side === 'home' ? this.db.home : this.db.away;
+      if (team.control !== 'human') continue;
+      // E4: abwesender Manager ⇒ Automatik; zurück ⇒ Manager übernimmt wieder
+      this.engine.setAutopilot(side, !this.managerOnline(side));
+    }
+  }
+
+  begin(): void {
+    if (this.status === 'running' || this.status === 'finished') return;
+    if (this.autoStart) clearTimeout(this.autoStart);
+    this.updateAutopilot();
+    this.status = 'running';
+    this.startedAt = Date.now();
+    this.startTick = this.engine.tick;
+    this.broadcast({ t: 'status', status: 'running' });
+    this.timer = setInterval(() => this.loop(), Math.max(5, REAL_MS_PER_TICK / this.speed));
+  }
+
+  private loop(): void {
+    const target = this.startTick + Math.floor(((Date.now() - this.startedAt) * this.speed) / REAL_MS_PER_TICK);
+    let steps = 0;
+    while (this.engine.tick < target && !this.engine.isFinished && steps < 80) {
+      this.engine.step();
+      steps++;
+      if (this.engine.tick % SNAPSHOT_EVERY === 0) this.broadcastSnapshot();
+      if (this.engine.tick % CHECKPOINT_EVERY === 0) void this.saveCheckpoint();
+    }
+    this.flushEvents();
+    if (this.engine.isFinished) void this.finish();
+  }
+
+  private broadcastSnapshot(): void {
+    this.broadcast({ t: 'snap', s: this.engine.snapshot() });
+  }
+
+  private flushEvents(): void {
+    if (this.engine.events.length > this.sentEvents) {
+      const events = this.engine.events.slice(this.sentEvents);
+      this.sentEvents = this.engine.events.length;
+      this.broadcast({ t: 'ev', events });
+      // Manager sehen ihr Team nach Ereignissen (Wechsel, Karten, Verletzungen) aktualisiert
+      if (events.some((e) => ['sub', 'yellow', 'second_yellow', 'red', 'injury', 'tactic', 'halftime'].includes(e.type))) this.sendViews();
+    }
+  }
+
+  async saveCheckpoint(): Promise<void> {
+    if (this.status !== "running") return;
+    try {
+      await this.backend.checkpoint(this.fixtureId, this.engine.tick, { tick: this.engine.tick, log: this.engine.commandLog });
+    } catch (e) {
+      console.error('Checkpoint fehlgeschlagen', this.fixtureId, e);
+    }
+  }
+
+  private async finish(): Promise<void> {
+    if (this.finishing) return;
+    this.finishing = true;
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    const result = this.engine.result();
+    let saved = false;
+    for (let attempt = 0; attempt < 5 && !saved; attempt++) {
+      try {
+        await this.backend.finish(this.fixtureId, result); // idempotent
+        saved = true;
+      } catch (e) {
+        console.error('Ergebnis speichern fehlgeschlagen, neuer Versuch', e);
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
+    this.status = 'finished';
+    this.broadcast({ t: 'end', saved, result: { score: result.score, stats: result.stats, players: result.players, playerOfTheMatch: result.playerOfTheMatch, possessionHome: result.possessionHome } });
+    setTimeout(() => this.close(), 30_000 / this.speed).unref();
+  }
+
+  close(): void {
+    if (this.timer) clearInterval(this.timer);
+    if (this.autoStart) clearTimeout(this.autoStart);
+    for (const c of this.clients) c.ws.close(1000, 'match_closed');
+    this.clients.clear();
+    this.onClose();
+  }
+
+  roster() {
+    const team = (t: DbSetup['home']) => ({
+      clubId: t.clubId, name: t.name, shortName: t.shortName, color: t.color, colorAlt: t.colorAlt, kit: t.kit ?? null, control: t.control,
+      players: t.squad.map((p) => ({ id: p.id, shirt: p.shirt, name: p.name, first_name: p.first_name, position: p.main_position, overall: p.overall, region: p.region, age: p.age })),
+    });
+    return { home: team(this.db.home), away: team(this.db.away) };
+  }
+
+  join(c: Client): void {
+    this.clients.add(c);
+    this.send(c, {
+      t: 'init',
+      role: c.role,
+      status: this.status,
+      fixtureId: this.fixtureId,
+      kind: this.db.kind,
+      teams: this.roster(),
+      snapshot: this.engine.snapshot(),
+      events: this.engine.events,
+      view: c.role === 'spectator' ? null : this.engine.teamView(c.role),
+    });
+    if (this.status === 'running') this.updateAutopilot();
+  }
+
+  leave(c: Client): void {
+    this.clients.delete(c);
+    if (this.status === 'running') this.updateAutopilot();
+  }
+
+  handleStart(c: Client): void {
+    if (c.role === 'spectator') return this.send(c, { t: 'error', message: 'Zuschauer können das Spiel nicht starten.' });
+    if (this.status === 'waiting') this.begin();
+  }
+
+  handleCommand(c: Client, id: number, cmd: MatchCommand): void {
+    if (c.role === 'spectator') return this.send(c, { t: 'ack', id, ok: false, error: 'Zuschauer können nichts ändern.' });
+    // Schutz vor Befehlsfluten: höchstens 10 Befehle pro Sekunde
+    const now = Date.now();
+    c.cmdWindow = c.cmdWindow.filter((t) => now - t < 1000);
+    if (c.cmdWindow.length >= 10) return this.send(c, { t: 'ack', id, ok: false, error: 'Zu viele Befehle.' });
+    c.cmdWindow.push(now);
+    if (this.status === 'finished') return this.send(c, { t: 'ack', id, ok: false, error: 'Die Partie ist beendet.' });
+    const res = this.engine.applyCommand(c.role, cmd);
+    this.send(c, { t: 'ack', id, ok: res.ok, error: res.ok ? undefined : res.error, tick: this.engine.tick });
+    if (res.ok) {
+      this.flushEvents();
+      this.sendView(c.role);
+    }
+  }
+
+  private sendViews(): void {
+    for (const side of ['home', 'away'] as const) this.sendView(side);
+  }
+  private sendView(side: Side): void {
+    const view = this.engine.teamView(side);
+    for (const c of this.clients) if (c.role === side) this.send(c, { t: 'view', view });
+  }
+
+  private send(c: Client, msg: unknown): void {
+    if (c.ws.readyState === 1) c.ws.send(JSON.stringify(msg));
+  }
+  broadcast(msg: unknown): void {
+    const data = JSON.stringify(msg);
+    for (const c of this.clients) if (c.ws.readyState === 1) c.ws.send(data);
+  }
+}

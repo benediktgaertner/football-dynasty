@@ -13,7 +13,7 @@
         │ Supabase             │   │ Match-Server (Node.js/TS)     │  Fly.io
         │  • Auth (anonym/E-Mail)│◀─│  apps/match-server            │
         │  • Postgres + RLS    │   │  • autoritative Simulation    │
-        │  • RPCs (Regeln)     │   │  • Colyseus-Rooms (Phase 6)   │
+        │  • RPCs (Regeln)     │   │  • WebSocket-Räume /match     │
         │  • Realtime          │   │  • Headless-KI-Partien        │
         └──────────────────────┘   └───────────────────────────────┘
                        ▲                         │ Service-Role-Key
@@ -34,7 +34,7 @@
 | Zustand im Speicher | – | nur solange die Instanz läuft, Abschaltung nach 5 min Leerlauf | dauerhaft laufend |
 | Preis | inklusive | während Early Access kostenlos, Preise für GA noch offen | ab ca. 2–9 $/Monat |
 
-**Entscheidung:** Die autoritative Match Engine läuft als **eigener Node.js-Dienst** (später mit Colyseus) auf **Fly.io**. Netlify hostet die Web-App.
+**Entscheidung:** Die autoritative Match Engine läuft als **eigener Node.js-Dienst** (schlanker WebSocket-Server mit `ws`, ein Raum je Partie) auf **Fly.io**. Netlify hostet die Web-App.
 
 Begründung: Bei einem Duell Mensch gegen Mensch müssen beide Clients mit **derselben** Simulation im Speicher verbunden sein (F12). Netlify Server sichert das noch nicht zu und ist noch in Early Access. Ein eigener Dienst mit genau einer dauerhaft laufenden Maschine erfüllt die Anforderung zuverlässig und günstig. Die Anwendung bleibt vollständig über die Netlify-Adresse erreichbar; der Browser verbindet sich zusätzlich per WebSocket mit dem Match-Server. Alle Karriere- und Benutzerdaten liegen in Supabase.
 

@@ -12,13 +12,17 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fd/engine": "0.1.0",
     "@fd/shared": "0.1.0",
-    "@supabase/supabase-js": "^2.119.0"
+    "@supabase/supabase-js": "^2.119.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
-    "vitest": "^3.0.5"
+    "vitest": "^3.0.5",
+    "@types/ws": "^8.5.13"
   }
 }

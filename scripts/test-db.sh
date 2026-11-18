@@ -90,5 +90,24 @@ fi
 
 check "22_draft_complete.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/22_draft_complete.sql"
 check "30_team.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/30_team.sql"
+check "40_matches.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/40_matches.sql"
+
+# Ende-zu-Ende: echtes Setup aus der DB → Match Engine (Server-Adapter) → admin_finish_match
+HOST_USER="00000000-0000-0000-0000-0000000000a1"
+AI_CLUB="$(run -tAc "select id from public.clubs where world_id = '$WORLD' and control = 'ai' order by name offset 1 limit 1")"
+FX="$(run -tAc "set role authenticated; select tests.login('$HOST_USER'); select public.create_friendly('$WORLD', '$AI_CLUB');" | tail -1)"
+run -tAc "set role service_role; select public.admin_match_setup('$FX');" | tail -1 >"$PDIR/setup.json"
+if node "$ROOT/apps/match-server/dist/simulateFromSetup.js" "$PDIR/setup.json" >"$PDIR/result.json" 2>"$PDIR/sim.err"; then
+  RESULT_SQL="$(sed "s/'/''/g" "$PDIR/result.json")"
+  SAVED="$(run -tAc "set role service_role; select public.admin_finish_match('$FX', '$RESULT_SQL'::jsonb) ->> 'status';" | tail -1)"
+  ROWS="$(run -tAc "select count(*) from public.match_player_stats where fixture_id = '$FX'")"
+  if [ "$SAVED" = "saved" ] && [ "$ROWS" -ge 22 ]; then
+    echo "✓ Ende-zu-Ende: DB-Setup → Engine → Ergebnis gespeichert ($ROWS Spielerstatistiken)"
+  else
+    echo "✗ Ende-zu-Ende: status=$SAVED rows=$ROWS"; status=1
+  fi
+else
+  echo "✗ Ende-zu-Ende: Simulation fehlgeschlagen"; cat "$PDIR/sim.err"; status=1
+fi
 rm -rf "$PDIR"
 exit $status

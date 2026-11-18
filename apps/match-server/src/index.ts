@@ -2,18 +2,15 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { createClient } from '@supabase/supabase-js';
 import { MATCH_REAL_SECONDS, MATCH_VIRTUAL_MINUTES } from '@fd/shared';
 import { bearerToken, verifyAccessToken } from './auth.js';
+import { supabaseBackend } from './backend.js';
 import { loadConfig } from './config.js';
+import { attachMatchServer } from './wsServer.js';
 
 /**
- * Autoritativer Match-Server (Phase 1: Grundgerüst).
- *
- * Bereits umgesetzt:
+ * Autoritativer Match-Server (Phase 5/6).
  *   GET /health  – Betriebsstatus für Fly.io-Healthchecks
- *   GET /whoami  – prüft das Supabase-Token und gibt die Benutzer-ID zurück
- *
- * Folgt in Phase 5/6 (siehe docs/ARCHITECTURE.md): Colyseus-MatchRoom mit 20-Hz-Simulation,
- * Headless-Modus für KI-Partien, Ereignis-Persistenz und Wiederverbindung.
- * Es gibt hier bewusst noch keinen Endpunkt, der eine Partie nur vortäuscht.
+ *   GET /whoami  – prüft das Supabase-Token
+ *   WS  /match   – Live-Partien (siehe wsServer.ts / room.ts)
  */
 const config = loadConfig();
 const admin = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
@@ -43,7 +40,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       status: 'ok',
       service: 'football-dynasty-match-server',
       startedAt: startedAt.toISOString(),
-      engine: { virtualMinutes: MATCH_VIRTUAL_MINUTES, realSeconds: MATCH_REAL_SECONDS, implemented: false },
+      engine: { virtualMinutes: MATCH_VIRTUAL_MINUTES, realSeconds: MATCH_REAL_SECONDS, implemented: true },
+      rooms: match.rooms.size,
     }, origin);
   }
 
@@ -64,6 +62,7 @@ const server = createServer((req, res) => {
     if (!res.headersSent) send(res, 500, { error: 'internal_error' });
   });
 });
+const match = attachMatchServer(server, supabaseBackend(admin), { allowedOrigins: config.allowedOrigins });
 
 server.listen(config.port, () => {
   console.log(`Match-Server läuft auf Port ${config.port}`);
@@ -71,6 +70,9 @@ server.listen(config.port, () => {
 
 // Fly.io stoppt Maschinen per SIGTERM: offene Verbindungen sauber schließen
 process.on('SIGTERM', () => {
-  server.close(() => process.exit(0));
+  // Laufende Partien sichern: nach dem Neustart werden sie per Replay exakt fortgesetzt
+  void Promise.allSettled([...match.rooms.values()].map((p) => p.then((r) => r.saveCheckpoint()))).then(() => {
+    server.close(() => process.exit(0));
+  });
   setTimeout(() => process.exit(0), 10_000).unref();
 });

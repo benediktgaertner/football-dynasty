@@ -53,6 +53,8 @@ fly deploy
 curl https://<app>.fly.dev/health
 ```
 
+Danach in **Netlify** die Variable `VITE_MATCH_SERVER_URL=https://<app>.fly.dev` setzen und neu deployen („Clear cache and deploy site“). Die Web-App verbindet sich per WebSocket mit `wss://<app>.fly.dev/match`; `ALLOWED_ORIGINS` muss die Netlify-Adresse exakt enthalten (ohne Schrägstrich am Ende).
+
 Die Partien leben im Speicher genau einer Maschine. Deshalb sind in `fly.toml` `min_machines_running = 1` und `auto_stop_machines = "off"` gesetzt. Für die geplante Größe (eine Freundesrunde, mehrere Welten) reicht `shared-cpu-1x` mit 512 MB.
 
 ## Kosten
