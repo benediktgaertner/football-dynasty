@@ -4,6 +4,10 @@
   command = "npm ci && npm run build -w @fd/shared && npm run build -w @fd/web"
   publish = "apps/web/dist"
 
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
 [build.environment]
   NODE_VERSION = "22"
 

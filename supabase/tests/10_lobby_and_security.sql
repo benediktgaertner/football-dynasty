@@ -12,7 +12,7 @@ language sql as $$
     'kit', jsonb_build_object('pattern','stripes','primary','#1E7A46','secondary','#FFFFFF'),
     'stadiumName', 'Waldstadion', 'stadiumCapacity', p_capacity);
 $$;
-grant execute on function tests.club_payload(text, text, integer) to authenticated;
+grant execute on function tests.club_payload(text, text, integer) to authenticated, service_role;
 
 insert into auth.users(id) values
   ('00000000-0000-0000-0000-00000000000a'),

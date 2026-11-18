@@ -11,11 +11,20 @@
     "dev:web": "npm run dev -w @fd/web",
     "dev:server": "npm run dev -w @fd/match-server",
     "build": "npm run build -w @fd/shared && npm run build -w @fd/web && npm run build -w @fd/match-server",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p netlify/tsconfig.json --noEmit",
+    "test": "npm run test --workspaces --if-present && vitest run --root netlify",
     "test:db": "bash scripts/test-db.sh"
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "@fd/shared": "*",
+    "@supabase/supabase-js": "^2.119.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5",
+    "@types/node": "^22.10.0"
   }
 }

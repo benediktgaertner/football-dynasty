@@ -16,9 +16,14 @@ npm run build
 | Suite | Prüfungen |
 |---|---|
 | `packages/shared/test/rules.test.ts` | 38 Tests: Konstanten, Marktwert, Gehalt, Stadion, Fitness, Snake-Draft, Positionen, Gesamtstärke, Namen, Codes, Farben, Wappen-Sicherheit, RNG, Schemas, Referenzdaten |
+| `packages/shared/test/world.test.ts` | 17 Tests: Vereinsverteilung, Namens-Eindeutigkeit, Sperrliste, Branding-Validierung, Farbkonflikte, Mannschaftsstärken C2, KI-Kader, Pool D2 (Stärke, Herkunft, Positionen, Marktwerte), exakte Zielstärke, Determinismus, 1–18 Manager |
 | `apps/match-server/src/auth.test.ts` | 3 Tests: Token-Auslesen, Konfiguration |
+| `netlify/lib/startDraft.test.ts` | 6 Tests: Methode, Token, worldId, nur Host, Idempotenz, Fehlerweitergabe |
 | `supabase/tests/10_lobby_and_security.sql` | 73 Prüfungen, siehe unten |
-| Paritätstest (generiert aus `scripts/gen-parity-sql.mjs`) | 27 Prüfungen: `normalize_name`, Stadionkosten und Startkapital in TS und SQL identisch |
+| Paritätstest (generiert aus `scripts/gen-parity-sql.mjs`) | 32 Prüfungen: `normalize_name`, Stadionkosten, Startkapital und Snake-Reihenfolge in TS und SQL identisch |
+| `supabase/tests/21_draft.sql` | 44 Prüfungen: Rechte, Vorbedingungen, ungültige Payloads, vollständige Weltinitialisierung, Buchungen, Reihenfolge, Verfügbarkeit, Vertrag, Reserve, Auto-Pick-Regeln |
+| Paralleltest (Shell) | 4 gleichzeitige Verbindungen wollen denselben Spieler → genau 1 Pick |
+| `supabase/tests/22_draft_complete.sql` | 17 Prüfungen: kompletter Draft mit gegnerischem Verhalten; je 22 Spieler, keine Doppelungen, Free Agents = 400 − 44, kein Minus, Kontostand = Summe der Buchungen |
 
 ### Datenbanktest: Abdeckung (Auszug, Bezug auf Teil N)
 
@@ -42,7 +47,6 @@ npm run build
 
 ## Geplant (je Phase)
 
-* **Phase 3:** paralleler Draft-Pick zweier Manager (nur einer gewinnt), Pick außerhalb der Reihenfolge, Budget, Generator-Verteilung D2 (exakt 400, max. 83, Regionen)
 * **Phase 5:** mehrere tausend Headless-Partien: Tore/Spiel, Remis-Anteil, Stärke-Effekt, Taktik-Effekt, Fitness, Karten, Verletzungen, Heimvorteil, Standards, xG-Kalibrierung (N1)
 * **Phase 6:** zwei echte WebSocket-Clients gegen einen Server-Prozess, gleichzeitige Taktikwechsel, Verbindungsabbruch und Wiederverbinden, Überspringen, Ergebnisgeheimnis (N2)
 * **Phase 7–9:** 10 bzw. 30 simulierte Saisonen (N4) inklusive europäischer Teilnehmerzahlen und Namenskollisionen

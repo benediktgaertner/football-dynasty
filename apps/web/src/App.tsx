@@ -4,6 +4,7 @@ import { missingEnv } from './lib/supabase';
 import { Card, Shell, Spinner } from './components/ui';
 import { Account } from './pages/Account';
 import { ClubEditor } from './pages/ClubEditor';
+import { Draft } from './pages/Draft';
 import { Home } from './pages/Home';
 import { Lobby } from './pages/Lobby';
 import { Welcome } from './pages/Welcome';
@@ -18,6 +19,7 @@ function Routed() {
       <Route path="/konto" element={<Account />} />
       <Route path="/w/:worldId" element={<Lobby />} />
       <Route path="/w/:worldId/verein" element={<ClubEditor />} />
+      <Route path="/w/:worldId/draft" element={<Draft />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
@@ -29,24 +31,32 @@ function ConfigMissing() {
     <Shell>
       <Card className="mx-auto max-w-xl">
         <h1 className="display text-3xl font-bold uppercase">Konfiguration fehlt</h1>
-        <p className="mt-3 text-cream-dim">Folgende Umgebungsvariablen sind nicht gesetzt (siehe .env.example und DEPLOYMENT.md):</p>
+        <p className="mt-3 text-cream-dim">Folgende Umgebungsvariablen waren beim Build nicht gesetzt:</p>
         <ul className="mt-3 list-inside list-disc font-mono text-gold">
           {missingEnv.map((v) => (
             <li key={v}>{v}</li>
           ))}
         </ul>
+        <p className="mt-4 text-cream-dim">
+          Netlify: Site configuration → Environment variables → Werte eintragen, danach unter Deploys „Trigger deploy → Clear cache and
+          deploy site“. Vite übernimmt die Werte nur beim Build, ein Neuladen der Seite reicht nicht.
+        </p>
       </Card>
     </Shell>
   );
 }
 
 export function App() {
-  if (missingEnv.length > 0) return <ConfigMissing />;
+  // Der Router umschließt alles, auch die Hinweisseite – sie enthält Links (Shell).
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <Routed />
-      </AuthProvider>
+      {missingEnv.length > 0 ? (
+        <ConfigMissing />
+      ) : (
+        <AuthProvider>
+          <Routed />
+        </AuthProvider>
+      )}
     </BrowserRouter>
   );
 }

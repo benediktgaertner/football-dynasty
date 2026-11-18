@@ -34,7 +34,12 @@ Zugangsdaten werden nirgends im Code gespeichert. Alle Werte kommen aus Umgebung
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY` (öffentlicher Schlüssel, **nicht** der Service-Role-Key; die App bricht ab, wenn versehentlich einer eingetragen ist)
    - `VITE_MATCH_SERVER_URL` (ab Phase 5/6)
+   - `SUPABASE_SERVICE_ROLE_KEY` (ab Phase 3, **ohne** `VITE_`-Präfix, Scope „Functions“). Ihn braucht nur die serverseitige Function `/api/start-draft`, die beim Draft-Start die Welt erzeugt. Er landet nie im Browser.
 3. Deploy auslösen. Ohne die Variablen zeigt die App eine Seite an, die genau die fehlenden Werte nennt.
+
+### Netlify Functions
+
+`netlify/functions/start-draft.mts` läuft unter `/api/start-draft`. Sie prüft das Token des Hosts, erzeugt mit `packages/shared` aus dem Welt-Seed alle KI-Vereine, Kader und den Draft-Pool und speichert das Ergebnis über `admin_start_draft()` in einer Transaktion. Lokal lässt sie sich mit `npx netlify dev` testen.
 
 ## 3. Fly.io (Match-Server)
 

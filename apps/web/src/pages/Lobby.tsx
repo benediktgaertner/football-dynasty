@@ -1,7 +1,7 @@
 import { STARTING_CAPITAL, type Difficulty } from '@fd/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, DIFFICULTY_LABEL, formatEuro, type LobbyState } from '../lib/api';
+import { api, DIFFICULTY_LABEL, draftApi, formatEuro, type LobbyState } from '../lib/api';
 import { requireSupabase } from '../lib/supabase';
 import { Crest } from '../components/Crest';
 import { Button, Card, ErrorBanner, Pill, Shell, Spinner } from '../components/ui';
@@ -68,6 +68,10 @@ export function Lobby() {
       setBusy(null);
     }
   }
+
+  useEffect(() => {
+    if (state && state.world.status !== 'lobby') navigate(`/w/${worldId}/draft`, { replace: true });
+  }, [state, worldId, navigate]);
 
   if (!state) {
     return <Shell>{error ? <ErrorBanner error={error} /> : <Spinner label="Lobby wird geladen …" />}</Shell>;
@@ -204,9 +208,21 @@ export function Lobby() {
               >
                 {me?.ready ? 'Bereitschaft zurückziehen' : 'Ich bin bereit'}
               </Button>
+              {isHost && (
+                <Button
+                  className="mt-3 w-full"
+                  disabled={!state.all_ready}
+                  busy={busy === 'start'}
+                  onClick={() => void act('start', () => draftApi.start(worldId))}
+                >
+                  Draft starten
+                </Button>
+              )}
               <p className="mt-3 text-sm text-cream-dim">
                 {state.all_ready
-                  ? 'Alle Manager sind bereit. Der Snake-Draft wird mit Entwicklungsphase 3 freigeschaltet.'
+                  ? isHost
+                    ? 'Alle Manager sind bereit. Beim Start entstehen die 54 Vereine der drei Ligen und der Pool mit 400 Spielern. Das dauert einige Sekunden.'
+                    : 'Alle Manager sind bereit. Der Host kann jetzt den Draft starten.'
                   : 'Der Draft kann beginnen, sobald alle Manager ihren Verein gegründet und bestätigt haben.'}
               </p>
               {!isHost && (

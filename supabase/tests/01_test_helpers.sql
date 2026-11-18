@@ -2,7 +2,7 @@
 grant all on all tables in schema public to service_role;
 
 create schema tests;
-grant usage on schema tests to authenticated, anon;
+grant usage on schema tests to authenticated, anon, service_role;
 
 create function tests.login(p_user uuid) returns void
 language plpgsql as $$
@@ -39,4 +39,4 @@ begin
   raise exception 'TEST FEHLGESCHLAGEN: erwartet Fehler [%], aber die Anweisung lief durch: %', p_expected, p_sql;
 end $$;
 
-grant execute on all functions in schema tests to authenticated, anon;
+grant execute on all functions in schema tests to authenticated, anon, service_role;

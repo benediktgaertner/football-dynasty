@@ -42,6 +42,26 @@ Verbindliche Regeln stehen im Master-Prompt. Sie sind als Konstanten in `package
 | Anwesenheits-Timeout | 15 Minuten ohne Lebenszeichen | B4: Abwesende dürfen nicht blockieren |
 | Lobby-Missbrauchsschutz | max. 5 offene Lobbys je Host; max. 20 fehlgeschlagene Beitritte je 10 Minuten | Schutz der Einladungscodes |
 
+## Festlegungen Phase 3
+
+| Thema | Festlegung |
+|---|---|
+| Positionen im Draft-Pool | TW 40, IV 64, LV/RV je 26, LAV/RAV je 6, DM 32, ZM 50, OM 30, LM/RM je 16, LA/RA je 26, HS 10, ST 26 (Summe 400) |
+| Alter im Pool | normalverteilt um 26 (18–35) |
+| Potenzial (verborgen) | ≤ 20 J.: +0 bis ca. +18; 21–23: bis ca. +12; 24–26: +0–3; älter: keins; Obergrenze 94 |
+| Zielstärken KI (beste Elf) | BL: Spitze 84–85,5, zweites Team 82,5–84, Rest 81 → 77; 2. Liga: bis zu 5 Teams 76–78, Rest 75 → 71; 3. Liga: 72 → 65 |
+| KI-Kader | 25 Spieler (3 TW, 8 Abwehr, 8 Mittelfeld, 6 Angriff): Stammelf um die Zielstärke, Ersatz ca. −3,5, Talente ca. −8 |
+| Deutsche Spieler in KI-Kadern | BL 60 %, 2. Liga 72 %, 3. Liga 85 % |
+| KI-Kontostand zu Beginn | BL 60–120 Mio. €, 2. Liga 20–50 Mio. €, 3. Liga 5–15 Mio. € |
+| KI-Stadien | BL 30.000–50.000, 2. Liga 15.000–35.000, 3. Liga 10.000–20.000 |
+| KI-Verträge | 1–4 Jahre, Gehalt nach H5 |
+| Vereinsnamen | Muster „Präfix Ort“, „Präfix Ort Jahr“, „Traditionsname Ort“, „Ortsadjektiv Zusatz“; jeder Ort höchstens einmal je Welt; Sperrliste realer Vereine |
+| Spielernamen | zufällige Kombination häufiger Namen der Nationalität; bekannte reale Profis werden neu gewürfelt |
+| Trikotnummer | Wunschnummer je Position, sonst kleinste freie |
+| Draft-Reihenfolge | zufällig serverseitig, danach Snake |
+| Abwesender Manager im Draft | Nach 15 Minuten ohne Lebenszeichen darf der Host für ihn wählen (Auto-Pick nach Kaderbedarf, höchstens das 2,5-Fache des Durchschnittsbudgets je offenem Platz) |
+| Empfohlener Kader (Anzeige „Kaderbedarf“) | 2 TW, 7 Abwehr, 7 Mittelfeld, 6 Angriff |
+
 ## Bewusste Vereinfachungen aus dem Master-Prompt
 
 * 3. Liga mit 18 Vereinen; abstrakte vierte Liga hält die Zahl stabil.

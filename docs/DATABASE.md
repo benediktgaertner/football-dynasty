@@ -12,6 +12,7 @@ Supabase/PostgreSQL ≥ 15. Alle Änderungen erfolgen ausschließlich über Migr
 | `…0006_security` | RLS-Policies, Tabellen- und Funktionsrechte |
 | `…0007_rpc_lobby` | RPCs Phase 2 sowie Schutz vor massenhaften Beitrittsversuchen |
 | `…0008_realtime` | Tabellen für Supabase Realtime |
+| `…0010_phase3_draft` | Weltinitialisierung (`admin_start_draft`, nur Service-Role), Snake-Draft (`make_draft_pick`, `auto_pick_current`, `draft_state`), Reserve-Regel, Taktik-Grundausstattung |
 | `…0009_reference_data` | **generiert** aus `packages/shared`: 55 Verbände, 30 Formationen, 30 Sponsorenangebote, 85 Prämienvorlagen, 336 Sperrnamen |
 
 ## Entitäten (Teil M)
@@ -61,3 +62,14 @@ Jede Entität aus Teil M ist abgebildet. Abweichende Namen:
 Fehler liefern im Feld `hint` einen maschinenlesbaren Code (z. B. `club_name_taken`) und eine deutsche Meldung.
 
 **Startkapital und Stadionkosten** werden erst beim Draft-Start gebucht (Phase 3). Bis dahin darf der Host die Schwierigkeit noch ändern, und I3 verlangt den Abzug ohnehin erst „vor dem Draft“. Die Lobby zeigt das daraus folgende Draft-Budget schon vorher an.
+
+## RPCs (Phase 3)
+
+| Funktion | Zweck |
+|---|---|
+| `admin_start_draft(p_world, p_user, p_payload)` | nur `service_role`: prüft Host, Bereitschaft und Payload (54 − Menschen KI-Vereine, 18 je Liga, genau 400 Pool-Spieler ≤ 83, gültiges Branding). Speichert Saison, drei Ligen, Vereine, Kader, Verträge, Free Agents, Startkapital, Stadionkosten und Draft in **einer** Transaktion. Ein zweiter Aufruf bleibt wirkungslos |
+| `make_draft_pick(p_world, p_player)` | Sperrt die Draft-Zeile (`FOR UPDATE`), prüft Reihenfolge (`fd_snake_index`), Verfügbarkeit, Budget und Reserve. Bucht den Marktwert, vergibt die Trikotnummer, legt einen 3-Jahres-Vertrag und einen Transfer an und schließt den Draft nach dem letzten Pick ab (Welt → `preseason`) |
+| `auto_pick_current(p_world)` | Host wählt für einen Manager, der seit mindestens 15 Minuten abwesend ist: Positionsgruppe mit dem größten Bedarf, budgetbewusst |
+| `draft_state(p_world)` | Reihenfolge, Verein am Zug, nächste 12 Picks, Budgets, alle Picks |
+
+**Reserve-Regel:** Für jeden künftigen eigenen Pick wird angenommen, dass die anderen Vereine vorher die billigsten Spieler nehmen. Ein Kauf ist nur erlaubt, wenn danach genug Geld für diesen ungünstigsten Fall bleibt. Der günstigste verfügbare Spieler ist immer erlaubt. Reicht das Geld nicht einmal dafür (nur bei sehr vielen Managern auf „Schwer“ denkbar), wird er trotzdem verpflichtet und der Fehlbetrag als Minus gebucht, damit jeder Kader genau 22 Spieler hat (D3).
