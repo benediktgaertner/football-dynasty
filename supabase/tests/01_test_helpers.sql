@@ -1,5 +1,4 @@
 -- Testhelfer (nur Testdatenbank)
-grant all on all tables in schema public to service_role;
 
 create schema tests;
 grant usage on schema tests to authenticated, anon, service_role;

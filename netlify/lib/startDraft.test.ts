@@ -6,11 +6,13 @@ const WORLD = '11111111-2222-3333-4444-555555555555';
 function deps(overrides: Partial<StartDraftDeps> = {}): StartDraftDeps {
   return {
     getUserId: async (t) => (t === 'good' ? { userId: 'host-id' } : t === 'guest' ? { userId: 'guest-id' } : t === 'keyfail' ? { reason: 'server_key' as const, detail: 'Invalid API key' } : { reason: 'invalid_token' as const }),
-    loadWorld: async () => ({ id: WORLD, seed: 'abc', status: 'lobby', host_user_id: 'host-id' }),
-    loadHumanClubs: async () => [
-      { id: 'c1', name: 'Test', short_name: 'TES' },
-      { id: 'c2', name: 'Zweiter Verein', short_name: 'ZWV' },
-    ],
+    loadContext: async () => ({
+      id: WORLD, seed: 'abc', status: 'lobby', host_user_id: 'host-id',
+      humans: [
+        { id: 'c1', name: 'Test', short_name: 'TES' },
+        { id: 'c2', name: 'Zweiter Verein', short_name: 'ZWV' },
+      ],
+    }),
     startDraft: vi.fn(async () => ({ data: { draft_id: 'd1' }, error: null })),
     ...overrides,
   };
@@ -36,6 +38,13 @@ describe('POST /api/start-draft', () => {
     expect(keyfail.status).toBe(500);
     expect((await keyfail.json()).message).toContain('SUPABASE_SERVICE_ROLE_KEY');
   });
+  it('meldet Datenbank- und Rechtefehler im Klartext statt „nicht gefunden“', async () => {
+    const r = await handleStartDraft(req('good'), deps({ loadContext: async () => { throw new Error('Der Server-Schlüssel hat keine Service-Role-Rechte [42501]'); } }));
+    expect(r.status).toBe(500);
+    expect((await r.json()).message).toContain('42501');
+    const missing = await handleStartDraft(req('good'), deps({ loadContext: async () => null }));
+    expect(missing.status).toBe(404);
+  });
   it('prüft die worldId', async () => {
     expect((await handleStartDraft(req('good', { worldId: 'x; drop table' }), deps())).status).toBe(400);
   });
@@ -46,7 +55,7 @@ describe('POST /api/start-draft', () => {
     expect(d.startDraft).not.toHaveBeenCalled();
   });
   it('ein bereits gestarteter Draft wird nicht neu erzeugt', async () => {
-    const d = deps({ loadWorld: async () => ({ id: WORLD, seed: 'abc', status: 'draft', host_user_id: 'host-id' }) });
+    const d = deps({ loadContext: async () => ({ id: WORLD, seed: 'abc', status: 'draft', host_user_id: 'host-id', humans: [] }) });
     const r = await handleStartDraft(req('good'), d);
     expect(await r.json()).toMatchObject({ already_started: true });
     expect(d.startDraft).not.toHaveBeenCalled();

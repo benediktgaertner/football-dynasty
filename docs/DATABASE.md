@@ -13,6 +13,7 @@ Supabase/PostgreSQL ≥ 15. Alle Änderungen erfolgen ausschließlich über Migr
 | `…0007_rpc_lobby` | RPCs Phase 2 sowie Schutz vor massenhaften Beitrittsversuchen |
 | `…0008_realtime` | Tabellen für Supabase Realtime |
 | `…0010_phase3_draft` | Weltinitialisierung (`admin_start_draft`, nur Service-Role), Snake-Draft (`make_draft_pick`, `auto_pick_current`, `draft_state`), Reserve-Regel, Taktik-Grundausstattung |
+| `…0011_service_role_access` | Rechte der Server-Rolle ausdrücklich gesetzt (neuere Supabase-Projekte vergeben sie nicht mehr automatisch); `admin_draft_context` für die Netlify-Function |
 | `…0009_reference_data` | **generiert** aus `packages/shared`: 55 Verbände, 30 Formationen, 30 Sponsorenangebote, 85 Prämienvorlagen, 336 Sperrnamen |
 
 ## Entitäten (Teil M)

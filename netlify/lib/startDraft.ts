@@ -3,17 +3,25 @@ import { buildWorldInitialization, type HumanClubRef, type WorldInitPayload } fr
 /**
  * Serverseitiger Start des Drafts (Phase 3).
  * 1. Token prüfen (Supabase Auth) → Benutzer-ID
- * 2. Welt laden; nur der Host darf starten (wird in SQL erneut geprüft)
+ * 2. Kontext der Welt über die abgesicherte RPC admin_draft_context laden
  * 3. Welt deterministisch aus dem Seed erzeugen (packages/shared)
- * 4. admin_start_draft() speichert alles in einer Transaktion
+ * 4. admin_start_draft() speichert alles in einer Transaktion und prüft Host/Bereitschaft erneut
  *
  * Abhängigkeiten werden injiziert, damit die Logik ohne Supabase testbar ist.
  */
+export interface DraftContext {
+  id: string;
+  seed: string;
+  status: string;
+  host_user_id: string;
+  humans: HumanClubRef[];
+}
+
 export interface StartDraftDeps {
   /** userId bei Erfolg; sonst reason: 'invalid_token' (Login abgelaufen) oder 'server_key' (Server-Schlüssel abgelehnt) */
   getUserId(token: string): Promise<{ userId: string } | { reason: 'invalid_token' | 'server_key'; detail?: string }>;
-  loadWorld(worldId: string): Promise<{ id: string; seed: string; status: string; host_user_id: string } | null>;
-  loadHumanClubs(worldId: string): Promise<HumanClubRef[]>;
+  /** Liefert den Kontext oder null (Welt existiert nicht). Wirft bei Datenbank-/Rechtefehlern mit Klartext. */
+  loadContext(worldId: string): Promise<DraftContext | null>;
   startDraft(worldId: string, userId: string, payload: WorldInitPayload): Promise<{ data: unknown; error: { message: string; hint?: string | null } | null }>;
 }
 
@@ -51,15 +59,18 @@ export async function handleStartDraft(req: Request, deps: StartDraftDeps): Prom
     return json(400, { error: 'invalid_request', message: 'worldId fehlt oder ist ungültig.' });
   }
 
-  const world = await deps.loadWorld(worldId);
-  if (!world) return json(404, { error: 'world_not_found', message: 'Karrierewelt nicht gefunden.' });
-  if (world.host_user_id !== userId) return json(403, { error: 'host_only', message: 'Nur der Host darf den Draft starten.' });
-  if (world.status !== 'lobby') return json(200, { already_started: true, status: world.status });
+  let ctx: DraftContext | null;
+  try {
+    ctx = await deps.loadContext(worldId);
+  } catch (e) {
+    return json(500, { error: 'database_error', message: (e as Error).message });
+  }
+  if (!ctx) return json(404, { error: 'world_not_found', message: 'Karrierewelt nicht gefunden.' });
+  if (ctx.host_user_id !== userId) return json(403, { error: 'host_only', message: 'Nur der Host darf den Draft starten.' });
+  if (ctx.status !== 'lobby') return json(200, { already_started: true, status: ctx.status });
+  if (ctx.humans.length === 0) return json(400, { error: 'not_all_ready', message: 'Es gibt noch keine Vereine.' });
 
-  const humans = await deps.loadHumanClubs(worldId);
-  if (humans.length === 0) return json(400, { error: 'not_all_ready', message: 'Es gibt noch keine Vereine.' });
-
-  const payload = buildWorldInitialization(world.seed, humans);
+  const payload = buildWorldInitialization(ctx.seed, ctx.humans);
   const { data, error } = await deps.startDraft(worldId, userId, payload);
   if (error) {
     const code = error.hint ?? 'start_failed';

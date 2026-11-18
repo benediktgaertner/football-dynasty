@@ -427,8 +427,9 @@ begin
              - (select count(*) from public.draft_picks where draft_id = v_draft.id and club_id = v_club)));
 
   -- Bedarf: Zielkader 2 TW, 7 Abwehr, 7 Mittelfeld, 6 Angriff
+  -- relativer Bedarf: fehlende Torhüter (2 von 2) zählen so viel wie fehlende Verteidiger (7 von 7)
   select g into v_group from (
-    select g, need - coalesce(have, 0) as deficit, ord from (values ('GK', 2, 1), ('DEF', 7, 2), ('MID', 7, 3), ('ATT', 6, 4)) t(g, need, ord)
+    select g, (need - coalesce(have, 0))::numeric / need as deficit, ord from (values ('GK', 2, 1), ('DEF', 7, 2), ('MID', 7, 3), ('ATT', 6, 4)) t(g, need, ord)
     left join (
       select case when p.main_position = 'GK' then 'GK'
                   when p.main_position in ('CB','LB','RB','LWB','RWB') then 'DEF'

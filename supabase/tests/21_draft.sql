@@ -19,6 +19,18 @@ select tests.expect_error(format($$ select public.admin_start_draft(%L, %L, '{}'
 reset role;
 
 set role service_role;
+-- Migration 0011: Kontext für die Netlify-Function, nur für service_role
+select tests.assert((public.admin_draft_context(:'world') ->> 'status') = 'lobby', 'admin_draft_context liefert den Status');
+select tests.assert(jsonb_array_length(public.admin_draft_context(:'world') -> 'humans') = 2, 'admin_draft_context liefert die menschlichen Vereine');
+select tests.assert(public.admin_draft_context(gen_random_uuid()) is null, 'unbekannte Welt ergibt null');
+select tests.assert((select count(*) from public.career_worlds where id = :'world') = 1, 'service_role darf Tabellen lesen (Migration 0011)');
+reset role;
+set role authenticated;
+select tests.login(:'host');
+select tests.expect_error(format($$ select public.admin_draft_context(%L) $$, :'world'), 'permission denied');
+reset role;
+
+set role service_role;
 select tests.expect_error(format($$ select public.admin_start_draft(%L, %L, %L::jsonb) $$, :'world', :'guest', :'payload'), 'host_only');
 select tests.expect_error(format($$ select public.admin_start_draft(%L, %L, %L::jsonb) $$, :'world', :'host', :'payload'), 'not_all_ready');
 reset role;
