@@ -13,7 +13,7 @@ Browserbasierter Multiplayer-Fußballmanager für Freunde: eigener Verein, gemei
 * Vollständiges Datenmodell mit Row Level Security; alle Schreibvorgänge serverseitig geprüft
 * Spielregeln (Marktwert, Gehalt, Stadion, Fitness, Snake-Draft, Positionsmalus, Gesamtstärke, Formationen) als getestete gemeinsame Bibliothek
 * Draft-Start durch den Host: 54 KI- und menschliche Vereine in drei Ligen mit landestypischen, fiktiven Namen, Wappen und Stadien, vollständige KI-Kader und ein Pool mit 400 Spielern exakt nach Vorgabe
-* Synchronisierter Snake-Draft: Live-Aktualisierung, Filter, Sortierung, Spielerdetails, Restbudget, Kaderbedarf; serverseitige Reihenfolge, Budget- und Reserveprüfung; Auto-Pick für abwesende Manager
+* Synchronisierter Snake-Draft mit gezeichneten Spielerporträts: Live-Aktualisierung, Filter, Sortierung, Spielerdetails, Restbudget, Kaderbedarf; serverseitige Reihenfolge, Budget- und Reserveprüfung; Auto-Pick für abwesende Manager
 * Match-Server-Grundgerüst mit Health-Check und Token-Prüfung
 
 ## Schnellstart

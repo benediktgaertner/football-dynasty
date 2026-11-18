@@ -61,6 +61,7 @@ Verbindliche Regeln stehen im Master-Prompt. Sie sind als Konstanten in `package
 | Draft-Reihenfolge | zufällig serverseitig, danach Snake |
 | Abwesender Manager im Draft | Nach 15 Minuten ohne Lebenszeichen darf der Host für ihn wählen (Auto-Pick nach Kaderbedarf, höchstens das 2,5-Fache des Durchschnittsbudgets je offenem Platz) |
 | Empfohlener Kader (Anzeige „Kaderbedarf“) | 2 TW, 7 Abwehr, 7 Mittelfeld, 6 Angriff |
+| Spielerbilder | Gezeichnete SVG-Porträts statt Fotos (fiktive Spieler, keine Bilder realer Personen). Deterministisch aus der Spieler-ID: Hautton nach Herkunftsregion breit gestreut, Frisur, Haarfarbe, Bart, Gesichtsform; ab ca. 30 Jahren graue Haare und Geheimratsecken möglich; Trikot in den Farben des aktuellen Vereins. Keine Speicherung nötig, `packages/shared/src/avatar.ts` |
 
 ## Bewusste Vereinfachungen aus dem Master-Prompt
 

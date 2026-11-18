@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api, draftApi, fetchPool, fetchSquad, formatEuro, type DraftState, type PoolPlayer } from '../lib/api';
 import { requireSupabase } from '../lib/supabase';
 import { Crest } from '../components/Crest';
+import { PlayerAvatar } from '../components/PlayerAvatar';
 import { Button, Card, ErrorBanner, Pill, Shell, Spinner, TextInput } from '../components/ui';
 
 /** L4: Draft-Oberfläche. Reihenfolge, Budget und Picks kommen ausschließlich vom Server. */
@@ -267,8 +268,13 @@ export function Draft() {
                         <span className="display rounded bg-olive-700 px-2 py-0.5 text-sm font-semibold">{POS_LABEL[p.main_position] ?? p.main_position}</span>
                       </td>
                       <td className="px-3 py-2">
-                        <div className="font-semibold">{p.first_name} {p.last_name}</div>
-                        <div className="text-xs text-cream-dim">{p.nationality}{p.secondary_positions.length > 0 && ` · auch ${p.secondary_positions.map((x) => POS_LABEL[x] ?? x).join(', ')}`}</div>
+                        <div className="flex items-center gap-3">
+                          <PlayerAvatar id={p.id} nationality={p.nationality} age={p.age} size={40} />
+                          <div>
+                            <div className="font-semibold">{p.first_name} {p.last_name}</div>
+                            <div className="text-xs text-cream-dim">{p.nationality}{p.secondary_positions.length > 0 && ` · auch ${p.secondary_positions.map((x) => POS_LABEL[x] ?? x).join(', ')}`}</div>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-3 py-2 tabular-nums">{p.age}</td>
                       <td className={`display px-3 py-2 text-2xl font-extrabold tabular-nums ${ratingColor(p.overall)}`}>{p.overall}</td>
@@ -319,7 +325,15 @@ export function Draft() {
           {selectedPlayer && state.status === 'running' && (
             <Card className="animate-rise">
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <PlayerAvatar
+                  id={selectedPlayer.id}
+                  nationality={selectedPlayer.nationality}
+                  age={selectedPlayer.age}
+                  size={76}
+                  shirt={myClub?.primary_color}
+                  collar={myClub?.secondary_color}
+                />
+                <div className="flex-1">
                   <div className="display text-2xl font-bold leading-tight">{selectedPlayer.first_name} {selectedPlayer.last_name}</div>
                   <div className="text-sm text-cream-dim">
                     {POS_LABEL[selectedPlayer.main_position]} · {selectedPlayer.nationality} · {selectedPlayer.age} Jahre
@@ -358,6 +372,7 @@ export function Draft() {
                 ? squad.map((p) => (
                     <li key={p.id} className="flex items-center gap-3 px-4 py-2">
                       <span className="display w-7 text-right text-lg font-bold text-cream-dim">{p.shirt_number}</span>
+                      <PlayerAvatar id={p.id} nationality={p.nationality} age={p.age} size={32} shirt={myClub?.primary_color} collar={myClub?.secondary_color} />
                       <span className="display w-9 text-sm">{POS_LABEL[p.main_position]}</span>
                       <span className="flex-1 truncate">{p.first_name} {p.last_name}</span>
                       <span className={`display text-xl font-bold ${ratingColor(p.overall)}`}>{p.overall}</span>
@@ -368,6 +383,7 @@ export function Draft() {
                     return (
                       <li key={p.pick_index} className="flex items-center gap-3 px-4 py-2">
                         <span className="display w-8 text-sm text-cream-dim">#{p.pick_index + 1}</span>
+                        <PlayerAvatar id={p.player_id} nationality={p.nationality} age={p.age} size={30} shirt={c?.primary_color} collar={c?.secondary_color} />
                         {c && <Crest crest={c.crest} size={20} />}
                         <span className="flex-1 truncate">{p.name}</span>
                         <span className="display text-sm">{POS_LABEL[p.position]}</span>
