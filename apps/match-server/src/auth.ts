@@ -19,7 +19,11 @@ export function bearerToken(header: string | undefined): string | null {
 
 export async function verifyAccessToken(admin: SupabaseClient, token: string): Promise<VerifiedUser | null> {
   const { data, error } = await admin.auth.getUser(token);
-  if (error || !data.user) return null;
+  if (error || !data.user) {
+    // Grund im Server-Log sichtbar machen (z. B. falsches Projekt oder ungültiger Schlüssel)
+    console.warn('Token-Prüfung fehlgeschlagen:', error?.status, error?.message);
+    return null;
+  }
   return { userId: data.user.id, isAnonymous: data.user.is_anonymous ?? false };
 }
 

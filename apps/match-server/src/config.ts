@@ -16,11 +16,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   }
   return {
     port: Number(env.PORT ?? 2567),
-    supabaseUrl: env.SUPABASE_URL!,
-    supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY!,
+    supabaseUrl: env.SUPABASE_URL!.trim().replace(/\/+$/, ''),
+    supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY!.replace(/\s+/g, ''),
     allowedOrigins: (env.ALLOWED_ORIGINS ?? 'http://localhost:5173')
       .split(',')
-      .map((o) => o.trim())
+      .map((o) => o.trim().replace(/\/+$/, ''))
       .filter(Boolean),
   };
 }

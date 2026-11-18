@@ -80,6 +80,17 @@ export class MatchClient {
         this.emit({ connection: this.state.error ? 'error' : 'closed' });
         return;
       }
+      // Nie verbunden und mehrfach gescheitert ⇒ verständliche Diagnose statt Endlos-Spinner
+      if (!this.state.teams && this.retry >= 3) {
+        const host = this.url.replace(/^ws/, 'http').replace(/\/match$/, '');
+        this.fatal = true;
+        this.emit({
+          connection: 'error',
+          error: `Der Match-Server antwortet nicht (${host}). Prüfe ${host}/health – dort muss "implemented": true stehen. ` +
+            `Auf Fly.io muss das Secret ALLOWED_ORIGINS genau ${window.location.origin} enthalten.`,
+        });
+        return;
+      }
       this.emit({ connection: 'reconnecting' });
       const delay = Math.min(10_000, 500 * 2 ** this.retry++);
       setTimeout(() => void this.connect(), delay);
