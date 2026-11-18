@@ -1,0 +1,10 @@
+{
+  "name": "Football Dynasty",
+  "short_name": "Dynasty",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#1b1e16",
+  "theme_color": "#23271c",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

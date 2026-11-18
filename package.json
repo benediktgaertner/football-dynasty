@@ -1,0 +1,21 @@
+{
+  "name": "football-dynasty",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Football Dynasty – Multiplayer-Fußballmanager (Monorepo)",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w @fd/web",
+    "dev:server": "npm run dev -w @fd/match-server",
+    "build": "npm run build -w @fd/shared && npm run build -w @fd/web && npm run build -w @fd/match-server",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:db": "bash scripts/test-db.sh"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

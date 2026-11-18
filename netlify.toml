@@ -1,0 +1,22 @@
+# Netlify hostet die Web-App (Frontend). Der Match-Server läuft separat (fly.toml).
+[build]
+  base = "."
+  command = "npm ci && npm run build -w @fd/shared && npm run build -w @fd/web"
+  publish = "apps/web/dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# SPA-Routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
