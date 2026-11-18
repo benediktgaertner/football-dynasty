@@ -17,12 +17,15 @@ npm run build
 |---|---|
 | `packages/shared/test/rules.test.ts` | 38 Tests: Konstanten, Marktwert, Gehalt, Stadion, Fitness, Snake-Draft, Positionen, Gesamtstärke, Namen, Codes, Farben, Wappen-Sicherheit, RNG, Schemas, Referenzdaten |
 | `packages/shared/test/world.test.ts` | 17 Tests: Vereinsverteilung, Namens-Eindeutigkeit, Sperrliste, Branding-Validierung, Farbkonflikte, Mannschaftsstärken C2, KI-Kader, Pool D2 (Stärke, Herkunft, Positionen, Marktwerte), exakte Zielstärke, Determinismus, 1–18 Manager |
+| `packages/shared/test/tactics.test.ts` | 12 Tests: 12 Grundeinstellungen, Schemas, Anweisungen und Konflikte, Rolle aus Koordinaten, Auto-Aufstellung für alle 30 Formationen, Lineup-Prüfung, effektive Stärke, Trainingsmultiplikatoren |
+| `packages/shared/test/avatar.test.ts` | 4 Tests: Porträts deterministisch, sicher, graue Haare im Alter |
 | `apps/match-server/src/auth.test.ts` | 3 Tests: Token-Auslesen, Konfiguration |
 | `netlify/lib/startDraft.test.ts` | 6 Tests: Methode, Token, worldId, nur Host, Idempotenz, Fehlerweitergabe |
 | `supabase/tests/10_lobby_and_security.sql` | 73 Prüfungen, siehe unten |
-| Paritätstest (generiert aus `scripts/gen-parity-sql.mjs`) | 32 Prüfungen: `normalize_name`, Stadionkosten, Startkapital und Snake-Reihenfolge in TS und SQL identisch |
+| Paritätstest (generiert aus `scripts/gen-parity-sql.mjs`) | 65 Prüfungen: `normalize_name`, Stadionkosten, Startkapital, Snake-Reihenfolge, Spieleranweisungen je Position, Anweisungskonflikte und Trainingspunkte in TS und SQL identisch |
 | `supabase/tests/21_draft.sql` | 44 Prüfungen: Rechte, Vorbedingungen, ungültige Payloads, vollständige Weltinitialisierung, Buchungen, Reihenfolge, Verfügbarkeit, Vertrag, Reserve, Auto-Pick-Regeln |
 | Paralleltest (Shell) | 4 gleichzeitige Verbindungen wollen denselben Spieler → genau 1 Pick |
+| `supabase/tests/30_team.sql` | 46 Prüfungen: Taktikprofil inkl. ungültiger Aufstellungen, fremder Spieler, null-Werte, unpassender/widersprüchlicher Anweisungen; Privatheit der Taktik; Automatik; Standards; Trainingslimits, Fitness, Entwicklungspunkte; Sponsor nur der eigenen Liga; Bereitschaftsbedingungen; nachgebesserte Wappenprüfung |
 | `supabase/tests/22_draft_complete.sql` | 17 Prüfungen: kompletter Draft mit gegnerischem Verhalten; je 22 Spieler, keine Doppelungen, Free Agents = 400 − 44, kein Minus, Kontostand = Summe der Buchungen |
 
 ### Datenbanktest: Abdeckung (Auszug, Bezug auf Teil N)

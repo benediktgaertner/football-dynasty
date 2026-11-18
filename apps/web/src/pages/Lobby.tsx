@@ -70,7 +70,8 @@ export function Lobby() {
   }
 
   useEffect(() => {
-    if (state && state.world.status !== 'lobby') navigate(`/w/${worldId}/draft`, { replace: true });
+    if (state && state.world.status === 'draft') navigate(`/w/${worldId}/draft`, { replace: true });
+    else if (state && state.world.status !== 'lobby') navigate(`/w/${worldId}/team`, { replace: true });
   }, [state, worldId, navigate]);
 
   if (!state) {

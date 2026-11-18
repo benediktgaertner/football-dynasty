@@ -177,7 +177,12 @@ export function Draft() {
               <p className="display text-sm font-semibold uppercase tracking-[0.2em] text-gold">Snake-Draft</p>
               <h1 className="display text-4xl font-extrabold uppercase">Draft abgeschlossen</h1>
             </div>
-            <p className="max-w-md text-cream-dim">Alle Kader sind komplett. Als Nächstes folgen Aufstellung, Taktik und Sponsorenwahl (Entwicklungsphase 4).</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="max-w-md text-cream-dim">Alle Kader sind komplett. Jetzt Aufstellung, Taktik, Standards und Sponsor festlegen.</p>
+              <Link to={`/w/${worldId}/team`} className="display inline-flex min-h-11 items-center rounded-xl bg-gold px-5 text-lg font-semibold uppercase text-ink shadow-[0_4px_0_0_#b8902f]">
+                Zum Team-Management
+              </Link>
+            </div>
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-5">

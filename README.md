@@ -2,7 +2,7 @@
 
 Browserbasierter Multiplayer-Fußballmanager für Freunde: eigener Verein, gemeinsamer Snake-Draft, Taktik und eine zentral simulierte 2D-Partie, die alle Beteiligten gleichzeitig sehen.
 
-**Stand: Phasen 1–3 implementiert** (Grundgerüst; Benutzer, Welt, Lobby, Vereinsgründung; Spielergenerierung und Snake-Draft). Taktik, Match Engine, Wettbewerbe und Wirtschaft folgen in den Phasen 4–10, siehe [docs/ROADMAP.md](docs/ROADMAP.md). Was hier steht, funktioniert wirklich. Es gibt keine Schaltflächen, die Funktionen nur vortäuschen.
+**Stand: Phasen 1–4 implementiert** (Grundgerüst; Benutzer, Welt, Lobby, Vereinsgründung; Spielergenerierung und Snake-Draft; Team-Management mit Aufstellung, Taktik, Standards, Training und Sponsor). Match Engine, Wettbewerbe und Wirtschaft folgen in den Phasen 5–10, siehe [docs/ROADMAP.md](docs/ROADMAP.md). Was hier steht, funktioniert wirklich. Es gibt keine Schaltflächen, die Funktionen nur vortäuschen.
 
 ## Was schon läuft
 
@@ -14,6 +14,7 @@ Browserbasierter Multiplayer-Fußballmanager für Freunde: eigener Verein, gemei
 * Spielregeln (Marktwert, Gehalt, Stadion, Fitness, Snake-Draft, Positionsmalus, Gesamtstärke, Formationen) als getestete gemeinsame Bibliothek
 * Draft-Start durch den Host: 54 KI- und menschliche Vereine in drei Ligen mit landestypischen, fiktiven Namen, Wappen und Stadien, vollständige KI-Kader und ein Pool mit 400 Spielern exakt nach Vorgabe
 * Synchronisierter Snake-Draft mit gezeichneten Spielerporträts: Live-Aktualisierung, Filter, Sortierung, Spielerdetails, Restbudget, Kaderbedarf; serverseitige Reihenfolge, Budget- und Reserveprüfung; Auto-Pick für abwesende Manager
+* Team-Management: Kader und Spielerprofile, drei Taktikprofile mit 30 Formationen und frei verschiebbaren Spielern (Touch), 12 Grundeinstellungen, Spezialoptionen, individuelle Anweisungen, Automatik, Standardschützen, Zusatztraining, Sponsorwahl und Bereitschaft für den Saisonstart
 * Match-Server-Grundgerüst mit Health-Check und Token-Prüfung
 
 ## Schnellstart

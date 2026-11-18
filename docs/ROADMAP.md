@@ -47,8 +47,23 @@ Legende: ✅ fertig und getestet · 🟡 teilweise · ⬜ offen
 
 **Abnahme:** P4 und P5 (gemeinsamer Draft, alle sehen dieselben Entscheidungen) live prüfen.
 
-## Phase 4 – Mannschaftsmanagement ⬜
-Aufstellung per Drag-and-drop (Touch), drei Profile, 12 Grundeinstellungen + Spezialoptionen, individuelle Anweisungen, Standardschützen, Training und Fitness nach Kalender, Automatik (E4).
+## Phase 4 – Mannschaftsmanagement ✅
+
+| Ergebnis | Status |
+|---|---|
+| Team-Bereich mit Kader, Spielerprofilen (Porträt, Attribute, Stärke je Position, Vertrag) | ✅ |
+| Drei Taktikprofile mit festen Namen, je eigene Formation, Startelf und Positionen | ✅ |
+| 30 Formationen, freies Verschieben per Drag-and-drop (Maus und Touch), Rolle folgt der Feldposition | ✅ |
+| Aufstellungshilfe: Leistungsfähigkeit je Position (Positionsmalus D5 + Fitness F7), automatische Aufstellung | ✅ getestet |
+| Zwölf Grundeinstellungen (E2), zwölf Spezialoptionen, individuelle Anweisungen je Rolle (E3) mit Konfliktprüfung | ✅ getestet |
+| Anzeige der taktischen Fitnessbelastung aus den tatsächlichen Einstellungen (F7) | ✅ |
+| Startprofil, automatische Auswechslungen und automatischer Taktikwechsel ab Minute X (E4) | ✅ |
+| Standardschützen mit Ersatzschützen, Eckballvarianten, defensive Standardorganisation (F9) | ✅ |
+| Zusatztraining: max. 5 Spieler/Woche, 1 Einheit je Spieler, −20 Fitness, Entwicklungspunkte nach Alter (G1/G4) | ✅ getestet |
+| Sponsorwahl (10 Angebote je Liga, I7) und Bereitschaft für den Saisonstart (B2.12) | ✅ getestet |
+| Alle Eingaben serverseitig validiert, Taktik für Gegner unsichtbar | ✅ getestet |
+
+Noch nicht enthalten, weil es den Saisonkalender braucht (Phase 7): Regeneration über freie Tage, Wochenwechsel, Saisonstart. Gegnerbezogene Optionen (Pressing auf bestimmte Gegenspieler, Manndeckung) werden vor der jeweiligen Partie gesetzt (Phase 5/6). Die Umrechnung von Entwicklungspunkten in Attribute folgt mit der Spielerentwicklung (Phase 9).
 
 ## Phase 5 – Match Engine ⬜
 `packages/engine` nach dem Plan in `ARCHITECTURE.md`; Headless-Läufer; Canvas-Darstellung. **Abnahme:** P7–P11, N1-Statistiken über mehrere tausend Partien.

@@ -89,5 +89,6 @@ else
 fi
 
 check "22_draft_complete.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/22_draft_complete.sql"
+check "30_team.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/30_team.sql"
 rm -rf "$PDIR"
 exit $status

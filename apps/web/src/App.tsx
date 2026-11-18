@@ -5,6 +5,7 @@ import { Card, Shell, Spinner } from './components/ui';
 import { Account } from './pages/Account';
 import { ClubEditor } from './pages/ClubEditor';
 import { Draft } from './pages/Draft';
+import { Team } from './pages/Team';
 import { Home } from './pages/Home';
 import { Lobby } from './pages/Lobby';
 import { Welcome } from './pages/Welcome';
@@ -20,6 +21,7 @@ function Routed() {
       <Route path="/w/:worldId" element={<Lobby />} />
       <Route path="/w/:worldId/verein" element={<ClubEditor />} />
       <Route path="/w/:worldId/draft" element={<Draft />} />
+      <Route path="/w/:worldId/team" element={<Team />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

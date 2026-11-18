@@ -17,3 +17,4 @@ export * from './world/clubNames.js';
 export * from './world/players.js';
 export * from './world/worldInit.js';
 export * from './avatar.js';
+export * from './tactics.js';

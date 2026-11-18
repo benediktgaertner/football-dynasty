@@ -14,6 +14,7 @@ Supabase/PostgreSQL ≥ 15. Alle Änderungen erfolgen ausschließlich über Migr
 | `…0008_realtime` | Tabellen für Supabase Realtime |
 | `…0010_phase3_draft` | Weltinitialisierung (`admin_start_draft`, nur Service-Role), Snake-Draft (`make_draft_pick`, `auto_pick_current`, `draft_state`), Reserve-Regel, Taktik-Grundausstattung |
 | `…0011_service_role_access` | Rechte der Server-Rolle ausdrücklich gesetzt (neuere Supabase-Projekte vergeben sie nicht mehr automatisch); `admin_draft_context` für die Netlify-Function |
+| `…0012_phase4_team` | Taktikprofile speichern, Vereinseinstellungen/Automatik, Standards, Zusatztraining, Sponsorwahl, Saisonstart-Bereitschaft; null-sichere Prüfungen (inkl. Nachbesserung Wappen/Trikot) |
 | `…0009_reference_data` | **generiert** aus `packages/shared`: 55 Verbände, 30 Formationen, 30 Sponsorenangebote, 85 Prämienvorlagen, 336 Sperrnamen |
 
 ## Entitäten (Teil M)
@@ -74,3 +75,17 @@ Fehler liefern im Feld `hint` einen maschinenlesbaren Code (z. B. `club_name_tak
 | `draft_state(p_world)` | Reihenfolge, Verein am Zug, nächste 12 Picks, Budgets, alle Picks |
 
 **Reserve-Regel:** Für jeden künftigen eigenen Pick wird angenommen, dass die anderen Vereine vorher die billigsten Spieler nehmen. Ein Kauf ist nur erlaubt, wenn danach genug Geld für diesen ungünstigsten Fall bleibt. Der günstigste verfügbare Spieler ist immer erlaubt. Reicht das Geld nicht einmal dafür (nur bei sehr vielen Managern auf „Schwer“ denkbar), wird er trotzdem verpflichtet und der Fehlbetrag als Minus gebucht, damit jeder Kader genau 22 Spieler hat (D3).
+
+## RPCs (Phase 4)
+
+| Funktion | Zweck |
+|---|---|
+| `save_tactical_profile(p_world, p_profile, p_data)` | Formation, 12 Grundeinstellungen, Spezialoptionen, 11 Positionen (genau 1 TW, verschiedene eigene Spieler, Koordinaten 0–100), individuelle Anweisungen passend zur Rolle und ohne Widersprüche |
+| `save_club_tactics(p_world, p_data)` | Startprofil, automatische Auswechslungen, automatischer Taktikwechsel (Minute 1–89, Profil bei Rückstand/Führung), Eckballvariante, defensive Standards |
+| `save_set_pieces(p_world, p_data)` | je Standardart bis zu 3 eigene, verschiedene Schützen |
+| `schedule_training(p_world, p_player, p_focus)` | max. 5 Spieler je Woche (Sperre gegen parallele Buchungen), je Spieler 1 Einheit, −20 Fitness, Entwicklungspunkte (verborgen) |
+| `choose_sponsor(p_world, p_offer)` | ein Angebot der eigenen Liga je Saison, nur in der Vorbereitung änderbar |
+| `set_preseason_ready(p_world, p_ready)` | nur mit gewähltem Sponsor und vollständiger Elf im aktiven Profil |
+| `team_context(p_world)` | Liga, Saison, Woche, Kontostand, Trainierende, Sponsorangebote, Bereitschaft aller Manager |
+
+**Null-Sicherheit:** In SQL ergibt ein Vergleich mit `null` weder wahr noch falsch. Alle Prüfungen sind deshalb so geschrieben, dass fehlende oder `null`-Werte abgelehnt werden. Die Wappen- und Trikotprüfung aus Phase 2 wurde dabei nachgebessert.
