@@ -71,6 +71,7 @@ export function Lobby() {
 
   useEffect(() => {
     if (state && state.world.status === 'draft') navigate(`/w/${worldId}/draft`, { replace: true });
+    else if (state && (state.world.status === 'season' || state.world.status === 'season_end')) navigate(`/w/${worldId}/spieltag`, { replace: true });
     else if (state && state.world.status !== 'lobby') navigate(`/w/${worldId}/team`, { replace: true });
   }, [state, worldId, navigate]);
 

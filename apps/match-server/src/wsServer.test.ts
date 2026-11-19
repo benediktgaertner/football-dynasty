@@ -28,6 +28,8 @@ const backend: Backend = {
   },
   async checkpoint(_f, tick, data) { checkpoints.push({ tick, data }); },
   async finish(id, result) { finished.push({ id, result }); },
+  async pendingFixtures() { return []; },
+  async isMember() { return true; },
 };
 
 let server: Server;

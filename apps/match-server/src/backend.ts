@@ -10,6 +10,9 @@ export interface Backend {
   setup(fixtureId: string): Promise<DbSetup>;
   checkpoint(fixtureId: string, tick: number, data: unknown): Promise<void>;
   finish(fixtureId: string, result: MatchResult): Promise<void>;
+  /** Spiele des laufenden Termins, die headless berechnet werden sollen */
+  pendingFixtures(worldId: string): Promise<string[]>;
+  isMember(worldId: string, userId: string): Promise<boolean>;
 }
 
 /**
@@ -38,6 +41,8 @@ export function supabaseBackend(admin: SupabaseClient): Backend {
     async role(fixtureId, userId) { return rpc('admin_match_role', { p_fixture: fixtureId, p_user: userId }); },
     async setup(fixtureId) { return rpc('admin_match_setup', { p_fixture: fixtureId }); },
     async checkpoint(fixtureId, tick, data) { await rpc('admin_match_checkpoint', { p_fixture: fixtureId, p_tick: tick, p_checkpoint: data }); },
+    async pendingFixtures(worldId) { return (await rpc<string[] | null>('admin_pending_fixtures', { p_world: worldId })) ?? []; },
+    async isMember(worldId, userId) { return rpc<boolean>('admin_world_member', { p_world: worldId, p_user: userId }); },
     async finish(fixtureId, result) { await rpc('admin_finish_match', { p_fixture: fixtureId, p_result: toDbResult(result) }); },
   };
 }

@@ -39,6 +39,8 @@ export interface DbSetup {
   seed: string;
   kind: string;
   neutral: boolean;
+  /** I5: aus Auslastung und Stadiongröße (Migration 0014); null bei Testspielen */
+  homeAdvantage?: number | null;
   home: DbTeam;
   away: DbTeam;
   checkpoint: { tick: number; log: unknown[] } | null;
@@ -80,13 +82,20 @@ export function toTeamInput(t: DbTeam): TeamInput {
   };
 }
 
-/** I5: Heimvorteil steigt leicht mit der Stadiongröße (10.000 → 0, 50.000 → 0,02). Neutraler Platz: 0. */
+/** Grundheimvorteil der Engine (engine.ts BASE_HOME_ADVANTAGE); auf neutralem Platz wird er aufgehoben. */
+const ENGINE_BASE_HOME = 0.06;
+
+/**
+ * I5: Pflichtspiele erhalten den Zuschauer-Heimvorteil aus der Datenbank (Auslastung × Stadiongröße, begrenzt).
+ * Testspiele: leichter Vorteil nach Stadiongröße. Neutraler Platz: kein Heimvorteil.
+ */
 export function toEngineSetup(db: DbSetup): MatchSetup {
   const cap = db.home.capacity ?? 10000;
+  const crowd = db.homeAdvantage ?? Math.max(0, Math.min(0.02, ((cap - 10000) / 40000) * 0.02));
   return {
     seed: db.seed,
     home: toTeamInput(db.home),
     away: toTeamInput(db.away),
-    homeAdvantage: db.neutral ? -0.04 : Math.max(0, Math.min(0.02, ((cap - 10000) / 40000) * 0.02)),
+    homeAdvantage: db.neutral ? -ENGINE_BASE_HOME : crowd,
   };
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { WorldNav } from '../components/WorldNav';
 import { formatEuro } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { requireSupabase } from '../lib/supabase';
@@ -31,7 +32,8 @@ export function Team() {
   const [clubTactics, setClubTactics] = useState<ClubTactics | null>(null);
   const [setPieces, setSetPieces] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>('tactics');
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState<Tab>((params.get('tab') as Tab | null) ?? 'tactics');
   const [profileOpen, setProfileOpen] = useState<SquadPlayer | null>(null);
 
   const reload = useCallback(async (full = true) => {
@@ -61,7 +63,7 @@ export function Team() {
     return () => void sb.removeChannel(channel);
   }, [worldId, reload]);
 
-  if (!data || !clubTactics) return <Shell>{error ? <ErrorBanner error={error} /> : <Spinner label="Team wird geladen …" />}</Shell>;
+  if (!data || !clubTactics) return <Shell><WorldNav worldId={worldId} />{error ? <ErrorBanner error={error} /> : <Spinner label="Team wird geladen …" />}</Shell>;
 
   const kit = { primary: data.branding.kit.primary, secondary: data.branding.kit.secondary };
   const ctx: TeamContext = data.ctx;
@@ -69,6 +71,7 @@ export function Team() {
 
   return (
     <Shell right={<Link to="/" className="display rounded-xl px-3 py-2 text-lg font-semibold uppercase text-cream-dim hover:bg-olive-800 hover:text-cream">Übersicht</Link>}>
+      <WorldNav worldId={worldId} />
       <Card className="pitch-stripes mb-4">
         <div className="flex flex-wrap items-center gap-4">
           <Crest crest={data.branding.crest} size={56} />

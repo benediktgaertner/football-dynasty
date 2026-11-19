@@ -50,7 +50,9 @@ export class MatchRoom {
     } else {
       this.engine = new MatchEngine(setup);
       this.status = 'waiting';
-      this.autoStart = setTimeout(() => this.begin(), START_COUNTDOWN_MS / this.speed);
+      // Pflichtspiele starten sofort (der Termin läuft bereits), Testspiele nach Anpfiff oder Countdown
+      if (this.db.kind !== 'friendly') queueMicrotask(() => this.begin());
+      else this.autoStart = setTimeout(() => this.begin(), START_COUNTDOWN_MS / this.speed);
     }
   }
 

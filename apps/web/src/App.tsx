@@ -7,6 +7,11 @@ import { ClubEditor } from './pages/ClubEditor';
 import { Draft } from './pages/Draft';
 import { Team } from './pages/Team';
 import { Match } from './pages/Match';
+import { Matchday } from './pages/Matchday';
+import { League } from './pages/League';
+import { Cup } from './pages/Cup';
+import { Transfers } from './pages/Transfers';
+import { Finance } from './pages/Finance';
 import { Home } from './pages/Home';
 import { Lobby } from './pages/Lobby';
 import { Welcome } from './pages/Welcome';
@@ -24,6 +29,11 @@ function Routed() {
       <Route path="/w/:worldId/draft" element={<Draft />} />
       <Route path="/w/:worldId/team" element={<Team />} />
       <Route path="/w/:worldId/match/:fixtureId" element={<Match />} />
+      <Route path="/w/:worldId/spieltag" element={<Matchday />} />
+      <Route path="/w/:worldId/liga" element={<League />} />
+      <Route path="/w/:worldId/pokal" element={<Cup />} />
+      <Route path="/w/:worldId/transfers" element={<Transfers />} />
+      <Route path="/w/:worldId/finanzen" element={<Finance />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

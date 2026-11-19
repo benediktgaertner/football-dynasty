@@ -110,5 +110,6 @@ if node "$ROOT/apps/match-server/dist/simulateFromSetup.js" "$PDIR/setup.json" >
 else
   echo "✗ Ende-zu-Ende: Simulation fehlgeschlagen"; cat "$PDIR/sim.err"; status=1
 fi
+check "50_season.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/50_season.sql"
 rm -rf "$PDIR"
 exit $status

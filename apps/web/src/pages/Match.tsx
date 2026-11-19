@@ -73,7 +73,7 @@ export function Match() {
   const activeProfile = mySide ? snap.activeProfile[mySide === 'home' ? 0 : 1] : null;
 
   return (
-    <Shell right={<Link to={`/w/${worldId}/team`} className="display rounded-xl px-3 py-2 text-lg font-semibold uppercase text-cream-dim hover:bg-olive-800 hover:text-cream">Team</Link>}>
+    <Shell right={<><Link to={`/w/${worldId}/spieltag`} className="display rounded-xl px-3 py-2 text-lg font-semibold uppercase text-cream-dim hover:bg-olive-800 hover:text-cream">Spieltag</Link><Link to={`/w/${worldId}/team`} className="display rounded-xl px-3 py-2 text-lg font-semibold uppercase text-cream-dim hover:bg-olive-800 hover:text-cream">Team</Link></>}>
       <Scoreboard teams={teams} homeColor={homeColor} awayColor={awayColor} score={snap.score} minute={snap.minute} phase={snap.phase} status={status} connection={state.connection} role={role} />
 
       <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -129,7 +129,7 @@ export function Match() {
       {panel && mySide && view && (
         <ManagementPanel view={view} team={teams[mySide]} onClose={() => setPanel(false)} send={send} />
       )}
-      {end && <Summary result={end.result} saved={end.saved} teams={teams} homeColor={homeColor} awayColor={awayColor} worldId={worldId} />}
+      {end && <Summary result={end.result} saved={end.saved} teams={teams} homeColor={homeColor} awayColor={awayColor} worldId={worldId} kind={state.kind} />}
     </Shell>
   );
 }
@@ -309,7 +309,7 @@ function FitnessBar({ value }: { value: number }) {
   );
 }
 
-function Summary({ result, saved, teams, homeColor, awayColor, worldId }: { result: EndResult; saved: boolean; teams: { home: RosterTeam; away: RosterTeam }; homeColor: string; awayColor: string; worldId: string }) {
+function Summary({ result, saved, teams, homeColor, awayColor, worldId, kind }: { result: EndResult; saved: boolean; teams: { home: RosterTeam; away: RosterTeam }; homeColor: string; awayColor: string; worldId: string; kind: string | null }) {
   const names = new Map([...teams.home.players, ...teams.away.players].map((p) => [p.id, p.name]));
   const h = result.stats.home;
   const a = result.stats.away;
@@ -362,7 +362,7 @@ function Summary({ result, saved, teams, homeColor, awayColor, worldId }: { resu
         </div>
         {!saved && <p className="mt-3 text-sm text-danger">Das Ergebnis konnte noch nicht gespeichert werden – der Server versucht es erneut.</p>}
         <div className="mt-4 flex justify-center">
-          <Link to={`/w/${worldId}/team`} className="display rounded-xl bg-gold px-5 py-2 text-lg font-semibold uppercase text-ink">Zurück zum Team</Link>
+          <Link to={`/w/${worldId}/${kind === 'friendly' ? 'team?tab=matches' : 'spieltag'}`} className="display rounded-xl bg-gold px-5 py-2 text-lg font-semibold uppercase text-ink">Weiter</Link>
         </div>
       </Card>
     </div>

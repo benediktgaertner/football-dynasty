@@ -24,6 +24,8 @@ npm run build
 | `apps/match-server/src/presenter.test.ts` | 6 Tests: Spieldauer ca. 180 s, gezeigte Bewegung ≤ 2-fach (Spieler, Ball, Wiedergaberate), Sprünge und Ereignisfreigabe, Tore werden gezeigt, Eingriffe während der Wiedergabe, identischer Bildstrom |
 | `apps/match-server/src/wsServer.test.ts` | 3 Tests mit echten WebSocket-Clients: fremde Origin/ungültiges Token, zwei Manager + Zuschauer in einer Partie, Zuschauer ohne Rechte, Befehlsbestätigung, Wiederverbinden, Automatik, gespeichertes Ergebnis, Fortsetzung aus Checkpoint |
 | `supabase/tests/40_matches.sql` | 31 Prüfungen: Testspiel anlegen/absagen, Rechte, Admin-Funktionen nur für den Server, Setup mit Kader/Taktik, Checkpoint, idempotentes Speichern, fremde Spieler gefiltert, Sichtbarkeit |
+| `supabase/tests/50_season.sql` | 63 Prüfungen: Saisonstart, 43 Termine, 918 Ligaspiele ohne Doppelungen, Amateure, Pokal-Heimrecht, B4-Ablauf (Bereitschaft, Start, Überspringen, keine fremden Ergebnisse vor der Freigabe), Tabellen/Punkte, Gehälter/Prämien/Zuschauer, Transfers (Ablehnung, Gegenangebot, Abschluss, Free Agent eindeutig, Verkauf an KI, Mensch↔Mensch), komplette Saison inkl. Relegation, Pokalsieger, Auf-/Abstieg, Prämien genau einmal, Stadionausbau, Saison 2 |
+| `apps/match-server/src/worldSim.test.ts` | Headless-Spieltag: alle offenen Spiele, Live-Räume ausgenommen, gleiches Ergebnis wie live |
 | Ende-zu-Ende (Shell) | echtes DB-Setup → Match Engine → `admin_finish_match` |
 | `netlify/lib/startDraft.test.ts` | 6 Tests: Methode, Token, worldId, nur Host, Idempotenz, Fehlerweitergabe |
 | `supabase/tests/10_lobby_and_security.sql` | 73 Prüfungen, siehe unten |

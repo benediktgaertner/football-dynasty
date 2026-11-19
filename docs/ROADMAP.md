@@ -93,11 +93,24 @@ Noch nicht enthalten, weil es den Saisonkalender braucht (Phase 7): Regeneration
 - Konter (Sofort-Läufe nach Ballgewinn), Ballbesitzspiel (Passdreiecke), Pressing/Linie wirken auf Laufwege
 - Kalibrierung: ca. 2,3 Tore/Spiel, 11 Schüsse und ca. 600 Pässe (78 %) je Team, Stärke 78 gegen 66 gewinnt ca. 75 %
 
-## Phase 7 – Wettbewerbe und Kalender ⬜
-Spielpläne (inkl. Wochentagsregeln C8.5), Tabellen, Pokal, Relegation, vierte Liga, Fünfjahreswertung, Champions League, Europa League mit Qualifikation und Auslosungen, Prämien. **Abnahme:** P24, P29–P35.
+## Phase 7 – Wettbewerbe und Kalender ✅ (national)
+- Saisonkalender (43 Termine): 34 Ligaspieltage samstags mit Winterpause, Pokal mittwochs, Relegation (Hin/Rück), Pokalfinale, Saisonabschluss
+- Drei Ligen à 18 Vereine, Doppelrunde (918 Spiele), Tabellen gesamt/heim/auswärts, Torschützen, Vorlagen, Noten
+- DFB-Pokal mit 64 Teilnehmern (54 Profis + 10 Amateure der abstrakten 4. Liga), Heimrecht für Unterklassige bis zum Viertelfinale (+ kleiner Bonus), Halbfinale zufällig, Finale neutral, Elfmeterschießen bei Remis
+- Relegation BL/2. BL und 2. BL/3. Liga mit Hin- und Rückspiel; 3. Liga ↔ 4. Liga (zwei stärkste Amateure steigen auf) – Ligen bleiben immer 18
+- B4-Ablauf je Termin: Bereitschaft → Start (Host kann bei Zeitüberschreitung starten) → Live ansehen oder Überspringen → KI-Spiele headless auf dem Match-Server → gemeinsame Freigabe, sobald alle Spiele berechnet sind; nicht entschiedene Spiele werden nach 10 Minuten automatisch berechnet
+- Verletzungen (1–5 Wochen), Sperren (Rot 2, Gelb-Rot 1, 5. Gelbe 1 – je Wettbewerb), Regeneration +15 je freiem Tag
+- Saisonwechsel: Auf-/Abstieg, neue Saison, Alter +1, neue Vorbereitung (Sponsor, Ausbau, Transfers)
+- **Noch offen:** Champions League, Europa League und Fünfjahreswertung (erste Teilnahme frühestens zur dritten Saison – folgen vorher). Verlängerung im Pokal wird bis dahin direkt durch Elfmeterschießen ersetzt.
 
-## Phase 8 – Wirtschaft und Transfers ⬜
-Verhandlungen, KI-Gegenangebote, Free Agents mit eindeutiger Vergabe, Limits, Stadionausbau, Sponsoren, Ticketnachfrage, Heimvorteil. **Abnahme:** P21.
+## Phase 8 – Wirtschaft und Transfers ✅
+- Transferfenster (Vorbereitung bis 5. Spieltag, 18.–22. Spieltag), je Fenster max. 5 Neuzugänge und 5 Verkäufe, Kader 16–30
+- Angebote an KI-Vereine (Annahme, Gegenangebot, Ablehnung; Stammspieler teurer), Spielerzustimmung nach Gehalt, Liga, Ruf und Einsatzchance
+- Angebote zwischen Managern mit Annehmen/Ablehnen/Gegenangebot, Zurückziehen
+- Free Agents mit eindeutiger Vergabe (Zeilensperre), Verkauf an KI-Vereine, Freistellen mit Abfindung
+- Finanzen: Zuschauereinnahmen nach Nachfragemodell, Stadionbetrieb, Gehälter je Spieltag, Spielprämien, Pokalprämien, Sponsorzahlungen und -saisonprämien, Platzierungsprämien
+- Stadion: Ticketpreise (Liga/Pokal/International), Ausbau zum Saisonwechsel (+5.000 für 25 Mio. €), Heimvorteil aus Auslastung × Stadiongröße
+- **Vereinfachung:** Vertragsverlängerungen kommen mit Phase 9; bis dahin werden auslaufende Verträge zum Saisonwechsel automatisch um zwei Jahre verlängert.
 
 ## Phase 9 – Langfristige Karriere ⬜
 Entwicklung in der Saison, Alterung nur zum Saisonwechsel, Karriereenden, Talente, Jahresbericht, Historie. **Abnahme:** P22, P23, P25; N4 mit 10 und 30 Saisonen.

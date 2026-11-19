@@ -382,7 +382,7 @@ export function SeasonTab({ ctx, onChoose, onReady, myUserId }: { ctx: TeamConte
           {me?.ready ? 'Bereitschaft zurückziehen' : 'Bereit für den Saisonstart'}
         </Button>
         <ErrorBanner error={error} />
-        <p className="text-xs text-cream-dim">Live-Partien kannst du schon jetzt als Testspiel im Reiter „Spiele“ austragen. Der Saisonkalender mit den Pflichtspielen folgt mit der nächsten Entwicklungsphase (Wettbewerbe und Kalender).</p>
+        <p className="text-xs text-cream-dim">Sind alle bereit, werden Spielplan und Pokal ausgelost. Danach geht es im Menü unter „Spieltag“ weiter. Testspiele gibt es jederzeit im Reiter „Spiele“.</p>
       </Card>
     </div>
   );
