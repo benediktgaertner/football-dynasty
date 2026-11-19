@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Calendar } from './pages/Calendar';
 import { ClubPage } from './pages/ClubPage';
+import { Development } from './pages/Development';
 import { MatchdayOverview } from './pages/MatchdayOverview';
 import { PlayerPage } from './pages/PlayerPage';
 import { AuthProvider, useAuth } from './lib/auth';
@@ -42,6 +43,8 @@ function Routed() {
       <Route path="/w/:worldId/uebersicht/:slotId" element={<MatchdayOverview />} />
       <Route path="/w/:worldId/spieler/:playerId" element={<PlayerPage />} />
       <Route path="/w/:worldId/club/:clubId" element={<ClubPage />} />
+      <Route path="/w/:worldId/entwicklung" element={<Development />} />
+      <Route path="/w/:worldId/entwicklung/:clubId" element={<Development />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

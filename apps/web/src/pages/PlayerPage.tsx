@@ -8,7 +8,8 @@ import { POS_LABEL } from '../components/team/PitchEditor';
 import { StatusBadges } from '../components/team/PlayerStatus';
 import { Button, Card, ErrorBanner, Shell, Spinner } from '../components/ui';
 import { formatEuro } from '../lib/api';
-import { seasonApi, type PlayerProfileData } from '../lib/seasonApi';
+import { seasonApi, type PlayerDevelopmentSeason, type PlayerProfileData } from '../lib/seasonApi';
+import { AttrChanges } from './Development';
 
 const fmt = (n: number | null | undefined, d = 2) => (n === null || n === undefined ? '–' : Number(n).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d }));
 
@@ -18,7 +19,9 @@ export function PlayerPage() {
   const navigate = useNavigate();
   const [p, setP] = useState<PlayerProfileData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dev, setDev] = useState<PlayerDevelopmentSeason[]>([]);
   useEffect(() => { setP(null); void seasonApi.playerProfile(playerId).then(setP).catch((e) => setError((e as Error).message)); }, [playerId]);
+  useEffect(() => { void seasonApi.playerDevelopment(playerId).then(setDev).catch(() => setDev([])); }, [playerId]);
   if (!p) return <Shell><WorldNav worldId={worldId} />{error ? <ErrorBanner error={error} /> : <Spinner label="Spielerprofil wird geladen …" />}</Shell>;
   const color = p.club?.color ?? '#3a4a3a';
   return (
@@ -61,6 +64,24 @@ export function PlayerPage() {
           )}
         </Card>
         <div className="space-y-4">
+          {dev.length > 0 && (
+            <Card>
+              <h2 className="display mb-2 text-xl font-bold uppercase">Entwicklung</h2>
+              <ul className="space-y-3 text-sm">
+                {dev.map((d) => (
+                  <li key={d.season_year} className="rounded-lg bg-olive-800/60 p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold">Saison {d.season_year}/{String((d.season_year + 1) % 100).padStart(2, '0')}{d.live ? ' (läuft)' : ''}</span>
+                      <span className="tabular-nums">OVR {d.ovr_start} → {d.ovr_end ?? d.ovr_start}{d.ovr_after_aging != null && d.ovr_after_aging !== d.ovr_end ? ` → ${d.ovr_after_aging} (Alter)` : ''}</span>
+                    </div>
+                    <div className="mt-1"><AttrChanges values={d.gains} tone="good" /></div>
+                    {Object.keys(d.declines ?? {}).length > 0 && <div className="mt-1"><AttrChanges values={d.declines} tone="bad" /></div>}
+                    <p className="mt-1 text-xs text-cream-dim">XP: {fmt(d.training_xp, 1)} aus {d.training_sessions} Trainingseinheiten · {fmt(d.match_xp, 1)} aus {d.matches} Pflichtspielen</p>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
           <Card>
             <h2 className="display mb-2 text-xl font-bold uppercase">Saison</h2>
             <div className="grid grid-cols-4 gap-2 text-center">

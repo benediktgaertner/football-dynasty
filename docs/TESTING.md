@@ -78,3 +78,11 @@ npm run build
 - `supabase/tests/80_availability.sql`: Verletzung/Sperre je Wettbewerb, Startelf-Prüfung blockiert die Bereitmeldung, Trainingsfortschritt.
 - `supabase/tests/90_dashboard.sql`: Dashboard, Pflicht-Spieltagsübersicht, keine vorzeitige Freigabe verborgener Ergebnisse, keine geheimen Taktikdaten in Profilen.
 - `supabase/tests/95_stadium.sql`: Stadiondesign kostenlos und validiert.
+
+## Spieltagssteuerung & Spielerentwicklung (Migrationen 0022–0023)
+* `96_matchday_control.sql` (19): Sperre gegen Doppelsimulation, Neuversuch nach Fehler/Absturz, Ersatzergebnis, nie überschreiben, Ergebnis bis Freigabe verborgen.
+* Ende-zu-Ende Spieltag in `scripts/test-db.sh`: alle offenen Partien eines Termins mit der echten Engine → automatische Freigabe, XP für alle Einsatzspieler.
+* `97_development.sql` (37): XP genau einmal, Testspiele ohne XP, Training (−20 Fitness, 1×/Woche), sofortige Attribut-/OVR-/Marktwertsteigerung, Engine liest neue Attribute, KI-Training (≤ 5, nie doppelt, gleiche Formel), Bericht ohne Potenzial, Alterung nur zum Saisonwechsel, in Häppchen genau einmal.
+* Parität TS = SQL (`gen-parity-sql.mjs`): OVR für 120 Zufallsspieler, Marktwert, Multiplikatoren, Spiel-XP.
+* `apps/match-server/src/worldSim.test.ts`: Sweep ohne Client, Neuversuch + Ersatzergebnis nach 3 Fehlversuchen, keine Doppelsimulation.
+* Kalibrierung: `node scripts/dev-calibrate.mjs` (Ergebnisse in docs/DEVELOPMENT.md).

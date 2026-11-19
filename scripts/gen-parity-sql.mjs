@@ -1,5 +1,5 @@
 // Erzeugt SQL-Prüfungen, die TypeScript- und SQL-Implementierung derselben Regeln vergleichen.
-import { normalizeName, stadiumBuildCost, STARTING_CAPITAL, snakeDraftManagerIndex, totalDraftPicks, PLAYER_INSTRUCTIONS, roleGroup, CONFLICTING_INSTRUCTIONS, trainingDevelopmentPoints, POSITIONS, validatePlayerInstructions } from '../packages/shared/dist/index.js';
+import { POSITIONS as ALL_POS, generateOutfieldAttributes, generateGoalkeeperAttributes, outfieldOverall, goalkeeperOverall, createRng, marketValue, devMultiplier, devAttributeCost, devAgeFactor, matchXp, normalizeName, stadiumBuildCost, STARTING_CAPITAL, snakeDraftManagerIndex, totalDraftPicks, PLAYER_INSTRUCTIONS, roleGroup, CONFLICTING_INSTRUCTIONS, trainingDevelopmentPoints, POSITIONS, validatePlayerInstructions } from '../packages/shared/dist/index.js';
 const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
 const names = ['FC Köln-Süd 1908', 'Straße United', 'Atlético Málaga', 'ŁKS Łódź', 'Øster IF', 'Æro BK', 'Beşiktaş Gençlik', 'Dinamo Đakovo', 'Œuvre FC', "Sporting d'Évora", 'SV Grünwald 1911', '  1. FC  Über-Ägypten  ', 'İzmirspor', 'Žalgiris Šiauliai', 'Cœur de Lion'];
 const lines = ['\\set ON_ERROR_STOP on'];
@@ -26,6 +26,27 @@ for (const [a, b] of CONFLICTING_INSTRUCTIONS) {
 }
 for (const [age, ovr, pot] of [[18, 70, 85], [22, 75, 75], [25, 78, 80], [29, 80, 80], [32, 76, 79], [35, 74, 74]]) {
   lines.push(`select tests.assert(public.fd_training_points(${age}, ${ovr}, ${pot}) = ${trainingDevelopmentPoints(age, ovr, pot)}, ${q('Trainingspunkte TS=SQL ' + age + '/' + ovr + '/' + pot)});`);
+}
+// Spielerentwicklung (Migration 0023): Gesamtstärke aus Attributen, Marktwert, Multiplikatoren, Spiel-XP
+const prng = createRng('parity-dev');
+for (let i = 0; i < 120; i++) {
+  const pos = ALL_POS[i % ALL_POS.length];
+  const target = 45 + ((i * 7) % 50);
+  const attrs = pos === 'GK' ? generateGoalkeeperAttributes(prng, target) : generateOutfieldAttributes(prng, pos, target);
+  const kind = pos === 'GK' ? 'goalkeeper' : 'outfield';
+  const ovr = pos === 'GK' ? goalkeeperOverall(attrs) : outfieldOverall(attrs, pos);
+  lines.push(`select tests.assert(public.fd_overall(${q(kind)}, ${q(pos)}, ${q(JSON.stringify(attrs))}::jsonb) = ${ovr}, ${q('OVR TS=SQL ' + pos + ' #' + i)});`);
+}
+for (let o = 50; o <= 92; o += 3) for (const a of [18, 24, 30, 34]) {
+  lines.push(`select tests.assert(public.fd_market_value(${o}, ${a}) = ${marketValue(o, a)}, ${q('Marktwert TS=SQL ' + o + '/' + a)});`);
+  lines.push(`select tests.assert(abs(public.fd_dev_multiplier(${a}, ${o}, ${o + (a % 7)}, ${40 + o % 50}) - ${devMultiplier(a, o, o + (a % 7), 40 + o % 50)}) < 1e-9, ${q('Entwicklungsfaktor TS=SQL ' + a + '/' + o)});`);
+}
+for (const v of [1, 40, 50, 63, 77, 98]) lines.push(`select tests.assert(abs(public.fd_dev_cost(${v}) - ${devAttributeCost(v)}) < 1e-9, ${q('Attributkosten TS=SQL ' + v)});`);
+for (const [kind, pos, line] of [['outfield', 'ST', { minutes: 90, rating: 7.4, goals: 2, assists: 0, tacklesWon: 1, interceptions: 0, saves: 0 }], ['goalkeeper', 'GK', { minutes: 75, rating: 6.8, goals: 0, assists: 0, tacklesWon: 0, interceptions: 1, saves: 5 }], ['outfield', 'CB', { minutes: 30, rating: 5.5, goals: 0, assists: 1, tacklesWon: 3, interceptions: 2, saves: 0 }]]) {
+  const xp = matchXp(kind, pos, line);
+  for (const [k, v] of Object.entries(xp)) {
+    lines.push(`select tests.assert(abs((public.fd_dev_match_xp(${q(kind)}, ${q(pos)}, ${line.minutes}, ${line.rating}, ${line.goals}, ${line.assists}, ${line.tacklesWon}, ${line.interceptions}, ${line.saves}) ->> ${q(k)})::numeric - ${v}) < 1e-9, ${q('Spiel-XP TS=SQL ' + pos + ' ' + k)});`);
+  }
 }
 lines.push(`\\echo '>>> 20_parity: TypeScript und SQL rechnen identisch'`);
 process.stdout.write(lines.join('\n') + '\n');

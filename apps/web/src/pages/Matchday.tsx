@@ -69,7 +69,8 @@ export function Matchday() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [worldId]);
 
-  // Läuft der Termin, lässt jeder Client den Server die offenen KI-Spiele berechnen (idempotent)
+  // Läuft der Termin, rechnet der Server die KI-Spiele selbstständig (Sweep alle 10 s). Der Anstoß vom Client
+  // beschleunigt das nur und ist idempotent – ohne ihn bleibt kein Spiel mehr hängen.
   useEffect(() => {
     if (state?.slot?.state !== 'live') return;
     void seasonApi.simulate(worldId);
@@ -116,6 +117,7 @@ export function Matchday() {
           <p className="mt-2 text-cream-dim">Wähle im Team unter „Saison“ einen Sponsor, stelle deine Elf auf und melde dich bereit. Transfers, Ticketpreise und Stadionausbau sind jetzt möglich. Sind alle bereit, werden Spielplan und Pokal ausgelost.</p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Button onClick={() => navigate(`/w/${worldId}/team?tab=season`)}>Zur Saisonvorbereitung</Button>
+            <Button variant="secondary" onClick={() => navigate(`/w/${worldId}/entwicklung`)}>Entwicklungsbericht der Vorsaison</Button>
             {state.is_host && <Button variant="secondary" busy={busy === 'fs'} onClick={() => { if (confirm('Saison jetzt für alle starten? Manager ohne Sponsor erhalten den Sicherheitsvertrag.')) act('fs', () => seasonApi.forceStartSeason(worldId)); }}>Saison jetzt starten (Host)</Button>}
           </div>
         </Card>

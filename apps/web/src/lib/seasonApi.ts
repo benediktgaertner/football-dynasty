@@ -181,6 +181,10 @@ export const seasonApi = {
   markReviewSeen: (worldId: string, slotId: string) => rpc<void>('mark_review_seen', { p_world: worldId, p_slot: slotId }),
   playerProfile: (playerId: string) => rpc<PlayerProfileData>('player_profile', { p_player: playerId }),
   clubProfile: (clubId: string) => rpc<ClubProfileData>('club_profile', { p_club: clubId }),
+  developmentReport: (worldId: string, clubId: string, seasonId?: string | null) =>
+    rpc<DevelopmentReport>('development_report', { p_world: worldId, p_club: clubId, p_season: seasonId ?? null }),
+  playerDevelopment: (playerId: string) => rpc<PlayerDevelopmentSeason[]>('player_development', { p_player: playerId }),
+  matchdayProcessing: (worldId: string) => rpc<Record<string, 'queued' | 'processing' | 'done' | 'failed' | 'fallback'>>('matchday_processing', { p_world: worldId }),
   lineupIssues: (worldId: string) => rpc<Array<{ player_id: string; name: string; reason: 'injured' | 'suspended' }>>('lineup_issues', { p_world: worldId }),
   retryRelease: (worldId: string) => rpc<{ released: boolean }>('retry_slot_release', { p_world: worldId }),
   marketSearch: (worldId: string, filters: MarketFilters, limit = 50, offset = 0) =>
@@ -255,3 +259,43 @@ export const TX_LABEL: Record<string, string> = {
   transfer_fee_received: 'Ablöse erhalten', salary: 'Gehälter', ticket_income: 'Ticketverkauf', match_bonus: 'Spielprämien', placement_prize: 'Platzierungsprämie',
   sponsor: 'Sponsor', competition_prize: 'Wettbewerbsprämien', stadium_running_cost: 'Stadionbetrieb', adjustment: 'Sonstiges',
 };
+
+/** Spielerentwicklung (Migration 0023): Bilanz je Spieler und Saison */
+export interface DevelopmentRow {
+  player_id: string;
+  name: string;
+  age: number;
+  position: string;
+  ovr_start: number;
+  /** Stand am Saisonende bzw. aktuell (laufende Saison) */
+  ovr_end: number;
+  /** nach der Alterung beim Saisonwechsel (nur abgeschlossene Saisons) */
+  ovr_after_aging: number | null;
+  delta: number;
+  gains: Record<string, number>;
+  declines: Record<string, number>;
+  training_xp: number;
+  match_xp: number;
+  training_sessions: number;
+  matches: number;
+}
+export interface DevelopmentReport {
+  season: { id: string; year: number; live: boolean } | null;
+  club: ClubRef;
+  seasons: Array<{ id: string; year: number }>;
+  players: DevelopmentRow[];
+}
+export interface PlayerDevelopmentSeason {
+  season_year: number;
+  live: boolean;
+  age: number;
+  ovr_start: number;
+  ovr_end: number | null;
+  ovr_after_aging: number | null;
+  gains: Record<string, number>;
+  declines: Record<string, number>;
+  training_xp: number;
+  match_xp: number;
+  training_sessions: number;
+  matches: number;
+}

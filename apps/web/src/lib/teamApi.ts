@@ -205,7 +205,7 @@ export const teamApi = {
   saveClubTactics: (worldId: string, t: ClubTactics) => rpc<void>('save_club_tactics', { p_world: worldId, p_data: t }),
   saveSetPieces: (worldId: string, sp: Record<string, string[]>) =>
     rpc<void>('save_set_pieces', { p_world: worldId, p_data: Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, v.filter(Boolean)])) }),
-  train: (worldId: string, playerId: string, focus: string) => rpc<{ fitness: number; points?: number; total_points?: number }>('schedule_training', { p_world: worldId, p_player: playerId, p_focus: focus }),
+  train: (worldId: string, playerId: string, focus: string) => rpc<{ fitness: number; points?: number; total_points?: number; gains?: Record<string, number>; ovr_before?: number; ovr_after?: number }>('schedule_training', { p_world: worldId, p_player: playerId, p_focus: focus }),
   chooseSponsor: (worldId: string, offerId: number) => rpc<void>('choose_sponsor', { p_world: worldId, p_offer: offerId }),
   setReady: (worldId: string, ready: boolean) => rpc<void>('set_preseason_ready', { p_world: worldId, p_ready: ready }),
 };

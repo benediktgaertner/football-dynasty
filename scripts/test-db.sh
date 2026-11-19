@@ -15,6 +15,7 @@ if [ "$(id -u)" = "0" ]; then
 fi
 
 cleanup() {
+  if [ "${KEEP_DB:-0}" = "1" ]; then echo "DB bleibt aktiv: Port $PORT, Daten $DATA"; return; fi
   "${RUN_AS[@]}" "$PG_BIN/pg_ctl" -D "$DATA" -m immediate stop >/dev/null 2>&1 || true
   rm -rf "$DATA" "$LOG"
 }
@@ -122,6 +123,32 @@ check "70_finance.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/70_finance.sql
 check "80_availability.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/80_availability.sql"
 check "90_dashboard.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/90_dashboard.sql"
 check "95_stadium.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/95_stadium.sql"
+check "96_matchday_control.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/96_matchday_control.sql"
+
+# Ende-zu-Ende Spieltag: alle offenen Partien wie der Match-Server berechnen (Setup → Engine → Speichern)
+# Menschen überspringen ihre Spiele; danach muss der Termin automatisch freigegeben sein.
+run -tAc "insert into public.fixture_decisions(fixture_id, club_id, world_id, decision)
+  select f.id, c.id, f.world_id, 'skip' from public.fixtures f join public.clubs c on c.id in (f.home_club_id, f.away_club_id) and c.control = 'human'
+  where f.id in (select public.fd_slot_fixture_ids('$WORLD')) on conflict do nothing" >/dev/null
+SLOT_BEFORE="$(run -tAc "select current_slot from public.career_worlds where id = '$WORLD'")"
+SIMS=0; FAILS=0
+chmod 755 "$PDIR"
+for FX in $(run -tAc "set role service_role; select public.admin_pending_fixtures('$WORLD')" | grep -E '^[0-9a-f-]{36}$' || true); do
+  run -tAc "set role service_role; select public.admin_claim_fixture('$FX', 'test');" >/dev/null
+  run -tAc "set role service_role; select public.admin_match_setup('$FX');" | tail -1 >"$PDIR/md_setup.json"
+  if node "$ROOT/apps/match-server/dist/simulateFromSetup.js" "$PDIR/md_setup.json" >"$PDIR/md_$FX.json" 2>>"$PDIR/md.err"; then
+    chmod 644 "$PDIR/md_$FX.json"
+    run -tAc "select set_config('fd.r', pg_read_file('$PDIR/md_$FX.json'), false); set role service_role; select public.admin_finish_match('$FX', current_setting('fd.r')::jsonb);" >/dev/null && SIMS=$((SIMS + 1)) || FAILS=$((FAILS + 1))
+  else FAILS=$((FAILS + 1)); fi
+done
+SLOT_AFTER="$(run -tAc "select current_slot from public.career_worlds where id = '$WORLD'")"
+NOXP="$(run -tAc "select count(*) from public.match_player_stats where world_id = '$WORLD' and minutes > 0 and dev_xp is null and fixture_id in (select f.id from public.fixtures f join public.competitions c on c.id = f.competition_id where c.kind::text <> 'friendly')")"
+if [ "$FAILS" = "0" ] && [ "$SIMS" -gt 0 ] && [ "$SLOT_AFTER" -gt "$SLOT_BEFORE" ] && [ "$NOXP" = "0" ]; then
+  echo "✓ Ende-zu-Ende Spieltag: $SIMS Partien mit der Engine berechnet, Termin automatisch freigegeben, XP für alle Einsatzspieler"
+else
+  echo "✗ Ende-zu-Ende Spieltag: sims=$SIMS fails=$FAILS slot $SLOT_BEFORE→$SLOT_AFTER ohne_xp=$NOXP"; cat "$PDIR/md.err" 2>/dev/null | head; status=1
+fi
+check "97_development.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/97_development.sql"
 
 # Optional (FULL_EUROPE=1): alle Verbände anlegen und Suchzeiten des Transfermarkts messen
 if [ "${FULL_EUROPE:-0}" = "1" ]; then
@@ -149,5 +176,5 @@ if [ "${FULL_EUROPE:-0}" = "1" ]; then
   MS="$(grep -o 'Time: [0-9.]* ms' <<<"$OUT" | tail -1)"
   echo "  Amateurvereine anlegen (Saisonstart) → $MS, neu: $(run -tAc "select count(*) from public.clubs where world_id = '$WORLD' and amateur") Vereine mit $(run -tAc "select count(*) from public.players p join public.clubs c on c.id = p.club_id where c.world_id = '$WORLD' and c.amateur") Spielern"
 fi
-rm -rf "$PDIR"
+[ "${KEEP_DB:-0}" = "1" ] && echo "WORLD=$WORLD" || rm -rf "$PDIR"
 exit $status

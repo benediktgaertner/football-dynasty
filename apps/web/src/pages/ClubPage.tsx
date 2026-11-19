@@ -41,7 +41,7 @@ export function ClubPage() {
       </Card>
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
         <Card className="overflow-x-auto p-0">
-          <div className="flex flex-wrap items-center gap-2 border-b border-olive-700 p-4"><h2 className="display text-2xl font-bold uppercase">Kader</h2><Pill>{c.squad.length} Spieler</Pill><Pill tone="gold">Ø {c.squad_avg}</Pill></div>
+          <div className="flex flex-wrap items-center gap-2 border-b border-olive-700 p-4"><h2 className="display text-2xl font-bold uppercase">Kader</h2><Pill>{c.squad.length} Spieler</Pill><Pill tone="gold">Ø {c.squad_avg}</Pill><Button variant="secondary" className="ml-auto" onClick={() => navigate(`/w/${worldId}/entwicklung/${c.club.id}`)}>Entwicklungsbericht</Button></div>
           <table className="w-full min-w-[560px] text-sm">
             <thead className="text-left text-[11px] uppercase text-cream-dim"><tr><th className="px-3 py-2">#</th><th>Pos</th><th>Name</th><th>Alter</th><th>Stärke</th><th className="text-right">Sp</th><th className="text-right">T</th><th className="text-right">V</th><th className="px-3 text-right">Ø Note</th></tr></thead>
             <tbody>

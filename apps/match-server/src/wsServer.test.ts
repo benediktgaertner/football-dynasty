@@ -30,6 +30,11 @@ const backend: Backend = {
   async finish(id, result) { finished.push({ id, result }); },
   async pendingFixtures() { return []; },
   async isMember() { return true; },
+  async claim() { return { ok: true, attempts: 1 }; },
+  async failed() {},
+  async fallback() {},
+  async dueWorlds() { return []; },
+  async sweep() { return { pending: [] }; },
 };
 
 let server: Server;

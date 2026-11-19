@@ -13,6 +13,15 @@ export interface Backend {
   /** Spiele des laufenden Termins, die headless berechnet werden sollen */
   pendingFixtures(worldId: string): Promise<string[]>;
   isMember(worldId: string, userId: string): Promise<boolean>;
+  /** Sperre gegen doppelte Simulation; attempts = Anzahl Versuche inkl. diesem */
+  claim(fixtureId: string, worker: string): Promise<{ ok: boolean; attempts: number; reason?: string }>;
+  failed(fixtureId: string, error: string): Promise<void>;
+  /** Ersatzergebnis nach wiederholten Fehlschlägen (Saisonfortschritt darf nie blockieren) */
+  fallback(fixtureId: string): Promise<void>;
+  /** Welten mit laufendem Spieltag oder offenem KI-Training */
+  dueWorlds(): Promise<string[]>;
+  /** Freigabe nachholen, KI-Training in Häppchen, offene Partien liefern */
+  sweep(worldId: string): Promise<{ pending: string[]; trainingLeft?: number }>;
 }
 
 /**
@@ -43,6 +52,18 @@ export function supabaseBackend(admin: SupabaseClient): Backend {
     async checkpoint(fixtureId, tick, data) { await rpc('admin_match_checkpoint', { p_fixture: fixtureId, p_tick: tick, p_checkpoint: data }); },
     async pendingFixtures(worldId) { return (await rpc<string[] | null>('admin_pending_fixtures', { p_world: worldId })) ?? []; },
     async isMember(worldId, userId) { return rpc<boolean>('admin_world_member', { p_world: worldId, p_user: userId }); },
+    async claim(fixtureId, worker) {
+      const r = await rpc<{ ok: boolean; attempts?: number; reason?: string }>('admin_claim_fixture', { p_fixture: fixtureId, p_worker: worker });
+      return { ok: r.ok, attempts: r.attempts ?? 0, reason: r.reason };
+    },
+    async failed(fixtureId, error) { await rpc('admin_fixture_failed', { p_fixture: fixtureId, p_error: error }); },
+    async fallback(fixtureId) { await rpc('admin_fallback_result', { p_fixture: fixtureId }); },
+    async dueWorlds() { return (await rpc<string[] | null>('admin_due_worlds', {})) ?? []; },
+    async sweep(worldId) {
+      const r = await rpc<{ pending: string[] | null; training_left?: number; aging_left?: number }>('admin_sweep_world', { p_world: worldId });
+      // Offene Hintergrundarbeit: KI-Training der Woche und Alterung nach dem Saisonwechsel
+      return { pending: r.pending ?? [], trainingLeft: (r.training_left ?? 0) + (r.aging_left ?? 0) };
+    },
     async finish(fixtureId, result) { await rpc('admin_finish_match', { p_fixture: fixtureId, p_result: toDbResult(result) }); },
   };
 }

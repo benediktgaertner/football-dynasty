@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { hostname } from 'node:os';
 import { createClient } from '@supabase/supabase-js';
 import { MATCH_REAL_SECONDS, MATCH_VIRTUAL_MINUTES } from '@fd/shared';
 import { bearerToken, verifyAccessToken } from './auth.js';
@@ -12,7 +13,7 @@ import { createWorldSimulator } from './worldSim.js';
  *   GET /health  – Betriebsstatus für Fly.io-Healthchecks
  *   GET /whoami  – prüft das Supabase-Token
  *   WS  /match   – Live-Partien (siehe wsServer.ts / room.ts)
- *   POST /world/simulate?world=… – Spieltag: Spiele ohne Live-Zuschauer headless berechnen
+ *   POST /world/simulate?world=… – Spieltag sofort prüfen (zusätzlich läuft alle 10 s ein Sweep ohne Client)
  */
 const config = loadConfig();
 const admin = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
@@ -80,7 +81,10 @@ const server = createServer((req, res) => {
 });
 const backend = supabaseBackend(admin);
 const match = attachMatchServer(server, backend, { allowedOrigins: config.allowedOrigins });
-const sim = createWorldSimulator(backend, match.rooms);
+const sim = createWorldSimulator(backend, match.rooms, { worker: `${process.env.FLY_MACHINE_ID ?? hostname()}:${process.pid}` });
+// Spieltagssteuerung ohne Client: KI-Spiele werden direkt nach dem Start des Spieltags berechnet,
+// abgebrochene/fehlgeschlagene Partien automatisch erneut verarbeitet und die Freigabe nachgeholt.
+sim.start(Number(process.env.SWEEP_INTERVAL_MS ?? 10_000));
 
 server.listen(config.port, () => {
   console.log(`Match-Server läuft auf Port ${config.port}`);
@@ -88,6 +92,7 @@ server.listen(config.port, () => {
 
 // Fly.io stoppt Maschinen per SIGTERM: offene Verbindungen sauber schließen
 process.on('SIGTERM', () => {
+  sim.stop();
   // Laufende Partien sichern: nach dem Neustart werden sie per Replay exakt fortgesetzt
   void Promise.allSettled([...match.rooms.values()].map((p) => p.then((r) => r.saveCheckpoint()))).then(() => {
     server.close(() => process.exit(0));

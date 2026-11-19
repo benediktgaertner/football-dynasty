@@ -4,6 +4,7 @@ const ITEMS = [
   { to: 'spieltag', label: 'Dashboard' },
   { to: 'kalender', label: 'Kalender' },
   { to: 'team', label: 'Team' },
+  { to: 'entwicklung', label: 'Entwicklung' },
   { to: 'liga', label: 'Liga' },
   { to: 'pokal', label: 'Pokal' },
   { to: 'transfers', label: 'Transfers' },

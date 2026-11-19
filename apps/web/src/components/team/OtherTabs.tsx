@@ -11,7 +11,7 @@ import {
   TRAINING_FOCI,
   effectiveRating,
   fitnessPerformanceMultiplier,
-  trainingAgeMultiplier,
+  devAgeFactor,
   type Position,
   type SetPieceKind,
 } from '@fd/shared';
@@ -277,19 +277,21 @@ const TRAIN_SORT: Array<{ key: TrainSort; label: string }> = [
   { key: 'overall', label: 'Stärke' }, { key: 'age', label: 'Alter' }, { key: 'dev', label: 'Entwicklung' }, { key: 'fitness', label: 'Fitness' },
 ];
 
-export function TrainingTab({ squad, ctx, kit, onTrain }: { squad: SquadPlayer[]; ctx: TeamContext; kit: { primary: string; secondary: string }; onTrain: (playerId: string, focus: string) => Promise<{ points?: number; total?: number } | void> }) {
+type TrainResult = { points?: number; total?: number; gains?: Record<string, number>; ovrBefore?: number; ovrAfter?: number };
+
+export function TrainingTab({ squad, ctx, kit, onTrain }: { squad: SquadPlayer[]; ctx: TeamContext; kit: { primary: string; secondary: string }; onTrain: (playerId: string, focus: string) => Promise<TrainResult | void> }) {
   const [focus, setFocus] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<TrainSort>('overall');
-  const [gain, setGain] = useState<Record<string, { points: number; total: number }>>({});
+  const [gain, setGain] = useState<Record<string, { points: number; total: number; gains: Record<string, number>; ovrBefore?: number; ovrAfter?: number }>>({});
   const trained = new Map(ctx.trainees_this_week.map((t) => [t.player_id, t.focus]));
   const used = ctx.trainees_this_week.length;
   const focusLabel = (v: string) => TRAINING_FOCI.find((f) => f.value === v)?.label ?? v;
   const sorted = [...squad].sort((x, y) =>
     sort === 'overall' ? y.overall - x.overall
       : sort === 'age' ? x.age - y.age
-        : sort === 'dev' ? trainingAgeMultiplier(y.age) - trainingAgeMultiplier(x.age) || y.overall - x.overall
+        : sort === 'dev' ? devAgeFactor(y.age) - devAgeFactor(x.age) || y.overall - x.overall
           : y.fitness - x.fitness);
   const fmt = (n: number) => n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
 
@@ -298,7 +300,7 @@ export function TrainingTab({ squad, ctx, kit, onTrain }: { squad: SquadPlayer[]
       <div className="flex flex-wrap items-center gap-3 border-b border-olive-700 p-4">
         <h2 className="display text-2xl font-bold uppercase">Zusatztraining</h2>
         <Pill tone={used >= MAX_TRAINEES_PER_WEEK ? 'warn' : 'gold'}>{used}/{MAX_TRAINEES_PER_WEEK} diese Woche</Pill>
-        <span className="text-sm text-cream-dim">{ctx.week === 0 ? 'Saisonvorbereitung' : `Woche ${ctx.week}`} · jede Einheit kostet 20 Fitness</span>
+        <span className="text-sm text-cream-dim">{ctx.week === 0 ? 'Saisonvorbereitung' : `Woche ${ctx.week}`} · jede Einheit kostet 20 Fitness · XP steigern sofort die passenden Attribute</span>
         <div className="ml-auto flex items-center gap-1" role="group" aria-label="Sortierung">
           <span className="mr-1 text-xs uppercase text-cream-dim">Sortieren</span>
           {TRAIN_SORT.map((o) => (
@@ -315,7 +317,7 @@ export function TrainingTab({ squad, ctx, kit, onTrain }: { squad: SquadPlayer[]
         {sorted.map((p) => {
           const done = trained.get(p.id);
           const g = gain[p.id];
-          const mult = trainingAgeMultiplier(p.age);
+          const mult = devAgeFactor(p.age);
           return (
             <li key={p.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-2 lg:grid-cols-[minmax(0,2.4fr)_70px_110px_150px_minmax(0,2fr)]">
               <div className="flex min-w-0 items-center gap-3">
@@ -333,7 +335,10 @@ export function TrainingTab({ squad, ctx, kit, onTrain }: { squad: SquadPlayer[]
                 {done ? (
                   <>
                     <Pill tone="good">Trainiert: {focusLabel(done)}</Pill>
-                    {g && <span className="text-sm font-semibold text-emerald-300" title="Entwicklungspunkte">+{fmt(g.points)} Entwicklung <span className="font-normal text-cream-dim">(gesamt {fmt(g.total)})</span></span>}
+                    {g && <span className="text-sm font-semibold text-emerald-300" title="Entwicklungspunkte (XP)">+{fmt(g.points)} XP
+                      {Object.entries(g.gains).map(([k, v]) => <span key={k} className="ml-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-xs">{ATTR_LABEL[k] ?? k} +{v}</span>)}
+                      {g.ovrAfter != null && g.ovrBefore != null && g.ovrAfter > g.ovrBefore && <span className="ml-1 rounded bg-gold px-1.5 py-0.5 text-xs text-ink">OVR {g.ovrBefore} → {g.ovrAfter}</span>}
+                    </span>}
                   </>
                 ) : (
                   <>
@@ -352,7 +357,7 @@ export function TrainingTab({ squad, ctx, kit, onTrain }: { squad: SquadPlayer[]
                         setBusy(p.id); setError(null);
                         try {
                           const r = await onTrain(p.id, focus[p.id] ?? 'technique');
-                          if (r && typeof r.points === 'number') setGain((x) => ({ ...x, [p.id]: { points: r.points!, total: r.total ?? r.points! } }));
+                          if (r && typeof r.points === 'number') setGain((x) => ({ ...x, [p.id]: { points: r.points!, total: r.total ?? r.points!, gains: r.gains ?? {}, ovrBefore: r.ovrBefore, ovrAfter: r.ovrAfter } }));
                         } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
                       })()}
                     >
