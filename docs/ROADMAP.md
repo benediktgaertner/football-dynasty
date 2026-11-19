@@ -73,11 +73,11 @@ Noch nicht enthalten, weil es den Saisonkalender braucht (Phase 7): Regeneration
 - Fitness F7 je Tick, Leistungsabfall, 5 Wechsel in 3 Fenstern (Halbzeit zählt nicht), Torwartersatz
 - KI (K2) und Automatik (E4): Profilwechsel, Wechsel bei Müdigkeit; Spielernoten, Spieler des Spiels
 - Kalibrierung (`npm run calibrate -w @fd/engine`): ca. 2,6 Tore/Spiel, 11 Schüsse und 1,3 xG je Team, Heimvorteil, Stärke 78 gegen 66 gewinnt ca. 80 %
-- Überarbeitung „lebendige Simulation“: träge, flüssige Bewegung (Beschleunigung statt Springen, Bewegung im ca. 4-fachen Fernsehtempo), Laufwege ohne Ball (Tiefenlauf, Hinterlaufen, Einrücken in den Halbraum, Entgegenkommen mit Lauf des dritten Mannes, Strafraumbesetzung bei Flanken), Pässe in den Lauf, Doppelpass, Spielverlagerung, Zurücklegen von der Grundlinie, Eins-gegen-eins, Distanzschüsse; Verteidiger nehmen gefährliche Läufe auf
+- Überarbeitung „lebendige Simulation“: träge, flüssige Bewegung (Beschleunigung statt Springen, Bewegung in knapp doppeltem Echttempo (Konstante VIS in engine.ts)), Laufwege ohne Ball (Tiefenlauf, Hinterlaufen, Einrücken in den Halbraum, Entgegenkommen mit Lauf des dritten Mannes, Strafraumbesetzung bei Flanken), Pässe in den Lauf, Doppelpass, Spielverlagerung, Zurücklegen von der Grundlinie, Eins-gegen-eins, Distanzschüsse; Verteidiger nehmen gefährliche Läufe auf
 - Regie im Match-Server: gefährliche Szenen laufen langsamer, ruhiger Aufbau schneller; Gesamtdauer bleibt 180 s
 - Darstellung: Trikotfarben mit Rand, Ballhöhe mit Schatten, Ballspur, Name des Ballführenden, „TOR!“-Einblendung, Hinweise bei Großchancen
 - Kurze Ballstafetten ohne Gegnerdruck werden nicht einzeln gezeigt, aber in der Passstatistik mitgezählt
-- Kalibrierung aktuell: ca. 2,5 Tore/Spiel, 11 Schüsse je Team, ca. 28 % Remis, Heim 47 % / Auswärts 25 %, Stärke 78 gegen 66 gewinnt ca. 70 %
+- Kalibrierung aktuell: ca. 2,6 Tore/Spiel, 11 Schüsse je Team, ca. 26 % Remis, Heim 44 % / Auswärts 30 %, Stärke 78 gegen 66 gewinnt ca. 68 %
 
 ## Phase 6 – Echter Multiplayer ✅ (Testspiele)
 - WebSocket-Server `/match` (Fly.io): Token-Prüfung, Rolle aus `clubs.manager_user_id`, Zuschauer nur lesend

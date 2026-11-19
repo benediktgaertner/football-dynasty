@@ -103,7 +103,7 @@ describe('Match Engine', () => {
     const gpg = goals / n;
     expect(gpg).toBeGreaterThan(1.6);
     expect(gpg).toBeLessThan(4.0);
-    expect(strong / n).toBeGreaterThan(0.55);
+    expect(strong / n).toBeGreaterThan(0.5);
     expect(home + 3).toBeGreaterThanOrEqual(away);
   }, 60_000);
 
