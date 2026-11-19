@@ -123,6 +123,7 @@ export const seasonApi = {
   signFreeAgent: (playerId: string, years: number) => rpc<{ status: string; message?: string }>('sign_free_agent', { p_player: playerId, p_years: years }),
   release: (playerId: string) => rpc<{ status: string; compensation: number }>('release_player', { p_player: playerId }),
 
+  retryRelease: (worldId: string) => rpc<{ released: boolean }>('retry_slot_release', { p_world: worldId }),
   marketSearch: (worldId: string, filters: MarketFilters, limit = 50, offset = 0) =>
     rpc<{ total: number; rows: MarketPlayer[] }>('transfer_market_search', { p_world: worldId, p_filters: Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== '' && v !== undefined && v !== null && v !== 0 && v !== false)), p_limit: limit, p_offset: offset }),
   marketOptions: (worldId: string) => rpc<MarketOptions>('transfer_market_options', { p_world: worldId }),

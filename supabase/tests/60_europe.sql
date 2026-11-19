@@ -83,3 +83,11 @@ select public.sell_to_ai(:'cheap') as sale \gset
 reset role;
 select tests.assert((:'sale'::jsonb ->> 'status') = 'completed', 'Verkauf ins Ausland: ' || (:'sale'::jsonb ->> 'message'));
 select tests.assert((select c.association_code from public.players p join public.clubs c on c.id = p.club_id where p.id = :'cheap') <> 'GER', 'Käufer ist ausländisch');
+
+-- Hängende Freigabe nachholen: Mitglieder dürfen, Fremde nicht; ohne offenen Termin passiert nichts
+set role authenticated;
+select tests.login(:'host');
+select tests.assert((public.retry_slot_release(:'world') ->> 'released')::boolean = false, 'retry_slot_release ohne offenen Termin: keine Änderung');
+select tests.login('00000000-0000-0000-0000-00000000dead');
+select tests.expect_error(format($$ select public.retry_slot_release(%L) $$, :'world'), 'forbidden');
+reset role;

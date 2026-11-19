@@ -15,7 +15,11 @@ export function createWorldSimulator(backend: Backend, rooms: Map<string, Promis
     const engine = new MatchEngine(toEngineSetup(db));
     engine.setAutopilot('home', true);
     engine.setAutopilot('away', true);
-    while (!engine.isFinished) engine.step();
+    // In Häppchen rechnen und den Event-Loop freigeben: Live-Partien und neue Verbindungen bleiben flüssig
+    while (!engine.isFinished) {
+      for (let i = 0; i < 400 && !engine.isFinished; i++) engine.step();
+      await new Promise((r) => setImmediate(r));
+    }
     await backend.finish(fixtureId, engine.result());
   }
 

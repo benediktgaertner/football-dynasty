@@ -19,16 +19,33 @@ export function Matchday() {
   const [lastResults, setLastResults] = useState<SlotFixture[] | null>(null);
   const prevSlot = useRef<string | null>(null);
 
-  const reload = useCallback(async () => {
+  // Neuladen bündeln: Während der Server viele KI-Spiele abschließt, kommen dutzende Realtime-Ereignisse
+  // in kurzer Zeit. Höchstens eine Anfrage gleichzeitig, weitere Auslöser werden zusammengefasst.
+  const loading = useRef(false);
+  const again = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const load = useCallback(async () => {
+    if (loading.current) { again.current = true; return; }
+    loading.current = true;
     try {
       const s = await seasonApi.matchday(worldId);
       prevSlot.current = s.slot?.id ?? null;
       setState(s);
+      setError(null);
     } catch (e) { setError((e as Error).message); }
+    finally {
+      loading.current = false;
+      if (again.current) { again.current = false; clearTimeout(timer.current); timer.current = setTimeout(() => void load(), 800); }
+    }
   }, [worldId]);
+  const reload = useCallback(async () => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => void load(), 400);
+  }, [load]);
+  useEffect(() => () => clearTimeout(timer.current), []);
 
   useEffect(() => {
-    void reload();
+    void load();
     const sb = requireSupabase();
     const ch = sb.channel(`md:${worldId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fixtures', filter: `world_id=eq.${worldId}` }, () => void reload())
@@ -48,6 +65,15 @@ export function Matchday() {
     const t = setInterval(() => void seasonApi.simulate(worldId), 20000);
     return () => clearInterval(t);
   }, [state?.slot?.state, state?.slot?.id, worldId]);
+
+  // Alle Spiele beendet, Termin aber noch offen (z. B. gleichzeitiges Spielende): Freigabe nachholen
+  const allDone = !!state?.slot && state.slot.state === 'live' && state.fixtures.length > 0
+    && state.fixtures.every((f) => f.status === 'finished' || f.status === 'released');
+  useEffect(() => {
+    if (!allDone) return;
+    const t = setTimeout(() => void seasonApi.retryRelease(worldId).then(() => load()).catch(() => undefined), 2500);
+    return () => clearTimeout(t);
+  }, [allDone, worldId, load]);
 
   // Ergebnisse des zuletzt freigegebenen Termins
   useEffect(() => {

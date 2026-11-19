@@ -57,6 +57,7 @@ export class MatchClient {
   private retry = 0;
   private gotInit = false;
   private initTimer: ReturnType<typeof setTimeout> | undefined;
+  private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private scene = 0;
   /** Zeitpunkt des letzten Schnitts (für kurze Überblendung) */
   cutAt = 0;
@@ -76,6 +77,8 @@ export class MatchClient {
       token = (await requireSupabase().auth.refreshSession()).data.session?.access_token ?? token;
     }
     if (!token) { this.emit({ connection: 'error', error: 'Nicht angemeldet.' }); return; }
+    // Seite wurde während des Verbindungsaufbaus verlassen: keinen verwaisten Socket öffnen
+    if (this.stopped) return;
     const ws = new WebSocket(this.url);
     this.ws = ws;
     this.gotInit = false;
@@ -106,11 +109,27 @@ export class MatchClient {
       }
       this.emit({ connection: 'reconnecting' });
       const delay = Math.min(10_000, 500 * 2 ** this.retry++);
-      setTimeout(() => void this.connect(), delay);
+      clearTimeout(this.retryTimer);
+      this.retryTimer = setTimeout(() => void this.connect(), delay);
     };
   }
 
-  close(): void { this.stopped = true; clearTimeout(this.initTimer); this.ws?.close(); }
+  close(): void {
+    this.stopped = true;
+    clearTimeout(this.initTimer);
+    clearTimeout(this.retryTimer);
+    const ws = this.ws;
+    this.ws = null;
+    if (ws) {
+      // Keine weiteren Nachrichten verarbeiten (Frames kommen mit 20/s) und Socket sofort schließen
+      ws.onmessage = null;
+      ws.onclose = null;
+      ws.onerror = null;
+      try { ws.close(1000, 'leave'); } catch { /* bereits geschlossen */ }
+    }
+    for (const [, r] of this.pending) r({ ok: false, error: 'Verbindung beendet.' });
+    this.pending.clear();
+  }
 
   /** Nach einem Fehler erneut versuchen */
   retryNow(): void { this.fatal = false; this.stopped = false; this.retry = 0; this.emit({ error: null, connection: 'connecting' }); void this.connect(); }
