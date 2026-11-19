@@ -83,7 +83,7 @@ export function toTeamInput(t: DbTeam): TeamInput {
 }
 
 /** Grundheimvorteil der Engine (engine.ts BASE_HOME_ADVANTAGE); auf neutralem Platz wird er aufgehoben. */
-const ENGINE_BASE_HOME = 0.06;
+const ENGINE_BASE_HOME = 0.035;
 
 /**
  * I5: Pflichtspiele erhalten den Zuschauer-Heimvorteil aus der Datenbank (Auslastung × Stadiongröße, begrenzt).

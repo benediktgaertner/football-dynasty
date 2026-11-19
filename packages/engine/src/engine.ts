@@ -46,7 +46,7 @@ const MAX_SUBS = 5;
 const MAX_SUB_WINDOWS = 3;
 const GOAL_U = L;
 const GOAL_V = W / 2;
-const BASE_HOME_ADVANTAGE = 0.06;
+const BASE_HOME_ADVANTAGE = 0.035;
 /** Bewegungen laufen in echter Fußballzeit: Weg je Tick = Geschwindigkeit × 0,1 s. */
 const VIS = TICK_SECONDS;
 /** Dauer-Faktor für Ballbehandlung, Laufwege und Reaktionen (in Ticks) */
@@ -78,7 +78,30 @@ interface LivePlayer {
   vv: number;
   /** Laufweg ohne Ball (im Rahmen des eigenen Teams) */
   run: Run | null;
+  /** Freilaufen: gewählter Versatz zur Grundposition (Stürmer suchen Lücken), neu bewertet alle ~1 s */
+  seekU: number;
+  seekV: number;
+  seekTick: number;
+  /** Ball abschirmen bis Tick */
+  shieldUntil: number;
   stats: PlayerMatchStats;
+}
+
+/** Diagnosewerte der Entscheidungs-KI (Tests und Kalibrierung) */
+export interface AiDiagnostics {
+  decisions: number;
+  /** Entscheidungen in guter Abschlussposition (eigene Torchance ≥ 0,08 xG) */
+  shotZone: number;
+  shotZoneShots: number;
+  /** Rückpässe aus guter Abschlussposition */
+  shotZoneBackPasses: number;
+  throughBalls: number;
+  throughBallsCompleted: number;
+  takeOns: number;
+  takeOnsWon: number;
+  crosses: number;
+  shields: number;
+  blocks: number;
 }
 
 type RunKind = 'behind' | 'overlap' | 'inside' | 'drop' | 'box' | 'support' | 'give_go';
@@ -115,6 +138,10 @@ export interface CommandRecord { tick: number; side: Side; cmd: MatchCommand }
 const clamp = (x: number, a: number, b: number) => (x < a ? a : x > b ? b : x);
 const dist = (u1: number, v1: number, u2: number, v2: number) => Math.hypot(u1 - u2, v1 - v2);
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
+
+function emptyDiag(): AiDiagnostics {
+  return { decisions: 0, shotZone: 0, shotZoneShots: 0, shotZoneBackPasses: 0, throughBalls: 0, throughBallsCompleted: 0, takeOns: 0, takeOnsWon: 0, crosses: 0, shields: 0, blocks: 0 };
+}
 
 function emptyTeamStats(): TeamMatchStats {
   return { goals: 0, shots: 0, shotsOnTarget: 0, xg: 0, passes: 0, passesCompleted: 0, possessionTicks: 0, fouls: 0, corners: 0, offsides: 0, yellow: 0, red: 0, subsUsed: 0, subWindowsUsed: 0 };
@@ -202,6 +229,7 @@ export class MatchEngine {
         vu: 0,
         vv: 0,
         run: null,
+        seekU: 0, seekV: 0, seekTick: -100, shieldUntil: -1,
         posFactor: Math.max(0.5, effectiveRating(p, slotPos) / Math.max(1, p.overall)),
         stats: {
           playerId: p.id, side, minutes: 0, goals: 0, assists: 0, shots: 0, shotsOnTarget: 0, xg: 0, passes: 0, passesCompleted: 0,
@@ -525,6 +553,21 @@ export class MatchEngine {
       // Restverteidigung: die tiefsten Spieler bleiben hinten
       const deepest = [...field].sort((a, b) => a.ay - b.ay).slice(0, t.adv.restDefense);
       if (deepest.includes(p)) u = Math.min(u, line + 6 + (t.adv.transitionCover ? -4 : 0));
+      // Freilaufen: Offensivspieler suchen im letzten Drittel die Lücke zwischen den Verteidigern
+      if (bu > 50 && ['ST', 'CF', 'CAM', 'LW', 'RW'].includes(p.slotPos) && this.carrier !== p) {
+        if (this.tick - p.seekTick > sec(1.2)) {
+          p.seekTick = this.tick;
+          const gi = this.skill(p, 'gameIntelligence') / 99;
+          let bestO = -1, bu2 = 0, bv2 = 0;
+          for (const [du, dv] of [[0, 0], [0, -6], [0, 6], [-4, -3], [-4, 3], [3, 0]] as const) {
+            const cu = clamp(u + du, 2, L - 2), cv = clamp(v + dv, 2, W - 2);
+            const o = Math.min(this.nearestOpponentTo(t.side, cu, cv), 10) + this.rng.normal(0, (1 - gi) * 2) + (cu > L - 20 && Math.abs(cv - GOAL_V) < 12 ? 1.5 : 0);
+            if (o > bestO) { bestO = o; bu2 = du; bv2 = dv; }
+          }
+          p.seekU = bu2; p.seekV = bv2;
+        }
+        u += p.seekU; v += p.seekV;
+      }
       // Nicht ins Abseits laufen (Stürmer mit „In die Tiefe“ riskieren mehr)
       const off = this.offsideLine(t.side);
       const risk = ins.has('run_in_behind') ? 1.5 : -0.8;
@@ -674,7 +717,9 @@ export class MatchEngine {
             const [au, av] = this.posIn(best, side);
             tu = Math.max(2, au - 1.5); tv = av + (GOAL_V - av) * 0.15;
             urgency = 0.95;
-          }
+          } else if (this.carrier) this.coverLane(p, side, (x, y) => { tu = x; tv = y; });
+        } else if (defending && this.carrier && p.slotPos !== 'GK') {
+          this.coverLane(p, side, (x, y) => { tu = x; tv = y; });
         }
         // Lenkverhalten: Wunschgeschwindigkeit Richtung Ziel, begrenzte Beschleunigung ⇒ flüssige Wege
         const d = dist(p.u, p.v, tu, tv);
@@ -684,12 +729,37 @@ export class MatchEngine {
         const dv = d > 0 ? ((tv - p.v) / d) * want : 0;
         let ddu = du - p.vu, ddv = dv - p.vv;
         const dm = Math.hypot(ddu, ddv);
-        if (dm > ACCEL) { ddu = (ddu / dm) * ACCEL; ddv = (ddv / dm) * ACCEL; }
+        const acc = ACCEL * (0.8 + this.skill(p, 'pace') / 250);
+        if (dm > acc) { ddu = (ddu / dm) * acc; ddv = (ddv / dm) * acc; }
         p.vu += ddu; p.vv += ddv;
         p.u = clamp(p.u + p.vu * VIS, 0.5, L - 0.5);
         p.v = clamp(p.v + p.vv * VIS, 0.5, W - 0.5);
       }
     }
+  }
+
+  /**
+   * Passwege schließen: der Spieler stellt sich zwischen Ballführenden und den nächsten Gegenspieler
+   * in seiner Zone (Deckungsschatten), immer torseitig. Spielintelligenz bestimmt, wie gut das gelingt.
+   */
+  private coverLane(p: LivePlayer, side: Side, set: (u: number, v: number) => void): void {
+    const c = this.carrier!;
+    const [tu0, tv0] = this.targetFor(p, this.teams[side]);
+    let mark: LivePlayer | null = null; let md = 11;
+    for (const a of this.onPitch(OTHER[side])) {
+      if (a === c || a.slotPos === 'GK') continue;
+      const [au, av] = this.posIn(a, side);
+      const d = dist(tu0, tv0, au, av);
+      if (d < md) { md = d; mark = a; }
+    }
+    if (!mark) return;
+    const gi = this.skill(p, 'gameIntelligence') / 99;
+    const [au, av] = this.posIn(mark, side);
+    const [cu, cv] = this.posIn(c, side);
+    // Punkt auf der Linie Gegenspieler → Ball, 30 % Richtung Ball, leicht torseitig
+    const lu = au + (cu - au) * 0.3 - 1.2, lv = av + (cv - av) * 0.3;
+    const w = clamp(0.2 + gi * 0.35 + (this.skill(p, 'defending') / 99) * 0.3, 0, 0.85);
+    set(clamp(tu0 + (lu - tu0) * w, 2, L - 2), clamp(tv0 + (lv - tv0) * w, 1, W - 1));
   }
 
   private boxPlanTick = -100;
@@ -938,8 +1008,13 @@ export class MatchEngine {
 
   private duel(c: LivePlayer, op: LivePlayer): void {
     const ot = this.teams[op.side];
-    const att = this.skill(c, 'dribbling') * 0.6 + this.skill(c, 'physical') * 0.2 + this.skill(c, 'pace') * 0.2;
-    const def = this.skill(op, 'defending') * 0.65 + this.skill(op, 'physical') * 0.2 + this.skill(op, 'gameIntelligence') * 0.15;
+    const shielding = c.shieldUntil >= this.tick;
+    const att = shielding
+      ? this.skill(c, 'physical') * 0.6 + this.skill(c, 'dribbling') * 0.3 + this.skill(c, 'mentality') * 0.1 + 4
+      : this.skill(c, 'dribbling') * 0.6 + this.skill(c, 'physical') * 0.2 + this.skill(c, 'pace') * 0.2;
+    const def = shielding
+      ? this.skill(op, 'physical') * 0.5 + this.skill(op, 'defending') * 0.5
+      : this.skill(op, 'defending') * 0.65 + this.skill(op, 'physical') * 0.2 + this.skill(op, 'gameIntelligence') * 0.15;
     const pWin = sigmoid((def - att) / 10 + 0.15);
     // Foul?
     const [cu, cv] = [c.u, c.v];
@@ -950,8 +1025,10 @@ export class MatchEngine {
       op.stats.tacklesWon++;
       this.giveBall(op, Math.round(2 * TS));
     } else {
-      op.beatenUntil = this.tick + Math.round(4 * TS);
-      c.u = Math.min(L - 3, c.u + 0.5); c.vu = this.speed(c) * 0.9;
+      // Gewonnenes Duell: der Angreifer setzt sich ab, der Verteidiger braucht Zeit zum Nachsetzen
+      op.beatenUntil = this.tick + Math.round(14 * TS);
+      op.vu *= 0.4; op.vv *= 0.4;
+      c.u = Math.min(L - 3, c.u + 0.8); c.vu = this.speed(c) * 0.9;
       this.setBallFrom(c.side, c.u, c.v);
     }
   }
@@ -1064,81 +1141,223 @@ export class MatchEngine {
     return n;
   }
 
+  // -------------------------------------------------------------------------
+  // Entscheidungs-KI (Utility AI): jede Option wird mit erwartetem Nutzen bewertet
+  // -------------------------------------------------------------------------
+  readonly diagnostics: Record<Side, AiDiagnostics> = { home: emptyDiag(), away: emptyDiag() };
+
+  /** Gefahr eines Ballbesitzes an (u, v) – ähnlich „Expected Threat“ */
+  private threat(u: number, v: number): number {
+    const prog = (clamp(u, 0, L) / L) ** 2.2 * 0.05 * (1 - Math.min(1, Math.abs(v - GOAL_V) / 40) * 0.5);
+    return expectedGoals(u, v) * 0.55 + prog;
+  }
+
+  /** Kosten eines Ballverlusts an Position u (tief = Konter des Gegners) */
+  private lossCost(u: number): number {
+    return 0.01 + 0.035 * (1 - clamp(u, 0, L) / L) ** 2;
+  }
+
+  /** Gegner im Schussweg (Korridor zwischen Ball und Tor, ohne Torwart) */
+  private laneBlockers(side: Side, u: number, v: number, tu = GOAL_U, tv = GOAL_V, width = 1.6): LivePlayer[] {
+    const out: LivePlayer[] = [];
+    const du = tu - u, dv = tv - v; const len2 = du * du + dv * dv;
+    if (len2 < 0.01) return out;
+    for (const o of this.onPitch(OTHER[side])) {
+      if (o.slotPos === 'GK') continue;
+      const [ou, ov] = this.posIn(o, side);
+      const k = ((ou - u) * du + (ov - v) * dv) / len2;
+      if (k <= 0.03 || k >= 1) continue;
+      if (dist(ou, ov, u + du * k, v + dv * k) < width + k * 0.6) out.push(o);
+    }
+    return out;
+  }
+
+  /** Abschlussqualität des Schützen (Schießen, Mentalität unter Druck) */
+  private finishing(p: LivePlayer, pressure: number, header = false): number {
+    const sk = header ? this.skill(p, 'heading') : this.skill(p, 'shooting');
+    const nerve = pressure < 3 ? 1 - (1 - this.skill(p, 'mentality') / 99) * 0.3 : 1;
+    return (sk / 70) ** 1.6 * nerve;
+  }
+
+  /** Geschätzte Passerfolgsquote – dieselbe Formel nutzt passTo für die Ausführung */
+  private passSuccess(c: LivePlayer, t: TeamState, toU: number, toV: number, pressure: number, opt: { through?: boolean; lofted?: boolean; finish?: boolean }): number {
+    const d = dist(c.u, c.v, toU, toV);
+    const { op: marker, d: open } = this.nearestOpponentAt(t.side, toU, toV);
+    // Gute Verteidiger stehen enger am Gegenspieler und antizipieren
+    const mDef = marker ? ((this.skill(marker, 'defending') * 0.7 + this.skill(marker, 'gameIntelligence') * 0.3) / 70) ** 1.5 : 1;
+    const passing = this.skill(c, 'passing') * 0.75 + this.skill(c, 'gameIntelligence') * 0.25;
+    const pq = passing / 99;
+    // Druck: Mentalität entscheidet, wie sauber unter Bedrängnis gespielt wird
+    const nerve = 1.25 - this.skill(c, 'mentality') / 99 * 0.5;
+    let p = 1.05 - (1 - pq) * 0.45 - d * 0.005 * (1.6 - pq) - Math.max(0, 3 - pressure) * 0.04 * nerve - Math.max(0, 5 - open) * 0.05 * mDef;
+    // Schwierige Zuspiele (Steilpass, hoher Ball, lange Wege) hängen stark vom Passwert ab
+    if (opt.through) p -= 0.02 + 0.16 * (1 - pq) ** 1.5;
+    if (opt.lofted) p -= 0.02 + 0.08 * (1 - (this.skill(c, 'crossing') * 0.3 + passing * 0.7) / 99);
+    if (toU > 65 && !opt.finish) p -= this.crowdAround(t.side, toU, toV, 7) * 0.018 + (toU - 65) * 0.002;
+    const prog = toU - c.u;
+    if (prog > 12) p -= (prog - 12) * 0.004 * (1.4 - pq);
+    p -= (t.ti.tempo - 3) * 0.012;
+    // Lücken zwischen Gegnern: Pässe durch Spieler hindurch werden abgefangen
+    // Verteidiger mit hoher Spielintelligenz lesen den Pass
+    if (!opt.lofted) for (const b of this.laneBlockers(t.side, c.u, c.v, toU, toV, 1.1)) p -= (0.12 - pq * 0.06) * (this.skill(b, 'gameIntelligence') * 0.6 + this.skill(b, 'defending') * 0.4) / 70;
+    return clamp(p, 0.2, 0.98);
+  }
+
   private decide(c: LivePlayer, t: TeamState, pressure: number): void {
     const ti = t.ti;
-    // Torwart spielt ab
     if (c.slotPos === 'GK') { this.pass(c, t, pressure, true); return; }
-    const vision = (this.skill(c, 'gameIntelligence') * 0.6 + this.skill(c, 'passing') * 0.4) / 70;
-    // 1) Abschluss
-    const xg = expectedGoals(c.u, c.v);
-    const thr = (ti.chanceCreation === 'patient' ? 0.035 : ti.chanceCreation === 'quick' ? 0.018 : 0.026) * (c.instr.has('shoot_more') ? 0.75 : 1) * (1.1 - ti.mentality * 0.04);
-    const blockers = this.goalSideDefenders(c, 6);
-    if (c.u > 68 && (xg >= thr || (xg > thr * 0.45 && this.rng.next() < 0.08))) {
-      if (blockers === 0 ? this.rng.next() < 0.95 : this.rng.next() < 0.55 / blockers) {
-        this.shoot(c, t, xg, pressure, false);
-        return;
+    const dg = this.diagnostics[t.side];
+    dg.decisions++;
+    const gi = this.skill(c, 'gameIntelligence') / 99;
+    const ment = this.skill(c, 'mentality') / 99;
+    const vision = clamp(gi * 0.65 + (this.skill(c, 'passing') / 99) * 0.35, 0.1, 1.1);
+    // Entscheidungsrauschen: Spielintelligenz = bessere Wahl, Mentalität = ruhiger unter Druck
+    const sigma = 0.08 + 0.9 * Math.max(0, 1 - gi) ** 1.2 + (pressure < 3 ? 0.35 * Math.max(0, 1 - ment) : 0);
+    type Opt = { kind: string; gain: number; loss: number; run: () => void };
+    const opts: Opt[] = [];
+    const here = this.threat(c.u, c.v);
+
+    // --- Abschluss ---------------------------------------------------------
+    const xgRaw = expectedGoals(c.u, c.v);
+    const lane = c.u > 55 ? this.laneBlockers(t.side, c.u, c.v).length : 9;
+    const shotValue = xgRaw * this.finishing(c, pressure) * 0.72 ** lane * (pressure < 1.5 ? 0.75 : pressure < 3 ? 0.88 : 1);
+    const inShotZone = shotValue >= 0.08;
+    if (inShotZone) dg.shotZone++;
+    if (c.u > 60) {
+      let bias = (c.instr.has('shoot_more') ? 1.3 : 1) * (ti.chanceCreation === 'quick' ? 1.15 : ti.chanceCreation === 'patient' ? 0.9 : 1);
+      // Gute Abschlussposition: der Schuss ist die Regel (Profis schließen ab)
+      if (xgRaw >= 0.06) bias *= 1.7;
+      // Unter Druck schneller abschließen
+      if (pressure < 2.5 && xgRaw > 0.04) bias *= 1.2;
+      // Freie Schussbahn aus der zweiten Reihe (bis ca. 28 m): gute Schützen ziehen ab
+      const dGoal = dist(c.u, c.v, GOAL_U, GOAL_V);
+      if (lane === 0 && pressure > 2 && dGoal < 28 && dGoal > 16) bias *= 1.5 + (this.skill(c, 'shooting') - 60) / 50;
+      opts.push({ kind: 'shoot', gain: shotValue * bias, loss: (1 - shotValue) * here * 0.12, run: () => { dg.shotZoneShots += inShotZone ? 1 : 0; this.shoot(c, t, xgRaw, pressure, false); } });
+    }
+
+    // --- Pässe (inkl. Steilpass, Querpass, Zurücklegen, Verlagerung) ---------
+    const longPref = ti.buildUp === 'long' ? 1.5 : ti.buildUp === 'direct' ? 1.2 : ti.buildUp === 'short' ? 0.6 : 0.9;
+    const won = this.tick - this.lastTurnover < sec(8);
+    const risky = (c.instr.has('risky_passes') ? 1.3 : c.instr.has('safe_passes') ? 0.75 : 1) * (won && ti.onBallWon === 'counter' ? 1.4 : ti.buildUp === 'short' || ti.chanceCreation === 'patient' ? 0.85 : 1);
+    const offLine = this.offsideLine(t.side);
+    const wide = c.v < 16 || c.v > W - 16;
+    const focus = ti.attackFocus;
+    for (const m of this.onPitch(t.side)) {
+      if (m === c || m.slotPos === 'GK') continue;
+      // Läufe erkennt nur, wer das Spiel liest
+      const r = this.activeRun(m);
+      const seesRun = !!r && r.kind !== 'support' && this.rng.next() < 0.3 + 0.7 * vision;
+      const pt = seesRun ? this.passPoint(m) : { u: m.u, v: m.v, running: false };
+      const d = dist(c.u, c.v, pt.u, pt.v);
+      if (d < 4 || d > 62) continue;
+      // Abseits erkennen
+      if (m.u > offLine + 0.3 && m.u > L / 2 && m.u > c.u && this.rng.next() < 0.25 + 0.75 * gi) continue;
+      const through = pt.running && pt.u > c.u + 6;
+      const lofted = d > 34 || (Math.abs(pt.v - c.v) > 28 && d > 26);
+      const cutback = wide && c.u > L - 14 && pt.u > L - 22 && pt.u < c.u && Math.abs(pt.v - GOAL_V) < 11;
+      if (through && (t.adv.throughBalls - 1) * 0.25 + vision < 0.45) continue;
+      let pS = this.passSuccess(c, t, pt.u, pt.v, pressure, { through, lofted, finish: cutback });
+      pS = clamp(pS * (1 + this.rng.normal(0, (1 - vision) * 0.12)), 0.05, 0.99);
+      const recvOpen = Math.min(this.nearestOpponentTo(t.side, pt.u, pt.v), 10);
+      const recvChance = expectedGoals(pt.u, pt.v) * this.finishing(m, recvOpen) * (recvOpen > 3 ? 1 : 0.8) * 0.72 ** this.laneBlockers(t.side, pt.u, pt.v).length;
+      let value = Math.max(this.threat(pt.u, pt.v) * (0.85 + Math.min(recvOpen, 8) * 0.03), recvChance * (cutback ? 1.05 : 0.9));
+      // Taktik: Passlänge, Risiko, Angriffsseite
+      const prog = pt.u - c.u;
+      value *= 1 + clamp(prog, -20, 30) * 0.012 * (risky - 0.85);
+      value *= 1 + clamp((d - 18) / 30, -0.6, 1) * (longPref - 0.9) * 0.35;
+      const sideOk = focus === 'left' ? pt.v < 22 : focus === 'right' ? pt.v > W - 22 : focus === 'center' ? Math.abs(pt.v - GOAL_V) < 12 : focus === 'both_wings' ? Math.abs(pt.v - GOAL_V) > 18 : false;
+      if (sideOk) value *= 1.12;
+      if (through) value *= 1 + (t.adv.throughBalls - 2) * 0.08 + (m.instr.has('run_in_behind') ? 0.1 : 0);
+      const back = prog < -3;
+      // Aus guter Abschlussposition nur zurückspielen, wenn der Mitspieler deutlich besser steht
+      if (inShotZone && back && recvChance < shotValue * 1.6) continue;
+      const kind = cutback ? 'cutback' : through ? 'through' : lofted ? 'switch' : 'pass';
+      opts.push({
+        kind, gain: pS * value * 0.94, loss: (1 - pS) * (here + this.lossCost((c.u + pt.u) / 2)),
+        run: () => {
+          if (inShotZone && back) dg.shotZoneBackPasses++;
+          if (through) dg.throughBalls++;
+          // Doppelpass: kurzer Pass, Passgeber startet sofort in den Raum
+          if (!through && !lofted && !cutback && pressure < 4 && c.u > 35 && d > 5 && d < 14 && this.rng.next() < 0.35 * vision) {
+            c.run = { u: Math.min(L - 8, c.u + 13), v: clamp(c.v + (m.v > c.v ? 3 : -3), 3, W - 3), until: this.tick + Math.round(40 * TS), kind: 'give_go' };
+            this.wallPass = { receiver: m, giverId: c.input.id, at: Math.round(2 * TS) };
+          }
+          this.passTo(c, t, m, pressure, cutback ? { finish: true } : pt.running ? { lead: [pt.u, pt.v], through } : { lofted });
+        },
+      });
+    }
+
+    // --- Flanke ------------------------------------------------------------
+    if ((c.v < 20 || c.v > W - 20) && c.u > 65) {
+      const box = this.onPitch(t.side).filter((p) => p !== c && p.slotPos !== 'GK' && ((p.u > L - 20 && Math.abs(p.v - GOAL_V) < 16) || (p.run?.kind === 'box' && p.run.u > L - 20)));
+      if (box.length) {
+        const low = t.adv.crossHeight === 'low';
+        const tgt = Math.max(...box.map((p) => this.skill(p, low ? 'shooting' : 'heading')));
+        const pC = clamp(0.35 + (this.skill(c, 'crossing') / 99) * 0.4 + (t.adv.boxPresence - 2) * 0.06, 0.1, 0.9);
+        const def = this.crowdAround(t.side, L - 8, GOAL_V, 9);
+        const hx = expectedGoals(L - 8, GOAL_V, !low) * 0.95 * sigmoid((tgt - 60) / 12 - def * 0.15) * 1.6;
+        const mod = (0.6 + ti.crossFrequency * 0.15) * (c.instr.has('cross_often') ? 1.35 : 1) * (c.instr.has('to_byline') && c.u > 90 ? 1.3 : 1) * (c.instr.has('cut_inside') ? 0.7 : 1);
+        opts.push({ kind: 'cross', gain: pC * hx * mod, loss: (1 - pC) * (here * 0.5 + this.lossCost(c.u)), run: () => { dg.crosses++; this.cross(c, t); } });
       }
     }
-    // 2) Distanzschuss bei freier Bahn
-    if (c.u > 70 && c.u < 88 && Math.abs(c.v - GOAL_V) < 16 && blockers <= 1 && this.rng.next() < 0.05 * (this.skill(c, 'shooting') / 70) * (c.instr.has('shoot_more') ? 1.8 : 1)) {
-      this.shoot(c, t, xg, pressure, false);
-      return;
-    }
-    const wide = c.v < 16 || c.v > W - 16;
-    // 3) Zurücklegen von der Grundlinie in den Rückraum
-    if (wide && c.u > L - 12) {
-      const cut = this.onPitch(t.side).filter((m) => m !== c && m.slotPos !== 'GK' && m.u > L - 22 && m.u < L - 8 && Math.abs(m.v - GOAL_V) < 11)
-        .sort((a, b) => this.crowdAround(t.side, b.u, b.v, 3) - this.crowdAround(t.side, a.u, a.v, 3))[0];
-      if (cut && this.rng.next() < 0.45 * vision + (t.adv.crossHeight === 'low' ? 0.15 : 0)) { this.passTo(c, t, cut, pressure, { finish: true }); return; }
-    }
-    // 4) Flanke
-    if (wide && c.u > 72) {
-      const p = 0.08 + ti.crossFrequency * 0.06 + (c.instr.has('cross_often') ? 0.15 : 0) + (c.instr.has('to_byline') && c.u > 90 ? 0.25 : 0) - (c.instr.has('cut_inside') ? 0.12 : 0);
-      if (this.rng.next() < p) { this.cross(c, t); return; }
-    }
-    // 5) Eins-gegen-eins: Gegenspieler ausspielen
+
+    // --- Dribbling: Raum gewinnen oder Gegenspieler ausspielen ---------------
     const near = this.goalSideDefenders(c, 5);
-    if (c.u > 55 && near === 1 && this.rng.next() < 0.22 * (this.skill(c, 'dribbling') / 70) + (c.instr.has('dribble_more') ? 0.15 : 0)) {
-      const { op } = this.nearestOpponent(c);
-      if (op) {
-        const att = this.skill(c, 'dribbling') * 0.7 + this.skill(c, 'pace') * 0.3;
-        const def = this.skill(op, 'defending') * 0.7 + this.skill(op, 'pace') * 0.3;
-        if (this.rng.next() < sigmoid((att - def) / 10 - 0.1)) {
+    const { op } = this.nearestOpponent(c);
+    const dribbleMod = c.instr.has('dribble_more') ? 1.3 : 1;
+    if (near === 0 && c.u < L - 8 && !(inShotZone && c.u > L - 14)) {
+      const fu = Math.min(L - 6, c.u + 7);
+      const fv = c.v + (GOAL_V - c.v) * (c.u > 70 ? 0.25 : 0.05);
+      const pKeep = clamp(0.9 + this.skill(c, 'dribbling') / 1000 + (pressure > 6 ? 0.05 : 0), 0.6, 0.995);
+      const carry = Math.max(this.threat(fu, fv), expectedGoals(fu, fv) * this.finishing(c, 4) * 0.85) * (0.96 + (this.skill(c, 'pace') - 60) / 600) * (inShotZone ? 0.7 : 1);
+      opts.push({ kind: 'carry', gain: pKeep * carry * dribbleMod * (c.instr.has('run_into_space') ? 1.15 : 1), loss: (1 - pKeep) * (here + this.lossCost(c.u)), run: () => { this.holdTicks = Math.round(6 * TS); this.dribble(c, pressure); } });
+    } else if (near === 1 && op && op.beatenUntil < this.tick && c.u > 40) {
+      const att = this.skill(c, 'dribbling') * 0.65 + this.skill(c, 'pace') * 0.25 + this.skill(c, 'physical') * 0.1;
+      const def = this.skill(op, 'defending') * 0.65 + this.skill(op, 'pace') * 0.25 + this.skill(op, 'gameIntelligence') * 0.1;
+      const pBeat = sigmoid((att - def) / 9 - 0.25);
+      // Schlechte Entscheider überschätzen sich
+      const pEst = clamp(pBeat + this.rng.normal(0, (1 - gi) * 0.15), 0.02, 0.98);
+      const au2 = Math.min(L - 5, c.u + 9), av2 = c.v + (GOAL_V - c.v) * 0.3;
+      const after = Math.max(this.threat(au2, av2), expectedGoals(au2, av2) * this.finishing(c, 3) * 0.85) * 1.05;
+      opts.push({ kind: 'take_on', gain: pEst * after * dribbleMod, loss: (1 - pEst) * (here + this.lossCost(c.u) * 1.2), run: () => {
+        dg.takeOns++;
+        if (this.rng.next() < pBeat) {
+          dg.takeOnsWon++;
           op.beatenUntil = this.tick + Math.round(25 * TS);
           op.vu *= 0.2; op.vv *= 0.2;
           c.vu = this.speed(c);
           this.holdTicks = Math.round(8 * TS);
-          this.log({ type: 'chance', side: t.side, playerId: c.input.id, text: `${c.input.name} lässt ${op.input.name} stehen!` });
+          if (c.u > 65) this.log({ type: 'chance', side: t.side, playerId: c.input.id, text: `${c.input.name} lässt ${op.input.name} stehen!` });
           return;
         }
         op.stats.tacklesWon++;
         this.giveBall(op, Math.round(6 * TS));
-        return;
-      }
+      } });
     }
-    // 6) Doppelpass unter Druck
-    if (pressure < 4 && c.u > 35) {
-      const wall = this.onPitch(t.side).find((m) => m !== c && m.slotPos !== 'GK' && dist(m.u, m.v, c.u, c.v) > 5 && dist(m.u, m.v, c.u, c.v) < 14 && this.nearestOpponent(m).d > 3);
-      if (wall && this.rng.next() < 0.3 * vision) {
-        const runU = Math.min(L - 8, c.u + 13), runV = clamp(c.v + (wall.v > c.v ? 3 : -3), 3, W - 3);
-        c.run = { u: runU, v: runV, until: this.tick + Math.round(40 * TS), kind: 'give_go' };
-        this.wallPass = { receiver: wall, giverId: c.input.id, at: Math.round(2 * TS) };
-        this.passTo(c, t, wall, pressure, {});
-        return;
-      }
+
+    // --- Ball halten / abschirmen ------------------------------------------
+    if (pressure < 3 && op && !inShotZone) {
+      const hold = this.skill(c, 'physical') * 0.6 + this.skill(c, 'dribbling') * 0.4;
+      const pKeep = sigmoid((hold - this.skill(op, 'defending') * 0.6 - this.skill(op, 'physical') * 0.4) / 10 + 0.5);
+      opts.push({ kind: 'shield', gain: pKeep * here * 0.8, loss: (1 - pKeep) * (here + this.lossCost(c.u)), run: () => {
+        dg.shields++;
+        c.shieldUntil = this.tick + Math.round(5 * TS);
+        this.holdTicks = Math.round(4 * TS);
+        c.vu *= 0.3; c.vv *= 0.3;
+        this.setBallFrom(c.side, c.u, c.v);
+      } });
+    } else if (pressure >= 3 && !inShotZone && (ti.chanceCreation === 'patient' || (won && ti.onBallWon === 'hold'))) {
+      // Ruhiger Aufbau: Ball halten und auf Laufwege warten
+      opts.push({ kind: 'hold', gain: here * 0.97, loss: 0.002, run: () => { this.holdTicks = Math.round(4 * TS); this.dribble(c, pressure); } });
     }
-    // 7) Spielverlagerung, wenn es eng wird
-    if (this.crowdAround(t.side, c.u, c.v, 12) >= 3 && c.u > 25) {
-      const sw = this.onPitch(t.side).filter((m) => m !== c && m.slotPos !== 'GK' && Math.abs(m.v - c.v) > 26 && m.u > c.u - 10 && this.nearestOpponent(m).d > 7)[0];
-      if (sw && this.rng.next() < 0.4 * vision) { this.passTo(c, t, sw, pressure, { lofted: true }); return; }
+
+    if (opts.length === 0) { this.holdTicks = Math.round(4 * TS); this.dribble(c, pressure); return; }
+    let best: Opt = opts[0]!; let bs = -Infinity;
+    for (const o of opts) {
+      const sc = o.gain * Math.exp(this.rng.normal(0, sigma)) - o.loss;
+      if (sc > bs) { bs = sc; best = o; }
     }
-    // 8) Freier Raum ⇒ andribbeln
-    if (pressure > 7 && c.u < 82 && this.rng.next() < 0.4 + (c.instr.has('run_into_space') ? 0.15 : 0)) {
-      this.holdTicks = Math.round(6 * TS);
-      this.dribble(c, pressure);
-      return;
-    }
-    this.pass(c, t, pressure, false);
+    best.run();
   }
 
   /** Zielpunkt für einen Pass: läuft der Mitspieler, wird in den Lauf gespielt */
@@ -1151,37 +1370,30 @@ export class MatchEngine {
     return { u: m.u, v: m.v, running: false };
   }
 
+  /** Torwart-Abspiel (Aufbau von hinten oder langer Abschlag) */
   private pass(c: LivePlayer, t: TeamState, pressure: number, fromKeeper: boolean): void {
     const ti = t.ti;
     const mates = this.onPitch(t.side).filter((p) => p !== c && (p.slotPos !== 'GK' || ti.buildUp === 'short'));
     if (mates.length === 0) { this.dribble(c, pressure); return; }
-    const longPref = ti.buildUp === 'long' ? 1.6 : ti.buildUp === 'direct' ? 1.2 : ti.buildUp === 'short' ? 0.5 : 0.85;
-    const gkLong = fromKeeper && (c.instr.has('long_kicks') ? 1.8 : c.instr.has('short_distribution') ? 0.4 : 1);
+    const gkLong = fromKeeper ? (c.instr.has('long_kicks') ? 1.8 : c.instr.has('short_distribution') ? 0.4 : ti.buildUp === 'long' ? 1.5 : ti.buildUp === 'short' ? 0.5 : 1) : 1;
     const offLine = this.offsideLine(t.side);
-    const won = this.tick - this.lastTurnover < sec(8);
-    const styleRisk = won && ti.onBallWon === 'counter' ? 1.5 : ti.buildUp === 'short' || ti.chanceCreation === 'patient' ? 0.8 : 1;
-    const risky = (c.instr.has('risky_passes') ? 1.3 : c.instr.has('safe_passes') ? 0.7 : 1) * styleRisk;
-    const vision = (this.skill(c, 'gameIntelligence') * 0.6 + this.skill(c, 'passing') * 0.4) / 70;
     let best: LivePlayer | null = null; let bestScore = -Infinity;
     for (const m of mates) {
-      const pt = this.passPoint(m);
-      const d = dist(c.u, c.v, pt.u, pt.v);
+      const d = dist(c.u, c.v, m.u, m.v);
       if (d < 4) continue;
-      const progress = pt.u - c.u;
-      const open = Math.min(this.nearestOpponentTo(t.side, pt.u, pt.v), 9);
-      const focus = ti.attackFocus;
-      const sideBonus = focus === 'left' ? (pt.v < 22 ? 4 : 0) : focus === 'right' ? (pt.v > W - 22 ? 4 : 0) : focus === 'center' ? (Math.abs(pt.v - GOAL_V) < 12 ? 4 : 0) : focus === 'both_wings' ? (Math.abs(pt.v - GOAL_V) > 18 ? 3 : 0) : 0;
-      const lenScore = fromKeeper ? (gkLong ? d * 0.08 * (gkLong - 0.8) : 0) : (d - 18) * 0.06 * (longPref - 0.9);
-      let sc = progress * 0.8 * risky + open * 1.1 + lenScore + sideBonus - (d > 35 ? (d - 35) * 0.15 : 0) + this.rng.normal(0, 1.6);
-      // Läufe sehen und bedienen: kreative Passgeber finden sie öfter
-      if (pt.running) sc += (1.5 + (t.adv.throughBalls - 1) * 1.2) * vision + (m.instr.has('run_in_behind') ? 1.5 : 0);
-      // Abseitsstellung erkennen (Spielintelligenz)
-      if (m.u > offLine + 0.3 && m.u > L / 2) sc -= 14 * vision;
+      const open = Math.min(this.nearestOpponentTo(t.side, m.u, m.v), 9);
+      let sc = (m.u - c.u) * 0.3 + open * 1.4 + d * 0.08 * (gkLong - 0.8) + this.rng.normal(0, 1.6);
+      if (m.u > offLine + 0.3 && m.u > L / 2) sc -= 12;
       if (sc > bestScore) { bestScore = sc; best = m; }
     }
     if (!best) { this.dribble(c, pressure); return; }
-    const pt = this.passPoint(best);
-    this.passTo(c, t, best, pressure, pt.running ? { lead: [pt.u, pt.v], through: pt.u > offLine } : { lofted: fromKeeper && dist(c.u, c.v, best.u, best.v) > 35 });
+    this.passTo(c, t, best, pressure, { lofted: dist(c.u, c.v, best.u, best.v) > 35 });
+  }
+
+  private nearestOpponentAt(side: Side, u: number, v: number): { op: LivePlayer | null; d: number } {
+    let bd = Infinity; let best: LivePlayer | null = null;
+    for (const o of this.onPitch(OTHER[side])) { const [ou, ov] = this.posIn(o, side); const d = dist(ou, ov, u, v); if (d < bd) { bd = d; best = o; } }
+    return { op: best, d: bd };
   }
 
   private nearestOpponentTo(side: Side, u: number, v: number): number {
@@ -1192,21 +1404,11 @@ export class MatchEngine {
 
   /** Pass ausführen: Erfolg, Abseits und Flugzeit werden beim Abspiel bestimmt, aufgelöst bei Ankunft. */
   private passTo(c: LivePlayer, t: TeamState, recv: LivePlayer, pressure: number, opt: { lead?: [number, number]; through?: boolean; lofted?: boolean; finish?: boolean }): void {
-    const ti = t.ti;
     const offLine = this.offsideLine(t.side);
     const [toU0, toV0] = opt.lead ?? [recv.u, recv.v];
     const toU = clamp(toU0, 1, L - 2), toV = clamp(toV0, 1, W - 1);
     const d = dist(c.u, c.v, toU, toV);
-    const open = this.nearestOpponentTo(t.side, toU, toV);
-    const passing = this.skill(c, 'passing') * 0.75 + this.skill(c, 'gameIntelligence') * 0.25;
-    let pSucc = 0.995 - d * 0.006 * (1.6 - passing / 99) - Math.max(0, 3 - pressure) * 0.035 - Math.max(0, 4 - open) * 0.055;
-    if (opt.through) pSucc -= 0.03;
-    if (opt.lofted) pSucc -= 0.04;
-    if (toU > 65 && !opt.finish) pSucc -= this.crowdAround(t.side, toU, toV, 7) * 0.018 + (toU - 65) * 0.002;
-    const prog = toU - c.u;
-    if (prog > 12) pSucc -= (prog - 12) * 0.004;
-    pSucc -= (ti.tempo - 3) * 0.012;
-    pSucc = clamp(pSucc, 0.25, 0.98);
+    const pSucc = this.passSuccess(c, t, toU, toV, pressure, opt);
     t.stats.passes++; c.stats.passes++;
     const success = this.rng.next() < pSucc;
     const defT = this.teams[OTHER[t.side]];
@@ -1239,7 +1441,14 @@ export class MatchEngine {
           }
           this.lastPasser = { id: c.input.id, tick: this.tick };
           // Ballannahme: der Empfänger läuft zum Ball (kein Versetzen von Spielern)
+          if (opt.through) this.diagnostics[t.side].throughBallsCompleted++;
           this.whenReached(recv, () => {
+            // Ballannahme unter Druck: Dribbling (Ballkontrolle) und Mentalität
+            const rp = this.nearestOpponent(recv);
+            if (!opt.finish && rp.op && rp.d < 2.2) {
+              const miss = (0.16 * (1 - this.skill(recv, 'dribbling') / 99) + (opt.lofted ? 0.05 : 0)) * (1.3 - this.skill(recv, 'mentality') / 99 * 0.6) * (this.skill(rp.op, 'defending') / 70) ** 1.5;
+              if (this.rng.next() < miss) { rp.op.stats.interceptions++; this.giveBall(rp.op, Math.round(4 * TS)); return; }
+            }
             this.giveBall(recv, this.holdFor(t));
             if (opt.finish) { this.holdTicks = Math.round(1 * TS); this.shoot(recv, t, expectedGoals(recv.u, recv.v) * 1.1, this.nearestOpponent(recv).d, false); return; }
             if (this.wallPass && this.wallPass.receiver === recv) this.holdTicks = Math.round(3 * TS);
@@ -1288,15 +1497,50 @@ export class MatchEngine {
     const dt = this.teams[OTHER[t.side]];
     const gk = this.keeper(dt);
     // Verdichtete Partie: jede gezeigte Chance steht für mehr Spielzeit ⇒ höhere Torgefahr je Abschluss
-    let xg = xgBase * 2.7 * (pressure < 1.5 ? 0.65 : pressure < 3 ? 0.85 : 1);
+    let xg = xgBase * 2.6 * (pressure < 1.5 ? 0.65 : pressure < 3 ? 0.85 : 1);
     const shotSkill = header ? this.skill(c, 'heading') : setPiece === 'free_kick' ? this.skill(c, 'freeKicks') : setPiece === 'penalty' ? this.skill(c, 'penalties') : this.skill(c, 'shooting');
-    const gkSkill = (this.keeperSkill(gk, 'reflexes') + this.keeperSkill(gk, 'positioning') + this.keeperSkill(gk, setPiece === 'penalty' ? 'reactionSpeed' : 'oneOnOne')) / 3;
     xg = clamp(xg, 0.005, 0.95);
     t.stats.shots++; c.stats.shots++;
     t.stats.xg += xg; c.stats.xg += xg;
-    const blockers = setPiece === 'penalty' ? 0 : this.goalSideDefenders(c, 9);
-    const pOnTarget = clamp(0.15 + shotSkill / 300 + xg * 0.6 - (pressure < 1.5 ? 0.08 : 0) - blockers * 0.05, 0.1, 0.9);
-    const pGoalGivenOn = clamp((xg / Math.max(0.2, pOnTarget * 0.92)) * (0.6 + shotSkill / 175) * (1.4 - gkSkill / 160), 0.02, 0.97);
+    // Schusshärte (Schießen + Physis) und Präzision (Schießen, Mentalität unter Druck)
+    const power = header ? 10 + this.skill(c, 'heading') / 99 * 6 : setPiece === 'penalty' ? 22 + shotSkill / 99 * 6 : 17 + (shotSkill * 0.75 + this.skill(c, 'physical') * 0.25) / 99 * 13 + this.rng.normal(0, 1.5);
+    const nerve = pressure < 3 && !setPiece ? 1 - (1 - this.skill(c, 'mentality') / 99) * 0.35 : 1;
+    const precision = clamp((shotSkill / 99) * nerve, 0.1, 1);
+    const shotDist = dist(c.u, c.v, GOAL_U, GOAL_V);
+    // Verteidiger im Schussweg blocken (Verteidigung + Stellungsspiel)
+    if (!setPiece || setPiece === 'free_kick') {
+      for (const bl of this.laneBlockers(t.side, c.u, c.v)) {
+        const pB = 0.16 * (this.skill(bl, 'defending') * 0.7 + this.skill(bl, 'gameIntelligence') * 0.3) / 70 * (setPiece ? 1.4 : 1);
+        if (this.rng.next() < pB) {
+          this.diagnostics[OTHER[t.side]].blocks++;
+          this.lastPasser = null;
+          const [bu, bv] = this.posIn(bl, t.side);
+          this.log({ type: 'miss', side: t.side, playerId: c.input.id, otherId: bl.input.id, xg: round2(xg), text: `${c.input.name} zieht ab – ${bl.input.name} blockt!` });
+          const fromU = c.u, fromV = c.v;
+          this.carrier = null;
+          const ticks = Math.max(2, Math.round(dist(fromU, fromV, bu, bv) / (power * VIS)));
+          this.flight = { fromU, fromV, toU: bu, toV: bv, ticks, total: ticks, height: 0.4, resolve: () => {
+            if (this.rng.next() < 0.35) { this.corner(t); return; }
+            bl.stats.interceptions++; this.giveBall(bl, Math.round(3 * TS));
+          } };
+          return;
+        }
+      }
+    }
+    // Torwart: kurze Distanz = Eins-gegen-eins, harte Schüsse fordern Reflexe/Reaktion, weite Schüsse Stellungsspiel/Fangen
+    const react = shotDist / power; // Reaktionszeit in s
+    const gkSkill = setPiece === 'penalty'
+      ? (this.keeperSkill(gk, 'reactionSpeed') * 0.6 + this.keeperSkill(gk, 'reflexes') * 0.4)
+      : shotDist < 12
+        ? (this.keeperSkill(gk, 'oneOnOne') * 0.5 + this.keeperSkill(gk, 'reflexes') * 0.3 + this.keeperSkill(gk, 'positioning') * 0.2)
+        : react < 0.9
+          ? (this.keeperSkill(gk, 'reflexes') * 0.45 + this.keeperSkill(gk, 'reactionSpeed') * 0.35 + this.keeperSkill(gk, 'positioning') * 0.2)
+          : (this.keeperSkill(gk, 'positioning') * 0.45 + this.keeperSkill(gk, 'handling') * 0.35 + this.keeperSkill(gk, 'reflexes') * 0.2);
+    const reactF = clamp(1 + (0.75 - react) * 0.35, 0.85, 1.2);
+    // Torwahrscheinlichkeit: Lage (xG) × Abschlussqualität × Torwart; Präzision verteilt sie auf „aufs Tor“
+    const pGoal = clamp(xg * ((shotSkill / 70) ** 1.6) * nerve * ((1.4 - gkSkill / 160) / 0.9625) * reactF, 0.004, 0.96);
+    const pOnTarget = clamp(Math.max(pGoal + 0.05, 0.12 + precision * 0.33 + xg * 0.45 - (pressure < 1.5 ? 0.06 : 0)), 0.1, 0.97);
+    const pGoalGivenOn = clamp(pGoal / pOnTarget, 0.01, 0.99);
     const r = this.rng.next();
     const onTarget = r < pOnTarget;
     const assist = this.lastPasser && this.tick - this.lastPasser.tick < sec(10) && this.lastPasser.id !== c.input.id ? this.lastPasser.id : null;
@@ -1311,7 +1555,7 @@ export class MatchEngine {
     const [tu, tv, h] = goal ? [L + 0.6, GOAL_V + side * (1 + this.rng.next() * 2.4), header ? 1.2 : 0.8]
       : onTarget ? [L - 0.8, GOAL_V + side * this.rng.next() * 2.5, 0.8]
       : wood ? [L, GOAL_V + side * 3.66, 1]
-      : [L + 1.5, GOAL_V + side * (4.5 + this.rng.next() * 6), this.rng.next() < 0.4 ? 3.5 : 1];
+      : [L + 1.5, GOAL_V + side * (4.5 + this.rng.next() * 6 * (1.3 - precision)), this.rng.next() < 0.6 - precision * 0.3 ? 3.5 : 1];
     const outcome = () => {
       if (goal) {
         t.stats.shotsOnTarget++; c.stats.shotsOnTarget++;
@@ -1337,8 +1581,7 @@ export class MatchEngine {
       this.goalKick(dt.side);
     };
     const d = dist(c.u, c.v, tu, tv);
-    const speed = header ? 14 : setPiece === 'penalty' ? 24 : 26;
-    const ticks = Math.max(2, Math.round(d / (speed * VIS)));
+    const ticks = Math.max(2, Math.round(d / (power * VIS)));
     this.carrier = null;
     this.flight = { fromU: c.u, fromV: c.v, toU: tu, toV: tv, ticks, total: ticks, height: h, resolve: outcome };
   }

@@ -111,5 +111,33 @@ else
   echo "✗ Ende-zu-Ende: Simulation fehlgeschlagen"; cat "$PDIR/sim.err"; status=1
 fi
 check "50_season.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/50_season.sql"
+
+# Europaweiter Transfermarkt: Payloads wie die Netlify-Function erzeugen
+EXISTING="$(run -tAc "select json_agg(json_build_object('name', name, 'short_name', short_name)) from public.clubs where world_id = '$WORLD'")"
+node "$ROOT/scripts/build-europe-payload.mjs" "$SEED" "$EXISTING" "$PDIR" ENG ITA SMR
+# Konflikttest: ein unabhängig erzeugter Payload (veraltete Namensliste) darf keine Fehler auslösen
+node "$ROOT/scripts/build-europe-payload.mjs" "$SEED" "$EXISTING" "$PDIR/stale" POR
+check "60_europe.sql" -v world="$WORLD" -v dir="$PDIR" -f "$ROOT/supabase/tests/60_europe.sql"
+
+# Optional (FULL_EUROPE=1): alle Verbände anlegen und Suchzeiten des Transfermarkts messen
+if [ "${FULL_EUROPE:-0}" = "1" ]; then
+  EXISTING="$(run -tAc "select json_agg(json_build_object('name', name, 'short_name', short_name)) from public.clubs where world_id = '$WORLD'")"
+  CODES="$(node -e "import('$ROOT/packages/shared/dist/index.js').then(m => console.log(m.EUROPE_ASSOCIATIONS.map(a => a.code).filter(c => !['ENG','ITA','SMR','POR'].includes(c)).join(' ')))")"
+  node "$ROOT/scripts/build-europe-payload.mjs" "$SEED" "$EXISTING" "$PDIR/full" $CODES
+  T0=$(date +%s%N)
+  for c in $CODES; do run -tAc "select public.admin_add_europe('$WORLD', pg_read_file('$PDIR/full/$c.json')::jsonb) ->> 'status';" >/dev/null; done
+  T1=$(date +%s%N)
+  chmod -R 755 "$PDIR"
+  echo "Europa komplett: $(run -tAc "select count(*) from public.clubs where world_id = '$WORLD'") Vereine, $(run -tAc "select count(*) from public.players where world_id = '$WORLD'") Spieler, Aufbau $(( (T1 - T0) / 1000000 )) ms"
+  run -tAc "analyze;" >/dev/null
+  for f in '{}' '{"country":"ESP","min_overall":70}' '{"position":"ST","min_age":20,"max_age":25,"sort":"value"}' '{"search":"son"}' '{"league":"GER1"}' '{"free_agents":true}'; do
+    MS="$(run -tA -c '\timing on' -c "set role authenticated" -c "select tests.login('00000000-0000-0000-0000-0000000000a1')" \
+      -c "select (public.transfer_market_search('$WORLD', '$f'::jsonb, 50, 0) ->> 'total')" 2>&1 | grep -o 'Time: [0-9.]* ms' | tail -1)"
+    TOTAL="$(run -tA -c "set role authenticated" -c "select tests.login('00000000-0000-0000-0000-0000000000a1')" -c "select (public.transfer_market_search('$WORLD', '$f'::jsonb, 50, 0) ->> 'total')" | tail -1)"
+    echo "  Suche $f → $TOTAL Treffer, $MS"
+  done
+  MS="$(run -tA -c '\timing on' -c "set role authenticated" -c "select tests.login('00000000-0000-0000-0000-0000000000a1')" -c "select length(public.transfer_market_options('$WORLD')::text)" 2>&1 | grep -o 'Time: [0-9.]* ms' | tail -1)"
+  echo "  Filteroptionen → $MS"
+fi
 rm -rf "$PDIR"
 exit $status

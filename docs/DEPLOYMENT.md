@@ -41,6 +41,8 @@ Zugangsdaten werden nirgends im Code gespeichert. Alle Werte kommen aus Umgebung
 
 `netlify/functions/start-draft.mts` läuft unter `/api/start-draft`. Sie prüft das Token des Hosts, erzeugt mit `packages/shared` aus dem Welt-Seed alle KI-Vereine, Kader und den Draft-Pool und speichert das Ergebnis über `admin_start_draft()` in einer Transaktion. Lokal lässt sie sich mit `npx netlify dev` testen.
 
+`netlify/functions/ensure-europe.mts` läuft unter `/api/ensure-europe` (gleicher Schlüssel, keine neue Variable). Sie ergänzt eine Welt Verband für Verband um die Erstligen aller übrigen UEFA-Verbände (Vereine, Wappen, Stadien, vollständige Kader, einige vereinslose Spieler). Die Transferseite ruft sie automatisch auf, solange Verbände fehlen; jeder Aufruf arbeitet höchstens ca. 6,5 s, `admin_add_europe()` ist idempotent. Bestehende Karrieren, Kader, Transfers und Finanzen bleiben unverändert.
+
 ## 3. Fly.io (Match-Server)
 
 ```bash

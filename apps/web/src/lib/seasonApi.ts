@@ -40,7 +40,20 @@ export interface TransferOffer {
 }
 export interface MarketPlayer {
   id: string; first_name: string; last_name: string; age: number; main_position: string; overall: number; market_value: number; nationality: string;
-  club: { id: string; name: string; short_name: string; control: 'human' | 'ai' } | null; salary: number | null;
+  club: { id: string; name: string; short_name: string; control: 'human' | 'ai'; association_code?: string; color?: string | null } | null; salary: number | null;
+  league_name?: string | null; secondary_positions?: string[];
+}
+
+/** Filter des europaweiten Transfermarkts (alle optional) */
+export interface MarketFilters {
+  country?: string; league?: string; club?: string; position?: string; nationality?: string;
+  min_age?: number; max_age?: number; min_overall?: number; max_overall?: number; min_value?: number; max_value?: number;
+  search?: string; free_agents?: boolean; sort?: 'overall' | 'value' | 'age' | 'name'; dir?: 'asc' | 'desc';
+}
+export interface MarketOptions {
+  countries: Array<{ code: string; name: string; strength: number }>;
+  leagues: Array<{ key: string; name: string; country: string }>;
+  clubs: Array<{ id: string; name: string; short_name: string; country: string; league: string }>;
 }
 
 const CLUB_SEL = 'id, name, short_name, control, club_branding(primary_color)';
@@ -109,6 +122,26 @@ export const seasonApi = {
   sellToAi: (playerId: string) => rpc<{ status: string; message?: string }>('sell_to_ai', { p_player: playerId }),
   signFreeAgent: (playerId: string, years: number) => rpc<{ status: string; message?: string }>('sign_free_agent', { p_player: playerId, p_years: years }),
   release: (playerId: string) => rpc<{ status: string; compensation: number }>('release_player', { p_player: playerId }),
+
+  marketSearch: (worldId: string, filters: MarketFilters, limit = 50, offset = 0) =>
+    rpc<{ total: number; rows: MarketPlayer[] }>('transfer_market_search', { p_world: worldId, p_filters: Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== '' && v !== undefined && v !== null && v !== 0 && v !== false)), p_limit: limit, p_offset: offset }),
+  marketOptions: (worldId: string) => rpc<MarketOptions>('transfer_market_options', { p_world: worldId }),
+  europeStatus: (worldId: string) => rpc<{ associations: number; total: number; world_status: string } | null>('europe_market_status', { p_world: worldId }),
+  /** Ergänzt fehlende ausländische Ligen (Netlify-Function, schrittweise) */
+  async ensureEurope(worldId: string): Promise<{ done: number; total: number; finished: boolean }> {
+    const sb = requireSupabase();
+    let { data } = await sb.auth.getSession();
+    if (data.session && (data.session.expires_at ?? 0) * 1000 < Date.now() + 60_000) {
+      const refreshed = await sb.auth.refreshSession();
+      if (refreshed.data.session) data = { session: refreshed.data.session };
+    }
+    const token = data.session?.access_token;
+    if (!token) throw new ApiError('Nicht angemeldet.', 'not_authenticated');
+    const res = await fetch('/api/ensure-europe', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ worldId }) });
+    const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string; done?: number; total?: number; finished?: boolean };
+    if (!res.ok) throw new ApiError(body.message ?? `Fehler ${res.status}`, body.error ?? null);
+    return { done: body.done ?? 0, total: body.total ?? 0, finished: !!body.finished };
+  },
 
   async market(worldId: string, f: { position?: string; minOverall?: number; maxValue?: number; search?: string; freeAgents?: boolean; excludeClub?: string | null }): Promise<MarketPlayer[]> {
     const sb = requireSupabase();

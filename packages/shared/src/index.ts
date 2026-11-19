@@ -16,5 +16,7 @@ export * from './world/clubBlocklist.js';
 export * from './world/clubNames.js';
 export * from './world/players.js';
 export * from './world/worldInit.js';
+export * from './world/europeData.js';
+export * from './world/europe.js';
 export * from './avatar.js';
 export * from './tactics.js';

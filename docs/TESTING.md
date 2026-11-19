@@ -60,3 +60,14 @@ npm run build
 * **Phase 5:** mehrere tausend Headless-Partien: Tore/Spiel, Remis-Anteil, Stärke-Effekt, Taktik-Effekt, Fitness, Karten, Verletzungen, Heimvorteil, Standards, xG-Kalibrierung (N1)
 * **Phase 6:** zwei echte WebSocket-Clients gegen einen Server-Prozess, gleichzeitige Taktikwechsel, Verbindungsabbruch und Wiederverbinden, Überspringen, Ergebnisgeheimnis (N2)
 * **Phase 7–9:** 10 bzw. 30 simulierte Saisonen (N4) inklusive europäischer Teilnehmerzahlen und Namenskollisionen
+
+
+## Match Engine: Entscheidungs-KI und Kalibrierung
+
+- `packages/engine/test/ai.test.ts`: viele automatisch simulierte Spiele – keine Rückpässe aus guter Abschlussposition, Chancenqualität, Passwert 90 vs. 60, Dribbling, stark vs. schwach, Schießen.
+- `npx tsx packages/engine/src/calibrate.ts 200`: Tore, Schüsse, xG, Remis/Heim/Auswärts, stark vs. schwach, KI-Kennzahlen (Abschlusspositionen, Rückpässe, Steilpässe, Dribblings, Flanken, Abschirmen, Blocks) und Wirkung einzelner Attribute (+15).
+
+## Europaweiter Transfermarkt
+
+- `supabase/tests/60_europe.sql` (läuft in `npm run test:db`): Aufbau je Verband (idempotent, konfliktsicher), alle Filter, internationaler Kauf und Verkauf.
+- `FULL_EUROPE=1 npm run test:db`: legt alle 54 Verbände an und misst die Suchzeiten (Referenz: 782 Vereine, ~17.800 Spieler, Suche 14–64 ms).
