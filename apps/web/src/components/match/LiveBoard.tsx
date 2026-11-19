@@ -1,3 +1,4 @@
+import { OvrChip, RatingChip } from '../team/Ovr';
 import { TEAM_SETTINGS, readableTextColor, type TeamSettingKey } from '@fd/shared';
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { startDrag } from '../../lib/dragDrop';
@@ -84,17 +85,24 @@ export function LiveBoard({ view, team, activeProfile, onClose, send }: {
             const x = drag?.id === p.id ? drag.x : p.x;
             const y = drag?.id === p.id ? drag.y : p.y;
             return (
-              <button key={p.id} type="button" data-drop={p.id} onPointerDown={(e) => onFieldDown(e, p.id)} style={{ left: `${x}%`, top: `${100 - y}%`, touchAction: 'none' }}
+              <button key={p.id} type="button" data-drop={p.id} onPointerDown={(e) => onFieldDown(e, p.id)} style={{ left: `${x}%`, top: `${100 - (drag?.id === p.id ? y : Math.max(y, 9))}%`, touchAction: 'none' }}
                 className="absolute z-10 flex w-[18%] -translate-x-1/2 -translate-y-1/2 cursor-grab flex-col items-center"
                 aria-label={`${POS_LABEL[p.position] ?? p.position} ${p.name}`}>
                 <span className={`relative flex aspect-square w-[min(56px,72%)] items-center justify-center rounded-full border-2 shadow-lg ${pendingOut.has(p.id) ? 'opacity-50' : ''}`}
                   style={{ background: kit.primary, borderColor: kit.secondary, color: numColor }}>
                   <span className="display text-lg font-extrabold">{p.shirt}</span>
                   {p.yellow > 0 && <span className="absolute -left-1 -top-1 h-3.5 w-2.5 rounded-sm bg-yellow-300" />}
+                  {p.injured && <span title="Verletzt – muss ausgewechselt werden" className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-danger text-[11px] font-bold text-white ring-2 ring-ink">✚</span>}
                 </span>
                 <span className="display mt-0.5 rounded bg-ink/70 px-1 text-[10px] font-semibold uppercase leading-4 text-gold">{POS_LABEL[p.position] ?? p.position}</span>
-                <span className="max-w-full truncate rounded bg-ink/60 px-1 text-[11px] leading-4 text-cream">{p.name}{pendingOut.has(p.id) ? ' ⇄' : ''}</span>
-                <span className="mt-0.5 h-1 w-10 overflow-hidden rounded bg-ink/60"><span className={`block h-full ${fitnessTone(p.fitness)}`} style={{ width: `${p.fitness}%` }} /></span>
+                <span className="flex max-w-full items-center gap-1 rounded bg-ink/60 px-1">
+                  <span className="min-w-0 truncate text-[11px] leading-4 text-cream">{p.name}{pendingOut.has(p.id) ? ' ⇄' : ''}</span>
+                  <OvrChip value={p.overall} />
+                </span>
+                <span className="mt-0.5 flex items-center gap-1">
+                  <span className="h-1 w-10 overflow-hidden rounded bg-ink/60"><span className={`block h-full ${fitnessTone(p.fitness)}`} style={{ width: `${p.fitness}%` }} /></span>
+                  {typeof p.rating === 'number' && <RatingChip value={p.rating} />}
+                </span>
               </button>
             );
           })}

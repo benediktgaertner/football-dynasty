@@ -1,3 +1,4 @@
+import { OvrChip } from './Ovr';
 import { StatusIcon } from './PlayerStatus';
 import {
   POSITIONS,
@@ -121,7 +122,7 @@ export function PitchEditor({
             onPointerUp={() => onPointerUp(slot)}
             onPointerCancel={() => { drag.current = null; setDragging(null); }}
             className={`absolute flex w-[18%] -translate-x-1/2 -translate-y-1/2 cursor-grab flex-col items-center ${dragging === slot.slotIndex ? 'z-20 cursor-grabbing' : 'z-10'}`}
-            style={{ left: `${slot.x}%`, top: `${100 - slot.y}%`, touchAction: 'none' }}
+            style={{ left: `${slot.x}%`, top: `${100 - (dragging === slot.slotIndex ? slot.y : Math.max(slot.y, 9))}%`, touchAction: 'none' }}
             aria-label={`${POS_LABEL[slot.position]}: ${p ? `${p.first_name} ${p.last_name}` : 'frei'}`}
           >
             <span
@@ -137,7 +138,11 @@ export function PitchEditor({
               {p?.status && (p.status.injury || p.status.suspensions.length > 0) && <span className="absolute -bottom-1 -left-2"><StatusIcon s={p.status} /></span>}
             </span>
             <span className="display mt-0.5 rounded bg-ink/70 px-1 text-[10px] font-semibold uppercase leading-4 text-gold">{POS_LABEL[slot.position]}</span>
-            <span className="max-w-full truncate rounded bg-ink/60 px-1 text-[11px] leading-4 text-cream">{p ? p.last_name : 'frei'}</span>
+            <span className="flex max-w-full items-center gap-1 rounded bg-ink/60 px-1">
+              <span className="min-w-0 truncate text-[11px] leading-4 text-cream">{p ? p.last_name : 'frei'}</span>
+              {p && <OvrChip value={p.overall} />}
+            </span>
+            {p && <span className="mt-0.5 h-1 w-10 overflow-hidden rounded bg-ink/60" title={`Fitness ${Math.round(p.fitness)} %`}><span className={`block h-full ${p.fitness >= 75 ? 'bg-emerald-400' : p.fitness >= 55 ? 'bg-gold' : 'bg-danger'}`} style={{ width: `${p.fitness}%` }} /></span>}
           </button>
         );
       })}

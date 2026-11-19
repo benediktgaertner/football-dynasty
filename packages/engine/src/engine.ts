@@ -298,6 +298,8 @@ export class MatchEngine {
         id: p.input.id, shirt: p.input.shirt, name: p.input.name, position: p.slotPos, main: p.input.main_position, overall: p.input.overall,
         fitness: Math.round(p.fitness), onPitch: p.onPitch, subbedOff: p.subbedOff, sentOff: p.sentOff, injured: p.injured, yellow: p.yellow,
         x: Math.round(p.ax), y: Math.round(p.ay), instructions: [...p.instr], unavailable: !!p.input.unavailable,
+        // Vorläufige Matchnote (nur wer schon gespielt hat)
+        rating: p.stats.minutes > 0 ? this.ratingOf(p, side === 'home' ? this.score[1] : this.score[0], side === 'home' ? this.score[0] : this.score[1]) : null,
       })),
     };
   }
@@ -1788,6 +1790,24 @@ export class MatchEngine {
     };
   }
 
+  /** Note 1–10 aus den bisherigen Spielwerten (am Spielende endgültig, während der Partie vorläufig) */
+  private ratingOf(p: LivePlayer, conceded: number, scored: number): number {
+    const s = p.stats;
+    const minutes = Math.round(s.minutes);
+    const gk = p.slotPos === 'GK' && p.input.kind === 'goalkeeper';
+    const def = ['CB', 'LB', 'RB', 'LWB', 'RWB', 'CDM'].includes(p.slotPos);
+    // Note 1–10: Tore/Vorlagen zählen voll, Fleißwerte sind gedeckelt (sonst Noteninflation)
+    const per90 = 90 / Math.max(30, minutes);
+    let r = 6.0 + s.goals * 0.9 + s.assists * 0.55 + Math.min(0.4, s.shotsOnTarget * 0.1)
+      + Math.min(0.5, s.tacklesWon * per90 * 0.025) + Math.min(0.35, s.interceptions * per90 * 0.02) + Math.min(1.5, s.saves * 0.22);
+    if (s.passes > 10) r += clamp((s.passesCompleted / s.passes - 0.68) * 2.5, -0.5, 0.5);
+    if (gk || def) r += conceded === 0 ? 0.6 : -0.3 * conceded;
+    r += scored > conceded ? 0.3 : scored < conceded ? -0.3 : 0;
+    r -= s.yellow * 0.3 + (s.red ? 1.5 : 0);
+    if (minutes < 20) r = 6 + (r - 6) * 0.5;
+    return Math.round(clamp(r, 1, 10) * 10) / 10;
+  }
+
   result(): MatchResult {
     const [hg, ag] = this.score;
     const all: PlayerMatchStats[] = [];
@@ -1801,18 +1821,7 @@ export class MatchEngine {
         s.minutes = Math.round(s.minutes);
         s.fitnessEnd = Math.round(p.fitness * 10) / 10;
         s.xg = round2(s.xg);
-        const gk = p.slotPos === 'GK' && p.input.kind === 'goalkeeper';
-        const def = ['CB', 'LB', 'RB', 'LWB', 'RWB', 'CDM'].includes(p.slotPos);
-        // Note 1–10: Tore/Vorlagen zählen voll, Fleißwerte sind gedeckelt (sonst Noteninflation)
-        const per90 = 90 / Math.max(30, s.minutes);
-        let r = 6.0 + s.goals * 0.9 + s.assists * 0.55 + Math.min(0.4, s.shotsOnTarget * 0.1)
-          + Math.min(0.5, s.tacklesWon * per90 * 0.025) + Math.min(0.35, s.interceptions * per90 * 0.02) + Math.min(1.5, s.saves * 0.22);
-        if (s.passes > 10) r += clamp((s.passesCompleted / s.passes - 0.68) * 2.5, -0.5, 0.5);
-        if (gk || def) r += conceded === 0 ? 0.6 : -0.3 * conceded;
-        r += scored > conceded ? 0.3 : scored < conceded ? -0.3 : 0;
-        r -= s.yellow * 0.3 + (s.red ? 1.5 : 0);
-        if (s.minutes < 20) r = 6 + (r - 6) * 0.5;
-        s.rating = Math.round(clamp(r, 1, 10) * 10) / 10;
+        s.rating = this.ratingOf(p, conceded, scored);
         all.push({ ...s });
       }
     }

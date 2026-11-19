@@ -93,8 +93,10 @@ export class MatchRoom {
       if (m.t === 'done') { void this.finish(); continue; }
       this.broadcast(m);
       // Manager sehen ihr Team nach Ereignissen (Wechsel, Karten, Verletzungen) aktualisiert
-      if (m.t === 'ev' && m.events.some((e) => ['sub', 'yellow', 'second_yellow', 'red', 'injury', 'tactic', 'halftime'].includes(e.type))) this.sendViews();
+      if (m.t === 'ev' && m.events.some((e) => ['goal', 'sub', 'yellow', 'second_yellow', 'red', 'injury', 'tactic', 'halftime'].includes(e.type))) this.sendViews();
     }
+    // Matchnoten und Fitness laufend aktualisieren (Teamansicht spätestens alle 8 s)
+    if (now - this.lastViewAt > 8000) { this.lastViewAt = now; this.sendViews(); }
     if (this.engine.tick - this.lastCheckpointTick >= CHECKPOINT_EVERY && !this.engine.isFinished) {
       this.lastCheckpointTick = this.engine.tick;
       void this.saveCheckpoint();
@@ -188,7 +190,9 @@ export class MatchRoom {
     if (res.ok) this.sendView(c.role);
   }
 
+  private lastViewAt = 0;
   private sendViews(): void {
+    this.lastViewAt = Date.now();
     for (const side of ['home', 'away'] as const) this.sendView(side);
   }
   private sendView(side: Side): void {

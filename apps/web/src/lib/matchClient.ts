@@ -15,7 +15,7 @@ export interface TeamView {
   profile: ProfileName;
   team_instructions: Record<string, number | string>;
   subsUsed: number; subWindowsUsed: number; pendingSubs: Array<{ outId: string; inId: string }>; autopilot: boolean;
-  players: Array<{ id: string; shirt: number; name: string; position: string; main: string; overall: number; fitness: number; onPitch: boolean; subbedOff: boolean; sentOff: boolean; injured: boolean; yellow: number; x: number; y: number; instructions: string[]; unavailable: boolean }>;
+  players: Array<{ id: string; shirt: number; name: string; position: string; main: string; overall: number; fitness: number; onPitch: boolean; subbedOff: boolean; sentOff: boolean; injured: boolean; yellow: number; x: number; y: number; instructions: string[]; unavailable: boolean; rating?: number | null }>;
 }
 export interface TeamStats { goals: number; shots: number; shotsOnTarget: number; xg: number; passes: number; passesCompleted: number; possessionTicks: number; fouls: number; corners: number; offsides: number; yellow: number; red: number; subsUsed: number }
 export interface PlayerStats { playerId: string; side: Side; minutes: number; goals: number; assists: number; shots: number; shotsOnTarget: number; xg: number; passes: number; passesCompleted: number; tacklesWon: number; saves: number; yellow: number; red: boolean; injured: boolean; fitnessEnd: number; rating: number }
