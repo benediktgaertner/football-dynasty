@@ -8,6 +8,7 @@ import { loadTeam, teamApi, type ClubTactics, type ProfileState, type SquadPlaye
 import { Crest } from '../components/Crest';
 import { Card, ErrorBanner, Pill, Shell, Spinner } from '../components/ui';
 import { PlayerProfile, SeasonTab, SetPiecesTab, SquadTab, TrainingTab } from '../components/team/OtherTabs';
+import { TrainingPlanCard } from '../components/team/TrainingPlanCard';
 import { TacticsTab } from '../components/team/TacticsTab';
 import { FriendliesTab } from '../components/team/FriendliesTab';
 
@@ -129,6 +130,7 @@ export function Team() {
           }}
         />
       )}
+      {tab === 'training' && <TrainingPlanCard worldId={worldId} squad={data.squad} onChanged={() => void reload(false)} />}
       {tab === 'training' && (
         <TrainingTab
           squad={data.squad}

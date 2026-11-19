@@ -149,6 +149,7 @@ else
   echo "✗ Ende-zu-Ende Spieltag: sims=$SIMS fails=$FAILS slot $SLOT_BEFORE→$SLOT_AFTER ohne_xp=$NOXP"; cat "$PDIR/md.err" 2>/dev/null | head; status=1
 fi
 check "97_development.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/97_development.sql"
+check "98_transfers_training.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/98_transfers_training.sql"
 
 # Optional (FULL_EUROPE=1): alle Verbände anlegen und Suchzeiten des Transfermarkts messen
 if [ "${FULL_EUROPE:-0}" = "1" ]; then

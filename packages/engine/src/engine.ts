@@ -140,7 +140,24 @@ interface Flight {
   total: number;
   /** Scheitelhöhe in Metern (0 = flach) */
   height?: number;
+  /** Art des Balls – nur für die Darstellung (flach, hoch, Flanke, Schuss, Standard) */
+  kind?: BallKind;
   resolve: () => void;
+}
+
+export type BallKind = 'ground' | 'lofted' | 'through' | 'cross' | 'shot' | 'set_piece';
+
+/**
+ * Standardsituation in Vorbereitung (nur während der bestehenden Unterbrechung):
+ * Zielpositionen beider Teams im Rahmen der ausführenden Mannschaft. Beeinflusst keine Wahrscheinlichkeit.
+ */
+interface SetPieceSetup {
+  kind: 'corner' | 'free_kick' | 'penalty';
+  side: Side;
+  u: number;
+  v: number;
+  targets: Map<LivePlayer, [number, number]>;
+  wall: LivePlayer[];
 }
 
 export interface CommandRecord { tick: number; side: Side; cmd: MatchCommand }
@@ -185,6 +202,7 @@ export class MatchEngine {
   private lastPasser: { id: string; tick: number } | null = null;
   private deadBall = false;
   private restartIn = 0;
+  private setPiece: SetPieceSetup | null = null;
   private restart: (() => void) | null = null;
 
   constructor(setup: MatchSetup) {
@@ -724,6 +742,10 @@ export class MatchEngine {
         if (p === this.carrier && !this.flight) continue;
         let [tu, tv] = this.targetFor(p, t);
         let urgency = 0.6;
+        const spt = this.deadBall && this.setPiece ? this.setPieceTarget(p, this.setPiece) : null;
+        if (spt) {
+          [tu, tv] = spt; urgency = 1;
+        } else {
         if (this.chase && this.chase.player === p) {
           const [bu, bv] = this.ballFor(side);
           tu = bu; tv = bv; urgency = 1;
@@ -750,6 +772,7 @@ export class MatchEngine {
           } else if (this.carrier) this.coverLane(p, side, (x, y) => { tu = x; tv = y; });
         } else if (defending && this.carrier && p.slotPos !== 'GK') {
           this.coverLane(p, side, (x, y) => { tu = x; tv = y; });
+        }
         }
         // Lenkverhalten: Wunschgeschwindigkeit Richtung Ziel, begrenzte Beschleunigung ⇒ flüssige Wege
         const d = dist(p.u, p.v, tu, tv);
@@ -853,15 +876,121 @@ export class MatchEngine {
   }
 
   /** Spielunterbrechung mit Neustart nach kurzer Pause (ermöglicht Wechsel = Wechselfenster) */
-  private stoppage(ticks: number, restart: () => void): void {
+  private stoppage(ticks: number, restart: () => void, setPiece?: SetPieceSetup): void {
     const r0 = restart;
-    restart = () => { this.cut = true; r0(); };
+    restart = setPiece ? () => { this.setPiece = null; r0(); } : () => { this.cut = true; this.setPiece = null; r0(); };
     this.deadBall = true;
     this.restartIn = ticks;
     this.restart = restart;
     this.carrier = null;
     this.flight = null;
     this.chase = null;
+    this.setPiece = setPiece ?? null;
+    if (setPiece) {
+      // Ball an den Ausführungsort: größere Sprünge kurz abblenden, danach laufen die Spieler sichtbar in Position
+      const [bu, bv] = this.ballFor(setPiece.side);
+      if (dist(bu, bv, setPiece.u, setPiece.v) > 2) this.cut = true;
+      this.setBallFrom(setPiece.side, setPiece.u, setPiece.v); this.ballZ = 0;
+    }
+  }
+
+  /** Spieler an den Ausführungsort setzen; nur größere Sprünge werden (wie bisher) mit einer Abblende kaschiert */
+  private snap(p: LivePlayer, u: number, v: number): void {
+    if (dist(p.u, p.v, u, v) > 0.8) this.cut = true;
+    p.u = u; p.v = v; p.vu = 0; p.vv = 0;
+  }
+
+  /** In den Rahmen des ausführenden Teams umgerechnetes Ziel eines Spielers */
+  private setPieceTarget(p: LivePlayer, sp: SetPieceSetup): [number, number] | null {
+    const t = sp.targets.get(p);
+    if (!t) return null;
+    return p.side === sp.side ? t : [L - t[0], W - t[1]];
+  }
+
+  /**
+   * Aufstellung bei Standards (rein räumlich, keine Zufallszahlen):
+   * Ecke – Kopfballstarke in den Strafraum, Verteidiger nach Mann- oder Raumdeckung;
+   * Freistoß – Mauer (3–5 Spieler, 9,15 m), Torwart deckt die freie Ecke;
+   * Elfmeter – Schütze am Punkt, alle anderen außerhalb von Strafraum und Teilkreis.
+   */
+  private buildSetPiece(kind: SetPieceSetup['kind'], att: TeamState, u: number, v: number, taker: LivePlayer | null): SetPieceSetup {
+    const def = this.teams[OTHER[att.side]];
+    const targets = new Map<LivePlayer, [number, number]>();
+    const wall: LivePlayer[] = [];
+    // Positionen der Verteidiger werden hier im Rahmen des Angreifers notiert
+    const A = this.onPitch(att.side).filter((p) => p.slotPos !== 'GK');
+    const D = this.onPitch(def.side).filter((p) => p.slotPos !== 'GK');
+    const agk = this.keeper(att), dgk = this.keeper(def);
+    const head = (p: LivePlayer) => this.skill(p, 'heading') + this.skill(p, 'physical') * 0.3;
+    if (dgk) targets.set(dgk, [L - 0.6, GOAL_V]);
+    if (agk) targets.set(agk, [agk.u, agk.v]);
+    if (kind === 'penalty') {
+      if (taker) targets.set(taker, [L - 12.4, GOAL_V]);
+      const others = [...A.filter((p) => p !== taker), ...D];
+      others.forEach((p, i) => {
+        const k = i % 2 === 0 ? i / 2 : -(i + 1) / 2;
+        targets.set(p, [L - 19.5 - (i % 3) * 1.4, clamp(GOAL_V + k * 2.4, 6, W - 6)]);
+      });
+      if (dgk) targets.set(dgk, [L - 0.3, GOAL_V]);
+      return { kind, side: att.side, u: L - 11, v: GOAL_V, targets, wall };
+    }
+    const s = v < W / 2 ? -1 : 1; // Seite der Ausführung (−1 = obere Seitenlinie)
+    let spots: Array<[number, number]>;
+    if (kind === 'corner') {
+      if (taker) targets.set(taker, [L - 0.9, v < W / 2 ? 0.9 : W - 0.9]);
+      if (att.input.settings.corner_routine === 'short') {
+        spots = [[L - 7, v < W / 2 ? 10 : W - 10], [L - 11, GOAL_V], [L - 6, GOAL_V - s * 3], [L - 17, GOAL_V + s * 5]];
+      } else {
+        spots = [[L - 4.5, GOAL_V + s * 2.6], [L - 5.2, GOAL_V - s * 4], [L - 11, GOAL_V], [L - 7, GOAL_V + s * 0.4], [L - 13, GOAL_V - s * 5.5], [L - 15.5, GOAL_V + s * 7]];
+        if (att.adv.boxPresence < 3) spots.pop();
+      }
+    } else {
+      // Freistoß: Schütze hinter dem Ball, zweiter Mann daneben, Kopfballspieler auf Höhe der Abseitslinie
+      if (taker) targets.set(taker, [u - 1.3, v + 0.4]);
+      spots = [[u - 1.1, v - s * 1.8], [L - 12.5, GOAL_V - 5], [L - 12, GOAL_V + 4], [L - 13.5, GOAL_V], [L - 14, GOAL_V + s * 8]];
+    }
+    const pool = A.filter((p) => p !== taker).sort((a, b) => head(b) - head(a));
+    const boxers: LivePlayer[] = [];
+    spots.forEach((spt, i) => { const p = pool[i]; if (p) { targets.set(p, spt); boxers.push(p); } });
+    // Restverteidigung gegen Konter
+    pool.slice(spots.length).forEach((p, i) => targets.set(p, [kind === 'corner' ? L / 2 + 6 - i * 2 : Math.min(u - 14, L / 2 + 8) - i * 3, clamp(GOAL_V + (i % 2 ? 9 : -9) * (1 + Math.floor(i / 2) * 0.4), 5, W - 5)]));
+    const free = [...D];
+    const take = (pt: [number, number]): LivePlayer | null => {
+      let best = -1, bd = Infinity;
+      free.forEach((p, i) => { const [pu, pv] = this.posIn(p, att.side); const d = dist(pu, pv, pt[0], pt[1]); if (d < bd) { bd = d; best = i; } });
+      return best >= 0 ? free.splice(best, 1)[0]! : null;
+    };
+    if (kind === 'free_kick') {
+      const dg = dist(u, v, GOAL_U, GOAL_V);
+      const n = dg < 20 ? 5 : dg < 25 ? 4 : 3;
+      const ux = (GOAL_U - u) / dg, vx = (GOAL_V - v) / dg;
+      const cu = u + ux * 9.15, cv = v + vx * 9.15;
+      for (let i = 0; i < n; i++) {
+        const off = (i - (n - 1) / 2) * 0.75;
+        const pt: [number, number] = [cu - vx * off, cv + ux * off];
+        const p = take(pt);
+        if (p) { targets.set(p, pt); wall.push(p); }
+      }
+      // Torwart stellt sich in die Ecke, die die Mauer nicht abdeckt
+      if (dgk) targets.set(dgk, [L - 0.7, GOAL_V + (v < GOAL_V ? 1.6 : -1.6)]);
+    }
+    const zonal = def.input.settings.defensive_set_piece;
+    if (kind === 'corner' && zonal !== 'man') {
+      // Raumdeckung: Kette auf der Fünfmeterlinie, ein Spieler am kurzen Pfosten
+      const zones: Array<[number, number]> = [[L - 0.8, GOAL_V + s * 3.2]];
+      const nz = zonal === 'mixed' ? 3 : 5;
+      for (let i = 0; i < nz; i++) zones.push([L - 5.6, GOAL_V + (i - (nz - 1) / 2) * 2.7]);
+      for (const z of zones) { const p = take(z); if (p) targets.set(p, z); }
+    }
+    // Manndeckung der gefährlichen Angreifer (zwischen Gegner und Tor)
+    for (const a of boxers) {
+      const at = targets.get(a)!;
+      const p = take(at);
+      if (p) targets.set(p, [Math.min(L - 1, at[0] + 0.9), at[1] + (GOAL_V - at[1]) * 0.1]);
+    }
+    // Übrige: einer an der Strafraumgrenze, der Rest als Konterspieler
+    free.forEach((p, i) => targets.set(p, i === 0 ? [L - 18, GOAL_V] : [L - 40 - i * 3, clamp(GOAL_V + (i % 2 ? 12 : -12), 5, W - 5)]));
+    return { kind, side: att.side, u: kind === 'corner' ? L - 0.5 : u, v: kind === 'corner' ? (v < W / 2 ? 0.5 : W - 0.5) : v, targets, wall };
   }
 
   private goalKick(side: Side): void {
@@ -1079,19 +1208,20 @@ export class MatchEngine {
     // Standard
     const inBox = u > L - 16.5 && Math.abs(v - GOAL_V) < 20.16;
     if (inBox) {
-      this.stoppage(sec(4), () => this.penalty(vt));
+      this.stoppage(sec(4), () => this.penalty(vt), this.buildSetPiece('penalty', vt, L - 11, GOAL_V, this.taker(vt, 'penalty', 'penalties')));
       this.log({ type: 'penalty', side: vt.side, text: `Elfmeter für ${vt.input.shortName}!` });
       return;
     }
     const dGoal = dist(u, v, GOAL_U, GOAL_V);
+    const direct = dGoal < 30 && Math.abs(v - GOAL_V) < 22;
     this.stoppage(sec(3), () => {
-      if (dGoal < 30 && Math.abs(v - GOAL_V) < 22) this.directFreeKick(vt, u, v);
+      if (direct) this.directFreeKick(vt, u, v);
       else {
         const vic = victim.onPitch ? victim : this.onPitch(vt.side).find((p) => p.slotPos !== 'GK');
         if (vic) { vic.u = u; vic.v = v; this.giveBall(vic, Math.round(2 * TS)); }
         else this.kickoff(vt.side);
       }
-    });
+    }, direct ? this.buildSetPiece('free_kick', vt, u, v, this.taker(vt, 'free_kick', 'freeKicks')) : undefined);
   }
 
   private book(p: LivePlayer): void {
@@ -1462,7 +1592,7 @@ export class MatchEngine {
     const fromU = c.u, fromV = c.v;
     this.carrier = null;
     this.flight = {
-      fromU, fromV, toU, toV, ticks: total, total, height: opt.lofted ? Math.min(9, d / 5) : d > 30 ? 1.5 : 0,
+      fromU, fromV, toU, toV, ticks: total, total, height: opt.lofted ? Math.min(9, d / 5) : d > 30 ? 1.5 : 0, kind: opt.lofted ? 'lofted' : recv.u > c.u + 12 ? 'through' : 'ground',
       resolve: () => {
         if (offside) {
           t.stats.offsides++;
@@ -1551,7 +1681,7 @@ export class MatchEngine {
     const shotDist = dist(c.u, c.v, GOAL_U, GOAL_V);
     // Verteidiger im Schussweg blocken (Verteidigung + Stellungsspiel)
     if (!setPiece || setPiece === 'free_kick') {
-      for (const bl of this.laneBlockers(t.side, c.u, c.v)) {
+      for (const bl of this.laneBlockers(t.side, c.u, c.v).slice(0, setPiece === 'free_kick' ? 1 : undefined)) {
         const pB = clamp(0.16 * Math.exp((this.skill(bl, 'defending') * 0.7 + this.skill(bl, 'gameIntelligence') * 0.3 - shotSkill) / 30), 0.04, 0.4) * (setPiece ? 1.4 : 1);
         if (this.rng.next() < pB) {
           this.diagnostics[OTHER[t.side]].blocks++;
@@ -1561,7 +1691,7 @@ export class MatchEngine {
           const fromU = c.u, fromV = c.v;
           this.carrier = null;
           const ticks = Math.max(2, Math.round(dist(fromU, fromV, bu, bv) / (power * VIS)));
-          this.flight = { fromU, fromV, toU: bu, toV: bv, ticks, total: ticks, height: 0.4, resolve: () => {
+          this.flight = { fromU, fromV, toU: bu, toV: bv, ticks, total: ticks, height: 0.4, kind: 'shot', resolve: () => {
             if (this.rng.next() < 0.35) { this.corner(t); return; }
             bl.stats.interceptions++; this.giveBall(bl, Math.round(3 * TS));
           } };
@@ -1628,7 +1758,7 @@ export class MatchEngine {
     const d = dist(c.u, c.v, tu, tv);
     const ticks = Math.max(2, Math.round(d / (power * VIS)));
     this.carrier = null;
-    this.flight = { fromU: c.u, fromV: c.v, toU: tu, toV: tv, ticks, total: ticks, height: h, resolve: outcome };
+    this.flight = { fromU: c.u, fromV: c.v, toU: tu, toV: tv, ticks, total: ticks, height: h, kind: 'shot', resolve: outcome };
   }
 
   private cross(c: LivePlayer, t: TeamState): void {
@@ -1645,7 +1775,7 @@ export class MatchEngine {
     const cd = dist(fromU, fromV, aim[0]!, aim[1]!);
     const ct = Math.max(5, Math.round(cd / ((crossLow ? 18 : 14) * VIS)));
     this.flight = {
-      fromU, fromV, toU: aim[0]!, toV: aim[1]!, ticks: ct, total: ct, height: crossLow ? 0.6 : 5,
+      fromU, fromV, toU: aim[0]!, toV: aim[1]!, ticks: ct, total: ct, height: crossLow ? 0.6 : 5, kind: 'cross',
       resolve: () => {
         const gk = this.keeper(dt);
         const claimP = (crossLow ? 0.05 : 0.12) * (this.keeperSkill(gk, 'commandOfArea') / 70);
@@ -1675,15 +1805,29 @@ export class MatchEngine {
   private corner(t: TeamState): void {
     t.stats.corners++;
     this.log({ type: 'corner', side: t.side, text: `Ecke für ${t.input.shortName}` });
+    // Eckfahne auf der Seite, auf der der Ball ins Aus ging; Spieler beziehen während der Unterbrechung Position
+    const [, outV] = this.ballFor(t.side);
+    const cornerTaker = this.taker(t, 'corner', 'corners');
+    const sp = this.buildSetPiece('corner', t, L - 0.5, outV, cornerTaker);
     this.stoppage(sec(3.5), () => {
-      const taker = this.taker(t, 'corner', 'corners');
-      taker.u = L - 0.5; taker.v = this.rng.next() < 0.5 ? 0.5 : W - 0.5;
+      const taker = cornerTaker.onPitch ? cornerTaker : this.taker(t, 'corner', 'corners');
+      void this.rng.next(); // Zufallsfolge wie bisher (früher: Wahl der Eckfahne)
+      this.snap(taker, L - 0.5, sp.v);
+      this.possession = t.side;
       this.setBallFrom(t.side, taker.u, taker.v);
       const routine = t.input.settings.corner_routine;
       const dt = this.teams[OTHER[t.side]];
+      // Ball fliegt sichtbar von der Eckfahne zum Ziel, die Entscheidung fällt bei der Ankunft
+      const kick = (tu: number, tv: number, height: number, then: () => void) => {
+        const d = dist(taker.u, taker.v, tu, tv);
+        const ticks = Math.max(6, Math.round(d / ((height > 2 ? 15 : 19) * VIS)));
+        this.carrier = null;
+        this.flight = { fromU: taker.u, fromV: taker.v, toU: tu, toV: tv, ticks, total: ticks, height, kind: 'set_piece', resolve: then };
+      };
       if (routine === 'short') {
         const near = this.nearestToPoint(t.side, L - 8, taker.v < 10 ? 8 : W - 8);
-        if (near && near !== taker) { near.u = L - 7; near.v = taker.v < 10 ? 10 : W - 10; this.giveBall(near, Math.round(2 * TS)); } else this.giveBall(taker, Math.round(2 * TS));
+        if (near && near !== taker) kick(near.u, near.v, 0, () => this.giveBall(near, Math.round(2 * TS)));
+        else this.giveBall(taker, Math.round(2 * TS));
         return;
       }
       const q = this.skill(taker, 'corners') / 99;
@@ -1695,23 +1839,28 @@ export class MatchEngine {
       const defMod = zonal === 'man' ? 0.95 : zonal === 'mixed' ? 0.97 : 1;
       const pWin = clamp((0.2 + q * 0.25) * routineMod * defMod * (header ? sigmoid((this.skill(header, 'heading') - defBest) / 12) * 2 : 0), 0.05, 0.55);
       if (header && this.rng.next() < pWin) {
-        header.u = routine === 'penalty_spot' ? L - 11 : L - 6 - this.rng.next() * 3;
-        header.v = routine === 'near_post' ? GOAL_V + (taker.v < 10 ? -2.5 : 2.5) : routine === 'far_post' ? GOAL_V + (taker.v < 10 ? 3 : -3) : GOAL_V;
-        this.lastPasser = { id: taker.input.id, tick: this.tick };
-        this.setBallFrom(t.side, header.u, header.v);
-        this.shoot(header, t, expectedGoals(header.u, header.v, true) * 0.85, 1.4, true);
+        const hu = routine === 'penalty_spot' ? L - 11 : L - 6 - this.rng.next() * 3;
+        const hv = routine === 'near_post' ? GOAL_V + (taker.v < 10 ? -2.5 : 2.5) : routine === 'far_post' ? GOAL_V + (taker.v < 10 ? 3 : -3) : GOAL_V;
+        kick(hu, hv, 7, () => {
+          this.snap(header, hu, hv);
+          this.lastPasser = { id: taker.input.id, tick: this.tick };
+          this.setBallFrom(t.side, header.u, header.v);
+          this.shoot(header, t, expectedGoals(header.u, header.v, true) * 0.85, 1.4, true);
+        });
       } else {
         const gk = this.keeper(dt);
         const clr = this.rng.next() < 0.3 && gk ? gk : this.nearestToPoint(dt.side, 8, GOAL_V);
-        if (clr) this.giveBall(clr, Math.round(2 * TS)); else this.kickoff(dt.side);
+        if (clr) { const [cu, cv] = this.posIn(clr, t.side); kick(cu, cv, 6, () => this.giveBall(clr, Math.round(2 * TS))); }
+        else this.kickoff(dt.side);
       }
-    });
+    }, sp);
   }
 
   private directFreeKick(t: TeamState, u: number, v: number): void {
     this.log({ type: 'free_kick', side: t.side, text: `Freistoß in aussichtsreicher Position für ${t.input.shortName}` });
     const taker = this.taker(t, 'free_kick', 'freeKicks');
-    taker.u = u; taker.v = v;
+    this.snap(taker, u, v);
+    this.possession = t.side;
     this.setBallFrom(t.side, u, v);
     if (this.rng.next() < 0.55) {
       const fk = this.skill(taker, 'freeKicks');
@@ -1724,7 +1873,8 @@ export class MatchEngine {
 
   private penalty(t: TeamState): void {
     const taker = this.taker(t, 'penalty', 'penalties');
-    taker.u = L - 11; taker.v = GOAL_V;
+    this.snap(taker, L - 11, GOAL_V);
+    this.possession = t.side;
     this.setBallFrom(t.side, taker.u, taker.v);
     const gk = this.keeper(this.teams[OTHER[t.side]]);
     const pen = this.skill(taker, 'penalties');
@@ -1813,6 +1963,8 @@ export class MatchEngine {
       players,
       red: [this.teams.home.stats.red, this.teams.away.stats.red],
       activeProfile: [this.teams.home.profile, this.teams.away.profile],
+      ballKind: this.flight?.kind ?? null,
+      setPiece: this.deadBall && this.setPiece ? { kind: this.setPiece.kind, side: this.setPiece.side, wall: this.setPiece.wall.map((p) => p.input.id) } : null,
     };
   }
 

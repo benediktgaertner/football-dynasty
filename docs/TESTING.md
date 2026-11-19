@@ -86,3 +86,11 @@ npm run build
 * Parität TS = SQL (`gen-parity-sql.mjs`): OVR für 120 Zufallsspieler, Marktwert, Multiplikatoren, Spiel-XP.
 * `apps/match-server/src/worldSim.test.ts`: Sweep ohne Client, Neuversuch + Ersatzergebnis nach 3 Fehlversuchen, keine Doppelsimulation.
 * Kalibrierung: `node scripts/dev-calibrate.mjs` (Ergebnisse in docs/DEVELOPMENT.md).
+
+## Transfers, Free Agents, Trainingsplan (Migrationen 0024–0025)
+* `98_transfers_training.sql` (37): Trainingsplan (Limit, Pause, einmal je Woche), Verhandlung über drei Runden mit
+  Antwortterminen, sofortige Annahme, KI-Transfermarkt (Limits, keine Doppeltransfers), KI-Free-Agent-Bewerbungen
+  und Limit 2, Top-Transfers, Kalender, Theme, Wetter, Verfall bei geschlossenem Fenster.
+* `50_season.sql`: Free-Agent-Frist (7 Tage), mehrere Interessenten, automatische Entscheidung.
+* `90_dashboard.sql`: Spieltagsübersicht nur eigene Liga.
+* Lasttest (782 Vereine): KI-Transfers 40–90 ms je 40 Vereine, KI-Free-Agent-Interesse 0,18 s, Sweep 0,6 s.

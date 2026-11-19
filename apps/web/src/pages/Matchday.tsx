@@ -2,6 +2,8 @@ import { readableTextColor } from '@fd/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { WorldNav } from '../components/WorldNav';
+import { MonthCalendar } from '../components/dashboard/MonthCalendar';
+import { TopTransfers } from '../components/dashboard/TopTransfers';
 import { Button, Card, ErrorBanner, Pill, Shell, Spinner } from '../components/ui';
 import { seasonApi, type ClubRef, type DashboardData, type MatchdayState, type SlotFixture } from '../lib/seasonApi';
 import { ClubLink, ClubLogo, PlayerLink } from '../components/links';
@@ -189,7 +191,8 @@ export function Matchday() {
                 )}
                 {slot.state === 'live' && <p className="text-xs text-cream-dim">KI-Spiele werden serverseitig berechnet; alle Ergebnisse werden gemeinsam freigegeben, sobald jeder Manager sein Spiel beendet oder übersprungen hat.</p>}
               </Card>
-              <CalendarCard dash={dash} worldId={worldId} />
+              <MonthCalendar worldId={worldId} />
+              <TopTransfers worldId={worldId} />
             </div>
           </div>
         </>
@@ -329,39 +332,6 @@ function TopStats({ dash }: { dash: DashboardData | null }) {
   );
 }
 
-/** Kompakter Kalender: nächste Begegnungen und letzte Ergebnisse */
-function CalendarCard({ dash, worldId }: { dash: DashboardData | null; worldId: string }) {
-  return (
-    <Card>
-      <div className="mb-2 flex items-baseline justify-between"><h2 className="display text-xl font-bold uppercase">Kalender</h2><Link to={`/w/${worldId}/kalender`} className="text-sm font-semibold text-gold underline">Alle Begegnungen</Link></div>
-      <ul className="space-y-1 text-sm">
-        {(dash?.calendar ?? []).map((c) => (
-          <li key={c.id} className="flex items-center gap-2">
-            <span className="w-20 shrink-0 text-xs text-cream-dim">{new Date(c.date + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}</span>
-            <span className="w-5 text-xs font-bold text-cream-dim">{c.home ? 'H' : 'A'}</span>
-            <ClubLogo club={c.opponent} size={18} />
-            <ClubLink club={c.opponent} className="min-w-0 flex-1 truncate" />
-            <span className="text-[11px] text-cream-dim">{c.kind === 'domestic_cup' ? 'Pokal' : c.label}</span>
-          </li>
-        ))}
-        {(dash?.calendar ?? []).length === 0 && <li className="text-cream-dim">Keine weiteren Termine.</li>}
-      </ul>
-      {(dash?.recent ?? []).length > 0 && (
-        <>
-          <p className="mt-3 text-xs uppercase text-cream-dim">Letzte Ergebnisse</p>
-          <div className="mt-1 flex gap-1">
-            {dash!.recent.map((r) => (
-              <span key={r.id} title={`${r.home ? 'H' : 'A'} ${r.opponent.name} ${r.gf}:${r.ga}`}
-                className={`display grid h-8 w-8 place-items-center rounded-md text-sm font-bold ${r.gf > r.ga ? 'bg-emerald-600 text-white' : r.gf < r.ga ? 'bg-danger text-white' : 'bg-olive-600'}`}>
-                {r.gf > r.ga ? 'S' : r.gf < r.ga ? 'N' : 'U'}
-              </span>
-            ))}
-          </div>
-        </>
-      )}
-    </Card>
-  );
-}
 
 function LineupIssues({ issues, worldId }: { issues: Array<{ player_id: string; name: string; reason: 'injured' | 'suspended' }>; worldId: string }) {
   return (

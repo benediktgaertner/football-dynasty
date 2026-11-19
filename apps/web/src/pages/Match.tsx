@@ -1,5 +1,6 @@
 import { TEAM_SETTINGS, readableTextColor, resolveAwayDisplayColor } from '@fd/shared';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { competitionTheme, type CompetitionRef } from '../lib/theme';
 import { Link, useParams } from 'react-router-dom';
 import { Button, Card, ErrorBanner, Pill, Shell, Spinner } from '../components/ui';
 import { MatchPitch, pitchAspect } from '../components/match/MatchPitch';
@@ -82,11 +83,11 @@ export function Match() {
 
   return (
     <Shell right={<><Link to={`/w/${worldId}/spieltag`} className="display rounded-xl px-3 py-2 text-lg font-semibold uppercase text-cream-dim hover:bg-olive-800 hover:text-cream">Spieltag</Link><Link to={`/w/${worldId}/team`} className="display rounded-xl px-3 py-2 text-lg font-semibold uppercase text-cream-dim hover:bg-olive-800 hover:text-cream">Team</Link></>}>
-      <Scoreboard teams={teams} homeColor={homeColor} awayColor={awayColor} score={snap.score} minute={snap.minute} phase={snap.phase} status={status} connection={state.connection} role={role} />
+      <Scoreboard teams={teams} homeColor={homeColor} awayColor={awayColor} score={snap.score} minute={snap.minute} phase={snap.phase} status={status} connection={state.connection} role={role} competition={state.stadium?.competition ?? null} />
 
-      <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,1fr)_228px] xl:grid-cols-[minmax(0,1fr)_250px]">
         <div className="relative">
-          <div className="w-full max-h-[64vh]" style={{ aspectRatio: pitchAspect(state.stadium) }}>
+          <div className="mx-auto w-full" style={{ aspectRatio: pitchAspect(state.stadium), maxHeight: 'calc(100vh - 220px)', maxWidth: `calc((100vh - 220px) * ${pitchAspect(state.stadium).replace(' / ', ' / ')})` }}>
             <MatchPitch client={client} teams={teams} homeColor={homeColor} awayColor={awayColor} stadium={state.stadium} />
           </div>
           {banner && banner.big && (
@@ -118,14 +119,14 @@ export function Match() {
             </div>
           )}
           {mySide && status !== 'finished' && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
               {(['offensive', 'neutral', 'defensive'] as const).map((p) => (
                 <button key={p} type="button" onClick={() => void send({ kind: 'profile', name: p })}
-                  className={`display min-h-12 flex-1 rounded-xl px-4 text-lg font-bold uppercase ${activeProfile === p ? 'bg-gold text-ink' : 'bg-olive-800 text-cream hover:bg-olive-700'}`}>
+                  className={`display min-h-11 flex-1 rounded-lg px-3 text-base font-bold uppercase ${activeProfile === p ? 'bg-gold text-ink' : 'bg-olive-800 text-cream hover:bg-olive-700'}`}>
                   {PROFILE_LABEL[p]}
                 </button>
               ))}
-              <Button variant="secondary" className="min-h-12 flex-1" onClick={() => setPanel(true)}>Team-Management</Button>
+              <Button variant="secondary" className="min-h-11 flex-1 !px-3 !text-base" onClick={() => setPanel(true)}>Team-Management</Button>
             </div>
           )}
           {msg && <div className="mt-2"><ErrorBanner error={msg} /></div>}
@@ -180,36 +181,39 @@ function useBanner(events: MatchEvent[], teams: { home: RosterTeam; away: Roster
   return banner;
 }
 
-function Scoreboard({ teams, homeColor, awayColor, score, minute, phase, status, connection, role }: {
+function Scoreboard({ teams, homeColor, awayColor, score, minute, phase, status, connection, role, competition }: {
   teams: { home: RosterTeam; away: RosterTeam }; homeColor: string; awayColor: string; score: [number, number]; minute: number;
-  phase: string; status: string; connection: string; role: string | null;
+  phase: string; status: string; connection: string; role: string | null; competition: CompetitionRef | null;
 }) {
   const clock = status === 'waiting' ? 'Vor dem Spiel' : status === 'halftime' ? 'Halbzeit' : phase === 'end' || status === 'finished' ? 'Abpfiff' : `${Math.min(phase === 'first' ? 45 : 90, minute + 1)}'`;
+  // Ergebnisanzeige im Stil des Wettbewerbs (eigene Gestaltung, keine TV-Grafiken)
+  const th = competitionTheme(competition);
   return (
-    <Card className="!p-3">
-      <div className="flex items-center gap-3">
+    <div className="overflow-hidden rounded-xl border shadow-lg" style={{ background: `linear-gradient(100deg, ${th.board.from}, ${th.board.to})`, borderColor: `${th.board.edge}66` }}>
+      <div className="flex items-center gap-2 px-2 py-1.5 sm:gap-3 sm:px-3">
         <TeamBadge team={teams.home} color={homeColor} align="right" />
-        <div className="min-w-32 text-center">
-          <div className="display text-5xl font-extrabold leading-none tabular-nums">{score[0]}<span className="mx-2 text-cream-dim">:</span>{score[1]}</div>
-          <div className="display mt-1 text-lg font-semibold uppercase text-gold">{clock}</div>
+        <div className="min-w-28 text-center">
+          <div className="display text-4xl font-extrabold leading-none tabular-nums" style={{ color: th.board.text }}>{score[0]}<span className="mx-1.5 opacity-60">:</span>{score[1]}</div>
+          <div className="display mt-0.5 inline-block rounded px-2 text-sm font-bold uppercase" style={{ background: th.board.edge, color: '#0d0f12' }}>{clock}</div>
         </div>
         <TeamBadge team={teams.away} color={awayColor} align="left" />
       </div>
-      <div className="mt-2 flex flex-wrap justify-center gap-2 text-sm">
-        {role === 'spectator' && <Pill>Zuschauer</Pill>}
-        {connection === 'reconnecting' && <Pill tone="warn">Verbindung wird wiederhergestellt …</Pill>}
+      <div className="flex items-center justify-center gap-2 border-t px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ borderColor: `${th.board.edge}33`, color: th.board.label }}>
+        <span>{competition?.name ?? th.label}</span>
+        {role === 'spectator' && <span className="text-cream-dim">· Zuschauer</span>}
+        {connection === 'reconnecting' && <span className="text-amber-300">· Verbindung wird wiederhergestellt …</span>}
       </div>
-    </Card>
+    </div>
   );
 }
 
 function TeamBadge({ team, color, align }: { team: RosterTeam; color: string; align: 'left' | 'right' }) {
   return (
-    <div className={`flex min-w-0 flex-1 items-center gap-3 ${align === 'right' ? 'flex-row-reverse text-right' : ''}`}>
-      <span className="display grid h-12 w-12 shrink-0 place-items-center rounded-xl text-lg font-bold" style={{ background: color, color: readableTextColor(color) }}>{team.shortName}</span>
+    <div className={`flex min-w-0 flex-1 items-center gap-2 ${align === 'right' ? 'flex-row-reverse text-right' : ''}`}>
+      <span className="display grid h-9 w-9 shrink-0 place-items-center rounded-lg text-sm font-bold" style={{ background: color, color: readableTextColor(color) }}>{team.shortName}</span>
       <div className="min-w-0">
-        <div className="display truncate text-2xl font-bold uppercase leading-tight">{team.name}</div>
-        <div className="text-xs text-cream-dim">{team.control === 'ai' ? 'KI-Verein' : 'Manager'}</div>
+        <div className="display truncate text-xl font-bold uppercase leading-tight">{team.name}</div>
+        <div className="hidden text-[11px] text-cream-dim sm:block">{team.control === 'ai' ? 'KI-Verein' : 'Manager'}</div>
       </div>
     </div>
   );
@@ -219,13 +223,13 @@ function Ticker({ events, teams, homeColor, awayColor }: { events: MatchEvent[];
   const list = events.filter((e) => TICKER_TYPES.has(e.type)).slice(-80).reverse();
   void teams;
   return (
-    <Card className="!p-3 max-h-[64vh] overflow-y-auto">
-      <h2 className="display mb-2 text-lg font-bold uppercase tracking-wide text-gold">Liveticker</h2>
-      <ol className="space-y-1.5">
+    <Card className="!p-2 max-h-[30vh] overflow-y-auto lg:max-h-[calc(100vh-220px)]">
+      <h2 className="display mb-1 text-base font-bold uppercase tracking-wide text-gold">Liveticker</h2>
+      <ol className="space-y-1">
         {list.map((e, i) => (
-          <li key={`${e.tick}-${i}`} className={`flex gap-2 rounded-lg px-2 py-1 text-sm ${e.type === 'goal' ? 'bg-gold/15 font-semibold' : ''}`}>
-            <span className="w-8 shrink-0 tabular-nums text-cream-dim">{e.minute}'</span>
-            <span className="w-5 shrink-0 text-center">{EVENT_ICON[e.type] ?? '·'}</span>
+          <li key={`${e.tick}-${i}`} className={`flex gap-1.5 rounded-md px-1.5 py-0.5 text-xs leading-snug ${e.type === 'goal' ? 'bg-gold/15 font-semibold' : ''}`}>
+            <span className="w-6 shrink-0 tabular-nums text-cream-dim">{e.minute}'</span>
+            <span className="w-4 shrink-0 text-center">{EVENT_ICON[e.type] ?? '·'}</span>
             <span className="h-3 w-1 shrink-0 self-center rounded" style={{ background: e.side === 'home' ? homeColor : e.side === 'away' ? awayColor : 'transparent' }} />
             <span className="min-w-0">{e.text}</span>
           </li>

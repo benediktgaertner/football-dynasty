@@ -7,6 +7,10 @@ export interface Snapshot {
   tick: number; clock?: number; minute: number; phase: 'pre' | 'first' | 'second' | 'end'; score: [number, number];
   ball: [number, number, number?]; possession: Side | null; carrier?: string | null; intensity?: number; players: Array<[string, number, number]>; red: [number, number];
   activeProfile: [ProfileName, ProfileName];
+  /** Art des fliegenden Balls (flach, hoch, Steilpass, Flanke, Schuss, Standard) */
+  ballKind?: 'ground' | 'lofted' | 'through' | 'cross' | 'shot' | 'set_piece' | null;
+  /** Standard in Vorbereitung (Ecke, Freistoß mit Mauer, Elfmeter) */
+  setPiece?: { kind: 'corner' | 'free_kick' | 'penalty'; side: Side; wall: string[] } | null;
 }
 export interface MatchEvent { tick: number; minute: number; type: string; side: Side | null; playerId?: string; otherId?: string; text: string; xg?: number }
 export interface RosterPlayer { id: string; shirt: number; name: string; first_name?: string; position: string; overall: number; age?: number; region?: string }
@@ -49,7 +53,14 @@ export interface MatchState {
  * WebSocket-Client: Authentifizierung per Supabase-Token, automatische Wiederverbindung
  * (exponentielles Backoff) und Snapshot-Puffer für flüssige Interpolation (~100 ms Verzögerung).
  */
-export interface StadiumView { name: string; capacity: number; attendance: number | null; design: StadiumDesign }
+export type Weather = 'sunny' | 'cloudy' | 'rain' | 'heavy_rain' | 'snow' | 'fog';
+/** Stadion, Wetter und Atmosphäre – vom Server im Setup bestimmt, für alle Teilnehmer identisch (rein optisch) */
+export interface StadiumView {
+  name: string; capacity: number; attendance: number | null; design: StadiumDesign;
+  weather?: Weather | null;
+  atmosphere?: { choreo: boolean; banners: boolean; pyro_seed: number } | null;
+  competition?: { kind: string; tier: number | null; association: string | null; name: string } | null;
+}
 export interface StadiumDesign { style?: 'classic' | 'modern' | 'arena' | 'traditional'; stand?: string; seat?: string; accent?: string; club_colors?: boolean; roof?: boolean }
 
 export class MatchClient {
@@ -199,7 +210,7 @@ export class MatchClient {
   }
 
   /** Interpolierter Zustand ~100 ms in der Vergangenheit (zwischen zwei Snapshots). */
-  interpolated(now = performance.now()): { ball: [number, number, number]; carrier: string | null; players: Map<string, [number, number]> } | null {
+  interpolated(now = performance.now()): { ball: [number, number, number]; carrier: string | null; players: Map<string, [number, number]>; minute: number; score: [number, number]; setPiece: Snapshot['setPiece'] | null; ballKind: Snapshot['ballKind'] | null } | null {
     const b = this.buffer;
     if (b.length === 0) return null;
     const renderAt = now - 150;
@@ -216,6 +227,8 @@ export class MatchClient {
       players.set(id, p ? [p[0] + (x - p[0]) * k, p[1] + (y - p[1]) * k] : [x, y]);
     }
     const za = a.s.ball[2] ?? 0, zc = c.s.ball[2] ?? 0;
-    return { ball: [a.s.ball[0] + (c.s.ball[0] - a.s.ball[0]) * k, a.s.ball[1] + (c.s.ball[1] - a.s.ball[1]) * k, za + (zc - za) * k], carrier: (k < 0.5 ? a.s.carrier : c.s.carrier) ?? null, players };
+    const near = k < 0.5 ? a.s : c.s;
+    return { ball: [a.s.ball[0] + (c.s.ball[0] - a.s.ball[0]) * k, a.s.ball[1] + (c.s.ball[1] - a.s.ball[1]) * k, za + (zc - za) * k], carrier: near.carrier ?? null, players,
+      minute: near.minute, score: near.score, setPiece: near.setPiece ?? null, ballKind: near.ballKind ?? null };
   }
 }

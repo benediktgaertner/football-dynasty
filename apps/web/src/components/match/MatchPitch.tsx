@@ -1,7 +1,7 @@
 import { readableTextColor } from '@fd/shared';
 import { useEffect, useRef } from 'react';
-import type { MatchClient, RosterTeam, StadiumView } from '../../lib/matchClient';
-import { renderStadiumLayer, stadiumMargin } from '../../lib/stadiumArt';
+import type { MatchClient, RosterTeam, StadiumView, Weather } from '../../lib/matchClient';
+import { renderChoreoLayer, renderFanLayers, renderStadiumLayer, stadiumMargin } from '../../lib/stadiumArt';
 
 const L = 105;
 const W = 68;
@@ -11,9 +11,26 @@ export function pitchAspect(stadium: StadiumView | null | undefined): string {
   return `${L + 2 * m} / ${W + 2 * m}`;
 }
 
+const SET_PIECE_LABEL: Record<string, string> = { corner: 'Eckball', free_kick: 'Freistoß', penalty: 'Elfmeter' };
+
+/** Wetter: Rasenfarben, Licht und Partikel (rein optisch, für alle Teilnehmer gleich vom Server bestimmt) */
+const GRASS: Record<Weather, [string, string, string]> = {
+  sunny: ['#327440', '#2c6838', '#21502a'],
+  cloudy: ['#2d6838', '#285e33', '#1e4626'],
+  rain: ['#245a30', '#20512b', '#183d21'],
+  heavy_rain: ['#1f5029', '#1b4825', '#14361c'],
+  snow: ['#3a7449', '#356b43', '#e9eef2'],
+  fog: ['#2d6838', '#285e33', '#1e4626'],
+};
+
+interface Drop { x: number; y: number; v: number; l: number }
+interface Puff { x: number; y: number; r: number; a: number; vx: number; vy: number }
+
 /**
- * Canvas-Darstellung der Live-Partie: 60 fps mit Interpolation zwischen den Snapshots,
- * Trikots in Vereinsfarben, Ballhöhe mit Schatten, Ballspur und Name des Ballführenden.
+ * Canvas-Darstellung der Live-Partie: 60 fps mit Interpolation zwischen den Snapshots.
+ * Ball: Position = Bodenpunkt (Flugrichtung ist eindeutig), Höhe über Größe, Schatten und leichten
+ * Versatz; Spur je Ballart (flach, hoch, Flanke, Schuss). Standards: Einblendung, Mauer, Positionierung.
+ * Stadion: Ränge nach Kapazität, weiße Sitze, Fans in Bewegung, Choreografie, Banner, Pyrotechnik.
  */
 export function MatchPitch({ client, teams, homeColor, awayColor, highlight, stadium }: {
   stadium?: StadiumView | null;
@@ -36,14 +53,32 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
       home: teams.home.colorAlt && teams.home.colorAlt.toLowerCase() !== homeColor.toLowerCase() ? teams.home.colorAlt : txt.home,
       away: awayColor.toLowerCase() === teams.away.color.toLowerCase() && teams.away.colorAlt.toLowerCase() !== awayColor.toLowerCase() ? teams.away.colorAlt : teams.away.color.toLowerCase() !== awayColor.toLowerCase() ? teams.away.color : txt.away,
     };
-    const trail: Array<[number, number]> = [];
-    // Rand in Metern: Tore/Namen, bei bekanntem Stadion zusätzlich die Tribünen
+    const weather: Weather = stadium?.weather ?? 'cloudy';
+    const atmo = stadium?.atmosphere ?? null;
+    const grass = GRASS[weather] ?? GRASS.cloudy;
+    const trail: Array<[number, number, number]> = [];
     const M = stadiumMargin(stadium?.capacity);
-    let layer: HTMLCanvasElement | null = null;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    let base: HTMLCanvasElement | null = null;
+    let fans: [HTMLCanvasElement, HTMLCanvasElement] | null = null;
+    let choreo: HTMLCanvasElement | null = null;
     let layerKey = '';
     let raf = 0;
+    let drops: Drop[] = [];
+    const smoke: Puff[] = [];
+    let lastT = performance.now();
+    let lastScore: [number, number] | null = null;
+    let cheerUntil = 0;
+    let homeGoalMinute = -10;
+    // Pyrotechnik: zwei feste Momente je Spiel aus dem Seed (für alle gleich) + nach Heimtoren
+    const pyroSeed = atmo?.pyro_seed ?? 0.5;
+    const pyroMinutes = atmo && (atmo.choreo || pyroSeed > 0.45) ? [4 + Math.floor(pyroSeed * 18), 52 + Math.floor(((pyroSeed * 7) % 1) * 25)] : [];
+
     const draw = () => {
       raf = requestAnimationFrame(draw);
+      const now = performance.now();
+      const dt = Math.min(0.05, (now - lastT) / 1000);
+      lastT = now;
       const dpr = window.devicePixelRatio || 1;
       const cw = canvas.clientWidth;
       const ch = canvas.clientHeight;
@@ -54,34 +89,65 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
       const X = (x: number) => ox + x * s;
       const Y = (y: number) => oy + y * s;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      // Stadion (Tribünen + Fans nach realer Auslastung) als vorberechnete Ebene, sonst Rasen bis zum Rand
+      const st = client.interpolated();
+      const minute = st?.minute ?? 0;
+      if (st) {
+        if (lastScore && st.score[0] > lastScore[0]) { cheerUntil = now + 6000; homeGoalMinute = minute; }
+        if (lastScore && st.score[1] > lastScore[1]) cheerUntil = now + 2500;
+        lastScore = [st.score[0], st.score[1]];
+      }
+      // Stadion: vorberechnete Ebenen (Bau + weiße Sitze, Fans in zwei Phasen, Choreografie)
       if (stadium) {
-        ctx.fillStyle = '#15191a';
+        ctx.fillStyle = '#121519';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         const key = `${canvas.width}x${canvas.height}`;
         if (key !== layerKey) {
-          layer = renderStadiumLayer({ capacity: stadium.capacity, attendance: stadium.attendance ?? stadium.capacity * 0.5, design: stadium.design,
-            homeColors: [teams.home.color, teams.home.colorAlt], awayColor, s, ox, oy, width: canvas.width, height: canvas.height });
+          const o = { capacity: stadium.capacity, attendance: stadium.attendance ?? stadium.capacity * 0.5, design: stadium.design,
+            homeColors: [teams.home.color, teams.home.colorAlt] as [string, string], awayColor, s, ox, oy, width: canvas.width, height: canvas.height,
+            homeShort: teams.home.shortName, banners: atmo?.banners ?? false };
+          base = renderStadiumLayer(o);
+          fans = renderFanLayers(o);
+          choreo = atmo?.choreo ? renderChoreoLayer(o) : null;
           layerKey = key;
+          drops = [];
         }
-        if (layer) ctx.drawImage(layer, 0, 0);
-        ctx.fillStyle = '#1f4626';
+        if (base) ctx.drawImage(base, 0, 0);
+        const fast = now < cheerUntil;
+        const phase = reduced ? 0 : Math.floor(now / (fast ? 160 : 560)) % 2;
+        if (fans) ctx.drawImage(fans[phase]!, 0, 0);
+        // Choreografie vor dem Anpfiff/zu Beginn beider Halbzeiten
+        if (choreo && (minute < 8 || (minute >= 45 && minute < 48))) ctx.drawImage(choreo, 0, 0);
+        ctx.fillStyle = weather === 'snow' ? '#dfe6ec' : '#1f4626';
         ctx.fillRect(X(-2.4), Y(-1.5), (L + 4.8) * s, (W + 3) * s);
       } else {
-        ctx.fillStyle = '#1f4626';
+        ctx.fillStyle = weather === 'snow' ? '#dfe6ec' : '#1f4626';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
-      for (let i = 0; i < 18; i++) { ctx.fillStyle = i % 2 ? '#2f6c3a' : '#2a6234'; ctx.fillRect(X((i * L) / 18), Y(-1.5), (L / 18) * s + 1, (W + 3) * s); }
+      for (let i = 0; i < 18; i++) { ctx.fillStyle = i % 2 ? grass[0] : grass[1]; ctx.fillRect(X((i * L) / 18), Y(0), (L / 18) * s + 1, W * s); }
+      if (weather === 'snow') {
+        // Schneereste an den Rändern, Rasen leicht überzuckert
+        ctx.fillStyle = 'rgba(240,245,250,0.16)'; ctx.fillRect(X(0), Y(0), L * s, W * s);
+        ctx.fillStyle = 'rgba(240,245,250,0.55)';
+        ctx.fillRect(X(0), Y(0), L * s, 1.2 * s); ctx.fillRect(X(0), Y(W - 1.2), L * s, 1.2 * s);
+      }
       const vg = ctx.createRadialGradient(X(L / 2), Y(W / 2), W * s * 0.3, X(L / 2), Y(W / 2), L * s * 0.75);
       vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.28)');
-      ctx.fillStyle = vg; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = vg; ctx.fillRect(X(-2.4), Y(-1.5), (L + 4.8) * s, (W + 3) * s);
+      // Sonne: Dachschatten als diagonaler Streifen über einem Teil des Spielfelds
+      if (weather === 'sunny' && stadium?.design?.roof !== false) {
+        ctx.save();
+        ctx.beginPath(); ctx.rect(X(0), Y(0), L * s, W * s); ctx.clip();
+        ctx.fillStyle = 'rgba(0,0,0,0.16)';
+        ctx.beginPath(); ctx.moveTo(X(0), Y(0)); ctx.lineTo(X(L), Y(0)); ctx.lineTo(X(L), Y(W * 0.18)); ctx.lineTo(X(0), Y(W * 0.32)); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
       // Linien
-      ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+      ctx.strokeStyle = weather === 'snow' ? 'rgba(200,40,40,0.75)' : 'rgba(255,255,255,0.8)';
       ctx.lineWidth = Math.max(1, 0.22 * s);
       ctx.strokeRect(X(0), Y(0), L * s, W * s);
       ctx.beginPath(); ctx.moveTo(X(L / 2), Y(0)); ctx.lineTo(X(L / 2), Y(W)); ctx.stroke();
       ctx.beginPath(); ctx.arc(X(L / 2), Y(W / 2), 9.15 * s, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillStyle = ctx.strokeStyle;
       ctx.beginPath(); ctx.arc(X(L / 2), Y(W / 2), 0.35 * s, 0, Math.PI * 2); ctx.fill();
       for (const left of [true, false]) {
         const gx = left ? 0 : L;
@@ -90,45 +156,57 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
         ctx.strokeRect(X(left ? 0 : L - 5.5), Y(W / 2 - 9.16), 5.5 * s, 18.32 * s);
         ctx.beginPath(); ctx.arc(X(gx + d * 11), Y(W / 2), 0.3 * s, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.arc(X(gx + d * 11), Y(W / 2), 9.15 * s, left ? -0.93 : Math.PI - 0.93, left ? 0.93 : Math.PI + 0.93); ctx.stroke();
-        // Tor mit Netz
         const nx = left ? X(-2.2) : X(L);
         ctx.fillStyle = 'rgba(255,255,255,0.12)';
         ctx.fillRect(nx, Y(W / 2 - 3.66), 2.2 * s, 7.32 * s);
         ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = Math.max(0.5, 0.06 * s);
         for (let k = 0; k <= 7; k++) { ctx.beginPath(); ctx.moveTo(nx, Y(W / 2 - 3.66 + k * 1.046)); ctx.lineTo(nx + 2.2 * s, Y(W / 2 - 3.66 + k * 1.046)); ctx.stroke(); }
         ctx.restore();
-        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1.5, 0.3 * s);
+        ctx.save(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1.5, 0.3 * s);
         ctx.beginPath(); ctx.moveTo(X(gx), Y(W / 2 - 3.66)); ctx.lineTo(left ? X(-2.2) : X(L + 2.2), Y(W / 2 - 3.66)); ctx.lineTo(left ? X(-2.2) : X(L + 2.2), Y(W / 2 + 3.66)); ctx.lineTo(X(gx), Y(W / 2 + 3.66)); ctx.stroke();
-        ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = Math.max(1, 0.22 * s);
+        ctx.restore();
+        ctx.fillStyle = ctx.strokeStyle;
       }
       for (const [cx, cy, a0] of [[0, 0, 0], [L, 0, Math.PI / 2], [L, W, Math.PI], [0, W, -Math.PI / 2]] as const) {
         ctx.beginPath(); ctx.arc(X(cx), Y(cy), 1 * s, a0, a0 + Math.PI / 2); ctx.stroke();
       }
+      // Eckfahnen
+      for (const [cx, cy] of [[0, 0], [L, 0], [L, W], [0, W]] as const) {
+        ctx.fillStyle = '#f5d000'; ctx.beginPath(); ctx.arc(X(cx), Y(cy), 0.35 * s, 0, Math.PI * 2); ctx.fill();
+      }
 
-      const st = client.interpolated();
-      if (!st) return;
+      if (!st) { drawWeather(); drawPyro(); return; }
+      const sp = st.setPiece;
       const sinceCut = performance.now() - client.cutAt;
       if (sinceCut < 50) trail.length = 0;
       const [bx, by, bz] = st.ball;
-      // Ballspur
-      trail.push([bx, by - bz * 0.55]);
-      if (trail.length > 14) trail.shift();
+      // Spur am Boden entlang der echten Flugbahn (Richtung eindeutig); Stil je Ballart
+      trail.push([bx, by, bz]);
+      if (trail.length > 16) trail.shift();
+      const kind = st.ballKind;
       for (let i = 1; i < trail.length; i++) {
         const a = trail[i - 1]!, b = trail[i]!;
-        ctx.strokeStyle = `rgba(255,255,255,${(i / trail.length) * 0.35})`;
-        ctx.lineWidth = (0.15 + (i / trail.length) * 0.35) * s;
+        const f = i / trail.length;
+        const shot = kind === 'shot';
+        ctx.strokeStyle = shot ? `rgba(255,245,200,${f * 0.6})` : kind === 'cross' || kind === 'lofted' || kind === 'set_piece' ? `rgba(255,255,255,${f * 0.28})` : `rgba(255,255,255,${f * 0.32})`;
+        ctx.lineWidth = (shot ? 0.25 + f * 0.45 : 0.12 + f * 0.3) * s;
+        if (kind === 'cross' || kind === 'lofted' || kind === 'set_piece') ctx.setLineDash([0.6 * s, 0.5 * s]);
         ctx.beginPath(); ctx.moveTo(X(a[0]), Y(a[1])); ctx.lineTo(X(b[0]), Y(b[1])); ctx.stroke();
+        ctx.setLineDash([]);
       }
 
       const r = 1.45 * s;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       let carrierPos: [number, number, string] | null = null;
-      // Spieler (Schatten zuerst)
+      // Schatten (Richtung nach Wetter: Sonne lang, bewölkt kurz)
+      const shx = weather === 'sunny' ? 0.6 : 0.25, shy = weather === 'sunny' ? 0.75 : 0.5, sha = weather === 'sunny' ? 0.32 : weather === 'fog' ? 0.12 : 0.22;
       for (const [, [x, y]] of st.players) {
-        ctx.beginPath(); ctx.ellipse(X(x) + 0.25 * s, Y(y) + 0.55 * s, r * 1.05, r * 0.55, 0, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.fill();
+        ctx.beginPath(); ctx.ellipse(X(x) + shx * s, Y(y) + shy * s, r * 1.05, r * 0.55, 0, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(0,0,0,${sha})`; ctx.fill();
       }
+      // Standard: Elfmeterpunkt/Mauer hervorheben
+      const wall = new Set(sp?.wall ?? []);
       ctx.font = `700 ${Math.round(1.5 * s)}px "Barlow Condensed", system-ui, sans-serif`;
       for (const [id, [x, y]] of st.players) {
         const p = info.get(id);
@@ -136,36 +214,119 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
         const isCarrier = id === st.carrier;
         if (isCarrier) {
           ctx.beginPath(); ctx.arc(X(x), Y(y), r * 1.75, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(242,193,78,0.22)'; ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,0.16)'; ctx.fill();
           carrierPos = [x, y, p.name];
+        }
+        if (wall.has(id)) {
+          ctx.beginPath(); ctx.arc(X(x), Y(y), r * 1.35, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 0.18 * s; ctx.stroke();
         }
         ctx.beginPath(); ctx.arc(X(x), Y(y), r, 0, Math.PI * 2);
         ctx.fillStyle = fill[p.side]; ctx.fill();
         ctx.lineWidth = 0.32 * s;
-        ctx.strokeStyle = id === highlight ? '#f2c14e' : ring[p.side]; ctx.stroke();
+        ctx.strokeStyle = id === highlight ? '#ffd24a' : ring[p.side]; ctx.stroke();
         ctx.fillStyle = txt[p.side];
         ctx.fillText(String(p.n || ''), X(x), Y(y) + 0.08 * s);
       }
-      // Ball: Schatten am Boden, Ball mit Höhe
-      ctx.beginPath(); ctx.ellipse(X(bx), Y(by) + 0.3 * s, 0.7 * s, 0.4 * s, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();
-      const br = (0.72 + Math.min(bz, 9) * 0.06) * s;
-      ctx.beginPath(); ctx.arc(X(bx), Y(by - bz * 0.55), br, 0, Math.PI * 2); ctx.fillStyle = '#ffffff'; ctx.fill();
+      // Ball: Bodenpunkt + Schatten; Höhe über Größe und leichten Versatz (Vogelperspektive mit minimaler Neigung)
+      const z = Math.max(0, bz);
+      const shadowR = Math.max(0.35, 0.75 - z * 0.03);
+      ctx.beginPath(); ctx.ellipse(X(bx + z * 0.06), Y(by + z * 0.09), shadowR * s, shadowR * 0.6 * s, 0, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(0,0,0,${Math.max(0.14, 0.4 - z * 0.025)})`; ctx.fill();
+      const br = (0.7 + Math.min(z, 10) * 0.09) * s;
+      const ballX = X(bx - z * 0.04), ballY = Y(by - z * 0.16);
+      ctx.beginPath(); ctx.arc(ballX, ballY, br, 0, Math.PI * 2); ctx.fillStyle = '#ffffff'; ctx.fill();
       ctx.lineWidth = 0.14 * s; ctx.strokeStyle = '#111'; ctx.stroke();
+      ctx.beginPath(); ctx.arc(ballX - br * 0.25, ballY - br * 0.2, br * 0.32, 0, Math.PI * 2); ctx.fillStyle = 'rgba(40,40,40,0.55)'; ctx.fill();
       // Name des Ballführenden
-      if (carrierPos) {
+      if (carrierPos && !sp) {
         const [x, y, name] = carrierPos;
         ctx.font = `600 ${Math.round(1.55 * s)}px "Barlow", system-ui, sans-serif`;
         const w = ctx.measureText(name).width + 0.9 * s;
         const ly = Y(y) - r - 1.6 * s;
-        ctx.fillStyle = 'rgba(12,16,12,0.78)';
+        ctx.fillStyle = 'rgba(12,14,18,0.78)';
         ctx.beginPath(); ctx.roundRect(X(x) - w / 2, ly - 0.95 * s, w, 1.9 * s, 0.5 * s); ctx.fill();
-        ctx.fillStyle = '#f5efe0';
+        ctx.fillStyle = '#f5f7fa';
         ctx.fillText(name, X(x), ly + 0.05 * s);
+      }
+      drawWeather();
+      drawPyro();
+      // Standard-Einblendung (Vorbereitung sichtbar, bevor ausgeführt wird)
+      if (sp) {
+        const team = sp.side === 'home' ? teams.home : teams.away;
+        const label = `${SET_PIECE_LABEL[sp.kind] ?? 'Standard'} · ${team.shortName}`;
+        ctx.font = `800 ${Math.round(2.1 * s)}px "Barlow Condensed", system-ui, sans-serif`;
+        const w = ctx.measureText(label).width + 2.4 * s;
+        const cx = X(L / 2), cy = Y(3.2);
+        ctx.fillStyle = 'rgba(10,12,16,0.82)';
+        ctx.beginPath(); ctx.roundRect(cx - w / 2, cy - 1.5 * s, w, 3 * s, 0.8 * s); ctx.fill();
+        ctx.fillStyle = sp.side === 'home' ? homeColor : awayColor;
+        ctx.fillRect(cx - w / 2, cy - 1.5 * s, 0.5 * s, 3 * s);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(label.toUpperCase(), cx + 0.2 * s, cy + 0.1 * s);
       }
       // Schnitt: kurze Abblende, damit Sprünge nicht als Teleport wirken
       if (sinceCut < 320) {
-        ctx.fillStyle = `rgba(10,14,10,${0.85 * (1 - sinceCut / 320)})`;
+        ctx.fillStyle = `rgba(8,10,14,${0.85 * (1 - sinceCut / 320)})`;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      function drawWeather() {
+        if (reduced) return;
+        const area = canvas.width * canvas.height;
+        if (weather === 'rain' || weather === 'heavy_rain' || weather === 'snow') {
+          const snow = weather === 'snow';
+          const want = Math.round((area / 9000) * (weather === 'heavy_rain' ? 1.8 : snow ? 0.9 : 0.9));
+          while (drops.length < Math.min(want, 420)) drops.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, v: (snow ? 0.5 + Math.random() * 0.6 : 7 + Math.random() * 4) * s, l: snow ? (0.18 + Math.random() * 0.22) * s : (1.2 + Math.random() * 1.4) * s });
+          ctx.save();
+          ctx.strokeStyle = weather === 'heavy_rain' ? 'rgba(200,215,235,0.42)' : 'rgba(200,215,235,0.32)';
+          ctx.fillStyle = 'rgba(255,255,255,0.85)';
+          ctx.lineWidth = Math.max(1, 0.08 * s);
+          ctx.beginPath();
+          for (const d of drops) {
+            d.y += d.v * dt * (snow ? 4 : 9);
+            d.x += (snow ? Math.sin((d.y + d.l * 40) / (8 * s)) * 0.6 : -0.35 * d.v * dt * 9 * 0.25);
+            if (d.y > canvas.height) { d.y = -10; d.x = Math.random() * canvas.width; }
+            if (snow) { ctx.moveTo(d.x + d.l, d.y); ctx.arc(d.x, d.y, d.l, 0, Math.PI * 2); }
+            else { ctx.moveTo(d.x, d.y); ctx.lineTo(d.x + d.l * 0.25, d.y - d.l); }
+          }
+          if (snow) ctx.fill(); else ctx.stroke();
+          ctx.restore();
+          if (!snow) { ctx.fillStyle = weather === 'heavy_rain' ? 'rgba(20,35,55,0.22)' : 'rgba(20,35,55,0.12)'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+        } else if (weather === 'fog') {
+          const g = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, Math.min(canvas.width, canvas.height) * 0.2, canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) * 0.7);
+          g.addColorStop(0, 'rgba(210,215,220,0.10)'); g.addColorStop(1, 'rgba(210,215,220,0.5)');
+          ctx.fillStyle = g; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else if (weather === 'sunny') {
+          ctx.fillStyle = 'rgba(255,214,150,0.05)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else {
+          ctx.fillStyle = 'rgba(110,122,140,0.08)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+
+      // Pyrotechnik in der Heimkurve: Fackelglühen + aufsteigender Rauch (rein optisch)
+      function drawPyro() {
+        if (!stadium || reduced) return;
+        const active = pyroMinutes.some((m) => minute >= m && minute < m + 2) || (minute >= homeGoalMinute && minute < homeGoalMinute + 2);
+        const kx = -M + 1.2;
+        if (active) {
+          for (let i = 0; i < 4; i++) {
+            const fy = W * (0.25 + i * 0.17);
+            const fx = kx + (i % 2) * 1.4;
+            const flick = 0.75 + Math.sin(now / 60 + i * 2.1) * 0.15 + Math.random() * 0.1;
+            const g = ctx.createRadialGradient(X(fx), Y(fy), 0, X(fx), Y(fy), 3.2 * s * flick);
+            g.addColorStop(0, 'rgba(255,240,200,0.95)'); g.addColorStop(0.25, 'rgba(255,90,40,0.75)'); g.addColorStop(1, 'rgba(255,60,20,0)');
+            ctx.fillStyle = g; ctx.beginPath(); ctx.arc(X(fx), Y(fy), 3.2 * s * flick, 0, Math.PI * 2); ctx.fill();
+            if (smoke.length < 90 && Math.random() < 0.5) smoke.push({ x: X(fx), y: Y(fy), r: (0.8 + Math.random()) * s, a: 0.35, vx: (0.6 + Math.random()) * s, vy: (-0.4 - Math.random() * 0.6) * s });
+          }
+        }
+        for (let i = smoke.length - 1; i >= 0; i--) {
+          const p = smoke[i]!;
+          p.x += p.vx * dt * 6; p.y += p.vy * dt * 6; p.r += s * dt * 2.2; p.a -= dt * 0.09;
+          if (p.a <= 0) { smoke.splice(i, 1); continue; }
+          ctx.fillStyle = `rgba(190,190,195,${p.a})`;
+          ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+        }
       }
     };
     draw();

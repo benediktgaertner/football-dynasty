@@ -131,8 +131,10 @@ select public.post_transaction(:'host_club', 'adjustment', 80000000, 'test:boost
 set role authenticated;
 select tests.login(:'host');
 select tests.assert((public.make_transfer_offer(:'target', 0, 100000, 2) ->> 'status') = 'rejected', 'KI lehnt Nullangebot ab');
-select tests.assert((public.make_transfer_offer(:'target', (:target_value * 1.0)::bigint, 100000, 2) ->> 'status') = 'countered', 'KI macht Gegenangebot');
-select public.make_transfer_offer(:'target', (:target_value * 1.5)::bigint, 5000000, 3) as deal \gset
+select public.make_transfer_offer(:'target', (:target_value * 1.0)::bigint, 100000, 2) as hes \gset
+select tests.assert((:'hes'::jsonb ->> 'status') = 'pending', 'KI zögert bei einem Angebot zum Marktwert (Antwort frühestens nach einer Woche)');
+select public.withdraw_transfer_offer((:'hes'::jsonb ->> 'offer')::uuid);
+select public.make_transfer_offer(:'target', (:target_value * 2.5)::bigint, 5000000, 3) as deal \gset
 select tests.assert((:'deal'::jsonb ->> 'status') = 'completed', 'Transfer abgeschlossen');
 reset role;
 select tests.assert((select club_id from public.players where id = :'target') = :'host_club', 'Spieler gehört jetzt dem Host');
@@ -141,12 +143,24 @@ select tests.assert(not exists (select 1 from public.tactical_profile_slots s jo
   'aus der Aufstellung des alten Vereins entfernt');
 set role authenticated;
 select tests.login(:'host');
-select tests.assert((public.sign_free_agent(:'fa', 2) ->> 'status') = 'completed', 'Free Agent verpflichtet');
+-- Free Agent: Bewerbung, Entscheidung frühestens nach 7 Tagen, ein Vertrag
+select tests.assert((public.sign_free_agent(:'fa', 2) ->> 'status') = 'applied', 'Bewerbung beim Free Agent');
+select tests.expect_error(format($$ select public.sign_free_agent(%L, 2) $$, :'fa'), 'already_applied');
 select tests.login(:'guest');
-select tests.expect_error(format($$ select public.sign_free_agent(%L, 2) $$, :'fa'), 'gone');
+select tests.assert((public.sign_free_agent(:'fa', 2) ->> 'status') = 'applied', 'zweiter Interessent innerhalb der Woche');
+select tests.login(:'host');
+reset role;
+select tests.assert((select decision_on = first_interest_on + 7 from public.free_agents where player_id = :'fa'), 'Frist exakt 7 Kalendertage');
+select tests.assert(public.fd_fa_process(:'world') = 0, 'keine Entscheidung vor Fristablauf');
+update public.free_agents set decision_on = public.fd_world_date(:'world') where player_id = :'fa';
+select public.fd_fa_process(:'world');
+select tests.assert(not exists (select 1 from public.fa_applications where player_id = :'fa' and status = 'pending'), 'Entscheidung automatisch getroffen');
+select tests.assert((select count(*) from public.fa_applications where player_id = :'fa' and status = 'signed') <= 1, 'höchstens ein Vertrag');
+select (select count(*) from public.transfers where player_id = :'fa' and to_club_id = :'host_club') as fa_host \gset
+set role authenticated;
 select tests.login(:'host');
 select tests.assert((public.sell_to_ai(:'mine') ->> 'status') = 'completed', 'Verkauf an KI');
-select tests.assert((public.matchday_state(:'world') -> 'window' ->> 'signings')::int = 2, 'Limitzähler Neuzugänge');
+select tests.assert((public.matchday_state(:'world') -> 'window' ->> 'signings')::int = 1 + :fa_host, 'Limitzähler Neuzugänge');
 -- Mensch ↔ Mensch
 select p.id as gplayer from public.players p where p.club_id = :'guest_club' order by p.overall desc limit 1 \gset
 select (public.make_transfer_offer(:'gplayer', 1000000, 9000000, 2) ->> 'offer') as hoffer \gset

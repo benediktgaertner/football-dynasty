@@ -19,12 +19,15 @@ set role authenticated;
 select tests.login(:'host');
 select public.matchday_report(:'world', :'rslot') as rep \gset
 reset role;
-select tests.assert(jsonb_array_length(:'rep'::jsonb -> 'competitions') >= 3, 'Übersicht: Ergebnisse der drei Ligen');
+select tests.assert(jsonb_array_length(:'rep'::jsonb -> 'competitions') = 1, 'Übersicht: nur die eigene Liga');
+select tests.assert((:'rep'::jsonb -> 'competitions' -> 0 ->> 'name') = (:'rep'::jsonb -> 'table' ->> 'name'), 'Übersicht: Ergebnisse der eigenen Liga');
 select tests.assert((select count(*) from jsonb_array_elements(:'rep'::jsonb -> 'competitions') c, jsonb_array_elements(c -> 'games') g, jsonb_array_elements(g -> 'events') e where e ->> 'type' = 'goal')
   = (select count(*) from public.match_events e join public.fixtures f on f.id = e.fixture_id join public.season_slots s on s.season_id = f.season_id and s.slot_key = f.slot_key
-     where s.id = :'rslot' and e.type = 'goal' and e.player_id is not null and f.status = 'released'), 'Übersicht: alle Torschützen des Termins');
+     join public.competitions c on c.id = f.competition_id
+     where s.id = :'rslot' and e.type = 'goal' and e.player_id is not null and f.status = 'released' and c.name = (:'rep'::jsonb -> 'table' ->> 'name')), 'Übersicht: alle Torschützen der eigenen Liga');
 select tests.assert(jsonb_array_length(:'rep'::jsonb -> 'top_ratings') = least(5, (select count(*) from public.match_player_stats ms join public.fixtures f on f.id = ms.fixture_id
-  join public.season_slots s on s.season_id = f.season_id and s.slot_key = f.slot_key where s.id = :'rslot' and ms.minutes >= 45 and ms.rating is not null)), 'Übersicht: Top-Spieler des Spieltags');
+  join public.season_slots s on s.season_id = f.season_id and s.slot_key = f.slot_key join public.competitions c on c.id = f.competition_id
+  where s.id = :'rslot' and ms.minutes >= 45 and ms.rating is not null and c.name = (:'rep'::jsonb -> 'table' ->> 'name'))), 'Übersicht: Top-Spieler des Spieltags');
 select tests.assert((:'rep'::jsonb -> 'table' -> 'rows' -> 0 ->> 'prev') is not null, 'Übersicht: Tabellenveränderung');
 
 -- Pflichtübersicht: gesehen markieren

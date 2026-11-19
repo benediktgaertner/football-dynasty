@@ -4,21 +4,32 @@
 @import '@fontsource/barlow-condensed/600.css';
 @import '@fontsource/barlow-condensed/800.css';
 
-/* L1/F3: eigene Designidentität – dunkles Oliv, Anthrazit, Stadiongrün, Creme, Goldgelb, Sunset Orange */
+/*
+ * Zentrales Farbsystem: neutrale, hochwertige Grundgestaltung (Anthrazit, Graustufen, helle Kontraste)
+ * mit EINER Akzentfarbe je Wettbewerb. Die Akzentfarbe setzt lib/theme.ts als CSS-Variable
+ * (--fd-accent); alle Klassen mit „gold“ folgen ihr automatisch – beim Aufstieg oder Wettbewerbswechsel
+ * passt sich die App ohne weitere Änderungen an. Die Klassennamen „olive-*“ sind historisch und meinen
+ * heute die neutralen Flächen-Grautöne.
+ */
+:root {
+  --fd-accent: #ff4d5e;
+  --fd-accent-2: #ff8a8a;
+  --fd-glow: 255 77 94;
+}
 @theme {
-  --color-ink: #15170f;
-  --color-anthracite: #1b1e16;
-  --color-olive-900: #23271c;
-  --color-olive-800: #2d3224;
-  --color-olive-700: #3a4130;
-  --color-olive-600: #4a523d;
+  --color-ink: #0d0f12;
+  --color-anthracite: #14171c;
+  --color-olive-900: #1b1f26;
+  --color-olive-800: #242a33;
+  --color-olive-700: #333b46;
+  --color-olive-600: #48515e;
   --color-pitch: #2f6b3a;
   --color-pitch-light: #3c7a3a;
-  --color-cream: #f4ebd0;
-  --color-cream-dim: #cfc6ab;
-  --color-gold: #f2c14e;
-  --color-sunset: #e2582b;
-  --color-danger: #d9534f;
+  --color-cream: #eef1f5;
+  --color-cream-dim: #a9b2bf;
+  --color-gold: var(--fd-accent);
+  --color-sunset: var(--fd-accent-2);
+  --color-danger: #e5484d;
   --font-sans: 'Barlow', system-ui, sans-serif;
   --font-display: 'Barlow Condensed', 'Barlow', system-ui, sans-serif;
 }
@@ -32,8 +43,8 @@ body,
 body {
   margin: 0;
   background:
-    radial-gradient(1200px 600px at 85% -10%, rgb(47 107 58 / 0.25), transparent 60%),
-    radial-gradient(900px 500px at -10% 110%, rgb(226 88 43 / 0.12), transparent 60%),
+    radial-gradient(1200px 600px at 85% -10%, rgb(var(--fd-glow) / 0.16), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgb(120 135 160 / 0.10), transparent 60%),
     var(--color-anthracite);
   color: var(--color-cream);
   font-family: var(--font-sans);
@@ -90,8 +101,8 @@ select {
 .fd-toast { animation: fd-toast-in 2.2s ease-out both; }
 
 /* Drag-and-drop (Aufstellung, Wechsel) */
-.fd-drag-ghost { position: fixed; z-index: 100; pointer-events: none; transform: translate(-50%, -120%); padding: 6px 12px; border-radius: 999px; background: #f2c14e; color: #141814; font-weight: 700; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.45); white-space: nowrap; }
-.fd-drop-hover > span:first-child { outline: 4px solid #f2c14e; outline-offset: 2px; }
+.fd-drag-ghost { position: fixed; z-index: 100; pointer-events: none; transform: translate(-50%, -120%); padding: 6px 12px; border-radius: 999px; background: var(--fd-accent); color: #0d0f12; font-weight: 700; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.45); white-space: nowrap; }
+.fd-drop-hover > span:first-child { outline: 4px solid var(--fd-accent); outline-offset: 2px; }
 
 /* Spielfeld + Bank + Taktik: feste Spaltenbreite für das Spielfeld (Safari kann „auto“-Spalten
    mit prozentualer Kindbreite nicht auflösen und zeigt das Feld sonst mit 0 px Breite). */

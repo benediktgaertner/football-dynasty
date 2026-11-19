@@ -181,6 +181,16 @@ export const seasonApi = {
   markReviewSeen: (worldId: string, slotId: string) => rpc<void>('mark_review_seen', { p_world: worldId, p_slot: slotId }),
   playerProfile: (playerId: string) => rpc<PlayerProfileData>('player_profile', { p_player: playerId }),
   clubProfile: (clubId: string) => rpc<ClubProfileData>('club_profile', { p_club: clubId }),
+  seasonCalendar: (worldId: string) => rpc<{ today: string; fixtures: CalendarFixture[] }>('season_calendar', { p_world: worldId }),
+  topTransfers: (worldId: string, scope: 'league' | 'world', window: 1 | 2 | null) =>
+    rpc<{ scope: string; window: number; league: string | null; rows: TopTransfer[] }>('top_transfers', { p_world: worldId, p_scope: scope, p_window: window }),
+  trainingPlan: (worldId: string) => rpc<TrainingPlan>('training_plan', { p_world: worldId }),
+  saveTrainingPlan: (worldId: string, active: boolean, entries: Array<{ player_id: string; focus: string; paused: boolean }>) =>
+    rpc<TrainingPlan>('save_training_plan', { p_world: worldId, p_active: active, p_entries: entries }),
+  faOverview: (worldId: string) => rpc<FaOverview>('fa_overview', { p_world: worldId }),
+  withdrawFa: (applicationId: string) => rpc<void>('withdraw_fa_application', { p_application: applicationId }),
+  negotiations: (worldId: string) => rpc<Negotiation[]>('my_negotiations', { p_world: worldId }),
+  renegotiate: (offerId: string, fee: number) => rpc<{ status: string; message?: string }>('renegotiate_offer', { p_offer: offerId, p_fee: fee }),
   developmentReport: (worldId: string, clubId: string, seasonId?: string | null) =>
     rpc<DevelopmentReport>('development_report', { p_world: worldId, p_club: clubId, p_season: seasonId ?? null }),
   playerDevelopment: (playerId: string) => rpc<PlayerDevelopmentSeason[]>('player_development', { p_player: playerId }),
@@ -298,4 +308,27 @@ export interface PlayerDevelopmentSeason {
   match_xp: number;
   training_sessions: number;
   matches: number;
+}
+
+export interface CalendarFixture { id: string; date: string; home: boolean; status: string; kind: string; competition: string; opponent: ClubRefFull; gf: number | null; ga: number | null }
+export interface TopTransfer { player_id: string; name: string; overall: number; age: number; position: string; from: ClubRefFull | null; to: ClubRefFull | null; fee: number }
+export interface TrainingPlan {
+  active: boolean;
+  entries: Array<{ player_id: string; focus: string; paused: boolean; name: string }>;
+  last_run: { week: number; executed: number; at: string; skipped: Array<{ player_id: string; reason: string }>; sessions: Array<{ player_id: string; name: string; focus: string; xp: number | null; gains: Record<string, number> }> } | null;
+  this_week_done: boolean;
+}
+export interface FaOverview {
+  today: string;
+  limit: { used: number; max: number };
+  window_open: boolean;
+  open: Array<{ player_id: string; name: string; overall: number; age: number; position: string; salary: number; decision_on: string; days_left: number; clubs: ClubRefFull[] | null; mine: boolean; application_id: string | null }>;
+  mine: Array<{ id: string; player_id: string; name: string; status: string; note: string | null; created_on: string }>;
+  decisions: Array<{ player_id: string; name: string; club: ClubRefFull; applicants: number; at: string }>;
+}
+export interface Negotiation {
+  id: string; player_id: string; name: string; overall: number; age: number; position: string; market_value: number;
+  seller: ClubRefFull | null; buyer: ClubRefFull; incoming: boolean; status: string; fee: number; counter_fee: number | null; salary: number; counter_salary: number | null;
+  round: number; next_response_on: string | null; deadline_on: string | null; note: string | null; created_at: string;
+  history: Array<{ by: string; action: string; fee: number; on: string }>;
 }

@@ -5,7 +5,7 @@ import { PlayerAvatar } from '../components/PlayerAvatar';
 import { WorldNav } from '../components/WorldNav';
 import { Button, Card, ErrorBanner, Pill, Shell, Spinner, TextInput } from '../components/ui';
 import { formatEuro } from '../lib/api';
-import { estimateSalary, seasonApi, type MarketFilters, type MarketOptions, type MarketPlayer, type TransferOffer, type WindowInfo } from '../lib/seasonApi';
+import { estimateSalary, seasonApi, type FaOverview, type Negotiation, type MarketFilters, type MarketOptions, type MarketPlayer, type TransferOffer, type WindowInfo } from '../lib/seasonApi';
 import { requireSupabase } from '../lib/supabase';
 
 const POSITIONS = ['', 'GK', 'CB', 'LB', 'RB', 'LWB', 'RWB', 'CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'CF', 'ST'];
@@ -130,6 +130,7 @@ export function Transfers() {
           <p className="mt-2 text-xs text-cream-dim">Einmalig je Welt: Vereine und Kader aller 55 Verbände entstehen. Deine Karriere, Kader, Transfers und Finanzen bleiben unverändert.</p>
         </Card>
       )}
+      {tab === 'free' && <FaPanel worldId={worldId} act={act} reloadKey={msg ?? ''} />}
       {(tab === 'market' || tab === 'free') && (
         <Card>
           <MarketFilterBar filters={filters} options={options} free={tab === 'free'} onChange={setFilters}
@@ -153,7 +154,7 @@ export function Transfers() {
                     </div>
                     <span className="display w-10 text-center text-2xl font-bold">{p.overall}</span>
                     <span className="w-28 text-right text-sm">{tab === 'free' ? `${mio(p.salary ?? 0)}/J.` : mio(p.market_value)}</span>
-                    <Button variant="secondary" disabled={!win?.open} onClick={() => setTarget(p)}>{tab === 'free' ? 'Verpflichten' : 'Angebot'}</Button>
+                    <Button variant="secondary" disabled={!win?.open} onClick={() => setTarget(p)}>{tab === 'free' ? 'Bewerben' : 'Angebot'}</Button>
                   </li>
                 ))}
                 {players.length === 0 && <li className="py-3 text-cream-dim">Keine Spieler gefunden.</li>}
@@ -170,32 +171,7 @@ export function Transfers() {
         </Card>
       )}
 
-      {tab === 'offers' && (
-        <Card>
-          <ul className="divide-y divide-olive-700/50">
-            {offers.map((o) => (
-              <li key={o.id} className="flex flex-wrap items-center gap-2 py-2">
-                <div className="min-w-0 flex-1">
-                  <div className="font-semibold">{o.player.name} <span className="text-cream-dim">({o.player.position}, {o.player.overall})</span></div>
-                  <div className="text-xs text-cream-dim">{o.direction === 'out' ? `Dein Angebot an ${o.from.name}` : `Angebot von ${o.to.name}`} · Ablöse {mio(o.fee)} · Gehalt {mio(o.salary)}/J. · {o.years} J.</div>
-                  {o.status === 'countered' && <div className="text-sm text-gold">Gegenangebot: {o.counter_fee ? `Ablöse ${mio(o.counter_fee)}` : ''}{o.counter_salary ? ` · Gehalt ${mio(o.counter_salary)}/J.` : ''}</div>}
-                </div>
-                <Pill tone={o.status === 'completed' ? 'good' : o.status === 'pending' || o.status === 'countered' ? 'gold' : 'neutral'}>{STATUS[o.status] ?? o.status}</Pill>
-                {o.direction === 'out' && o.status === 'countered' && <Button busy={busy === 'ac' + o.id} onClick={() => act('ac' + o.id, () => seasonApi.acceptCounter(o.id))}>Annehmen</Button>}
-                {o.direction === 'out' && (o.status === 'pending' || o.status === 'countered') && <Button variant="ghost" onClick={() => act('w' + o.id, () => seasonApi.withdraw(o.id))}>Zurückziehen</Button>}
-                {o.direction === 'in' && o.status === 'pending' && (
-                  <>
-                    <Button busy={busy === 'acc' + o.id} onClick={() => act('acc' + o.id, () => seasonApi.respond(o.id, 'accept'))}>Annehmen</Button>
-                    <Button variant="secondary" onClick={() => { const v = prompt('Geforderte Ablöse in Mio. €', String(Math.round(o.fee / 1e5) / 10 + 1)); if (v) act('c' + o.id, () => seasonApi.respond(o.id, 'counter', Math.round(Number(v.replace(',', '.')) * 1e6))); }}>Gegenangebot</Button>
-                    <Button variant="ghost" onClick={() => act('r' + o.id, () => seasonApi.respond(o.id, 'reject'))}>Ablehnen</Button>
-                  </>
-                )}
-              </li>
-            ))}
-            {offers.length === 0 && <li className="py-3 text-cream-dim">Noch keine Verhandlungen.</li>}
-          </ul>
-        </Card>
-      )}
+      {tab === 'offers' && <NegotiationsPanel worldId={worldId} busy={busy} act={act} reloadKey={offers.length + (msg ?? '')} />}
 
       {tab === 'squad' && (
         <Card>
@@ -236,16 +212,16 @@ function OfferDialog({ player, free, onClose, onSubmit }: { player: MarketPlayer
           <div className="mt-4 space-y-3">
             {!free && <label className="block text-sm">Ablöse (Mio. €)<TextInput type="number" step="0.1" min={0} value={fee} onChange={(e) => setFee(Number(e.target.value))} /></label>}
             {!free && <label className="block text-sm">Jahresgehalt (Mio. €)<TextInput type="number" step="0.05" min={0.05} value={salary} onChange={(e) => setSalary(Number(e.target.value))} /></label>}
-            {free && <p className="text-sm">Festes Jahresgehalt: {mio(player.salary ?? 0)} · keine Ablöse</p>}
+            {free && <p className="text-sm">Festes, nicht verhandelbares Jahresgehalt: {mio(player.salary ?? 0)} · keine Ablöse. Der Spieler entscheidet frühestens 7 Tage nach der ersten Interessensbekundung – auch weitere Vereine können sich in dieser Woche bewerben.</p>}
             <label className="block text-sm">Vertragslaufzeit (Jahre)
               <select value={years} onChange={(e) => setYears(Number(e.target.value))} className="mt-1 min-h-11 w-full rounded-xl border border-olive-600 bg-olive-800 px-3">
                 {[1, 2, 3, 4, 5].map((y) => <option key={y} value={y}>{y}</option>)}
               </select>
             </label>
-            <p className="text-xs text-cream-dim">KI-Vereine verlangen für Stammspieler mehr und machen Gegenangebote. Der Spieler stimmt nur zu, wenn Gehalt, Liga, Vereinsruf und Aussicht auf Einsatzzeit passen.</p>
+            {!free && <p className="text-xs text-cream-dim">Der Verein antwortet sofort mit Annahme, Ablehnung oder Zögern. Beim Zögern folgt frühestens nach einer Woche ein Gegenangebot – höchstens drei Runden in vier Wochen, nur im geöffneten Transferfenster.</p>}
           </div>
           <div className="mt-4 flex gap-2">
-            <Button className="flex-1" onClick={() => onSubmit(Math.round(fee * 1e6), Math.round(salary * 1e6), years)}>{free ? 'Verpflichten' : 'Angebot senden'}</Button>
+            <Button className="flex-1" onClick={() => onSubmit(Math.round(fee * 1e6), Math.round(salary * 1e6), years)}>{free ? 'Interesse bekunden' : 'Angebot senden'}</Button>
             <Button variant="ghost" onClick={onClose}>Abbrechen</Button>
           </div>
         </div>
@@ -304,5 +280,104 @@ function MarketFilterBar({ filters: f, options, free, onChange, onSearch, onRese
         <Button type="button" variant="ghost" onClick={onReset}>Zurücksetzen</Button>
       </div>
     </form>
+  );
+}
+
+const NSTATUS: Record<string, string> = { pending: 'Verein überlegt', countered: 'Gegenangebot', completed: 'Abgeschlossen', rejected: 'Gescheitert', withdrawn: 'Zurückgezogen', expired: 'Verfallen', accepted: 'Angenommen' };
+const ACTION: Record<string, string> = { offer: 'Angebot', hesitate: 'Verein zögert', counter: 'Gegenforderung', rebid: 'Neues Angebot', accept: 'Einigung', reject: 'Abgelehnt', withdraw: 'Ausstieg', salary: 'Gehaltsforderung', failed: 'Abbruch' };
+const dm = (d: string | null) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) : '–');
+
+/** Verhandlungen: Status, aktuelle Forderung, bisherige Angebote und nächster Antworttermin */
+function NegotiationsPanel({ worldId, busy, act, reloadKey }: { worldId: string; busy: string | null; act: (k: string, fn: () => Promise<{ message?: string } | void>) => void; reloadKey: unknown }) {
+  const [rows, setRows] = useState<Negotiation[] | null>(null);
+  useEffect(() => { void seasonApi.negotiations(worldId).then(setRows).catch(() => setRows([])); }, [worldId, reloadKey]);
+  if (!rows) return <Card><p className="text-cream-dim">Verhandlungen werden geladen …</p></Card>;
+  return (
+    <Card>
+      <ul className="divide-y divide-olive-700/50">
+        {rows.map((o) => {
+          const open = o.status === 'pending' || o.status === 'countered';
+          return (
+            <li key={o.id} className="py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold">{o.name} <span className="text-cream-dim">({o.position}, OVR {o.overall}, {o.age} J. · Marktwert {mio(o.market_value)})</span></div>
+                  <div className="text-xs text-cream-dim">{o.incoming ? `Angebot von ${o.buyer.name}` : `Verhandlung mit ${o.seller?.name ?? '–'}`} · Runde {o.round}/3 · Angebot {mio(o.fee)} · Gehalt {mio(o.salary)}/J.</div>
+                  {o.status === 'countered' && <div className="text-sm font-semibold text-gold">Forderung: {o.counter_fee ? `Ablöse ${mio(o.counter_fee)}` : ''}{o.counter_salary ? ` · Gehalt ${mio(o.counter_salary)}/J.` : ''}</div>}
+                  {o.status === 'pending' && o.next_response_on && <div className="text-sm text-gold">Antwort spätestens am {dm(o.next_response_on)}</div>}
+                  {open && o.deadline_on && <div className="text-xs text-cream-dim">Verhandlungsende: {dm(o.deadline_on)}</div>}
+                  {o.note && !open && <div className="text-xs text-cream-dim">{o.note}</div>}
+                </div>
+                <Pill tone={o.status === 'completed' ? 'good' : open ? 'gold' : 'neutral'}>{NSTATUS[o.status] ?? o.status}</Pill>
+                {!o.incoming && o.status === 'countered' && <Button busy={busy === 'ac' + o.id} onClick={() => act('ac' + o.id, () => seasonApi.acceptCounter(o.id))}>Annehmen</Button>}
+                {!o.incoming && o.status === 'countered' && o.round < 3 && !o.counter_salary && (
+                  <Button variant="secondary" onClick={() => { const v = prompt('Neues Angebot (Ablöse in Mio. €)', String(Math.round(((o.fee + (o.counter_fee ?? o.fee)) / 2) / 1e5) / 10)); if (v) act('rb' + o.id, () => seasonApi.renegotiate(o.id, Math.round(Number(v.replace(',', '.')) * 1e6))); }}>Neu verhandeln</Button>
+                )}
+                {!o.incoming && open && <Button variant="ghost" onClick={() => act('w' + o.id, () => seasonApi.withdraw(o.id))}>Zurückziehen</Button>}
+                {o.incoming && o.status === 'pending' && (
+                  <>
+                    <Button busy={busy === 'acc' + o.id} onClick={() => act('acc' + o.id, () => seasonApi.respond(o.id, 'accept'))}>Annehmen</Button>
+                    <Button variant="secondary" onClick={() => { const v = prompt('Geforderte Ablöse in Mio. €', String(Math.round(o.fee / 1e5) / 10 + 1)); if (v) act('c' + o.id, () => seasonApi.respond(o.id, 'counter', Math.round(Number(v.replace(',', '.')) * 1e6))); }}>Gegenangebot</Button>
+                    <Button variant="ghost" onClick={() => act('r' + o.id, () => seasonApi.respond(o.id, 'reject'))}>Ablehnen</Button>
+                  </>
+                )}
+              </div>
+              {o.history.length > 0 && (
+                <ol className="mt-1 flex flex-wrap gap-1 text-[11px] text-cream-dim">
+                  {o.history.map((h, i) => <li key={i} className="rounded bg-olive-800 px-1.5 py-0.5">{dm(h.on)} · {ACTION[h.action] ?? h.action}{h.fee ? ` ${mio(h.fee)}` : ''}</li>)}
+                </ol>
+              )}
+            </li>
+          );
+        })}
+        {rows.length === 0 && <li className="py-3 text-cream-dim">Noch keine Verhandlungen.</li>}
+      </ul>
+    </Card>
+  );
+}
+
+/** Free Agents: persönliches Limit, offene Bewerbungen mit Countdown, Entscheidungen (für alle Manager gleich) */
+function FaPanel({ worldId, act, reloadKey }: { worldId: string; act: (k: string, fn: () => Promise<{ message?: string } | void>) => void; reloadKey: unknown }) {
+  const [d, setD] = useState<FaOverview | null>(null);
+  useEffect(() => { void seasonApi.faOverview(worldId).then(setD).catch(() => setD(null)); }, [worldId, reloadKey]);
+  if (!d) return null;
+  return (
+    <Card className="mb-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="display text-xl font-bold uppercase">Free-Agent-Bewerbungen</h2>
+        <Pill tone={d.limit.used >= d.limit.max ? 'warn' : 'gold'}>Verpflichtet {d.limit.used}/{d.limit.max} in dieser Saison</Pill>
+        {!d.window_open && <Pill tone="warn">Bewerbungen nur im offenen Fenster</Pill>}
+      </div>
+      <p className="mt-1 text-sm text-cream-dim">Nach der ersten Interessensbekundung entscheidet der Spieler exakt 7 Tage später automatisch – nach sportlichem Erfolg, Liga, Ruf, Einsatzchancen und Karrierezielen. Bewerbungen und Absagen verbrauchen keinen Platz.</p>
+      {d.open.length > 0 && (
+        <ul className="mt-3 space-y-2">
+          {d.open.map((f) => (
+            <li key={f.player_id} className={`flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 ${f.mine ? 'bg-gold/10 ring-1 ring-gold/40' : 'bg-olive-800/60'}`}>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold">{f.name} <span className="text-cream-dim">({f.position}, OVR {f.overall}, {f.age} J.) · {mio(f.salary)}/J.</span></div>
+                <div className="text-xs text-cream-dim">Interessenten: {(f.clubs ?? []).map((c) => c.name).join(', ') || '–'}</div>
+              </div>
+              <span className="display rounded-lg bg-anthracite px-3 py-1 text-lg font-bold tabular-nums" title={`Entscheidung am ${dm(f.decision_on)}`}>
+                {f.days_left > 0 ? `noch ${f.days_left} ${f.days_left === 1 ? 'Tag' : 'Tage'}` : 'Entscheidung heute'}
+              </span>
+              {f.mine && f.application_id && <Button variant="ghost" onClick={() => act('fw' + f.player_id, () => seasonApi.withdrawFa(f.application_id!))}>Zurückziehen</Button>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {d.mine.some((a) => a.status !== 'pending') && (
+        <div className="mt-3 text-sm">
+          <p className="text-xs uppercase text-cream-dim">Deine Bewerbungen dieser Saison</p>
+          <ul className="mt-1 space-y-0.5">
+            {d.mine.filter((a) => a.status !== 'pending').map((a) => (
+              <li key={a.id}>{a.name}: <span className={a.status === 'signed' ? 'text-emerald-300' : 'text-cream-dim'}>{({ signed: 'unterschrieben', lost: 'anderer Verein', declined: 'abgelehnt', expired: 'verfallen', withdrawn: 'zurückgezogen' } as Record<string, string>)[a.status] ?? a.status}</span>{a.note ? ` – ${a.note}` : ''}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {d.decisions.length > 0 && (
+        <p className="mt-3 text-xs text-cream-dim">Zuletzt entschieden: {d.decisions.slice(0, 4).map((x) => `${x.name} → ${x.club.name}`).join(' · ')}</p>
+      )}
+    </Card>
   );
 }

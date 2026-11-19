@@ -1,8 +1,8 @@
 import { NavLink } from 'react-router-dom';
+import { useWorldTheme } from '../lib/theme';
 
 const ITEMS = [
   { to: 'spieltag', label: 'Dashboard' },
-  { to: 'kalender', label: 'Kalender' },
   { to: 'team', label: 'Team' },
   { to: 'entwicklung', label: 'Entwicklung' },
   { to: 'liga', label: 'Liga' },
@@ -13,6 +13,8 @@ const ITEMS = [
 
 /** Hauptmenü innerhalb einer Karrierewelt (auf dem iPad gut mit dem Finger erreichbar) */
 export function WorldNav({ worldId }: { worldId: string }) {
+  // Farbwelt der eigenen Liga (zentrales Theme)
+  useWorldTheme(worldId);
   return (
     <nav className="-mx-1 mb-4 flex gap-1 overflow-x-auto pb-1" aria-label="Hauptmenü">
       {ITEMS.map((i) => (

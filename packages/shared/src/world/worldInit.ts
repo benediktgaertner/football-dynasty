@@ -3,7 +3,8 @@ import { randomCrest, type CrestConfig } from '../crest.js';
 import type { Position, Region } from '../domain.js';
 import { createRng, type Rng } from '../rng.js';
 import { KIT_PATTERNS, type KitConfig } from '../schemas.js';
-import { CLUB_COLOR_SETS, GERMAN_NAMING, NameRegistry, generateClubName, generateShortName, generateStadiumName } from './clubNames.js';
+import { CLUB_COLOR_SETS, GERMAN_NAMING, NameRegistry, generateClubName, generateShortName, generateStadiumName, isBlockedClubName } from './clubNames.js';
+import { ANCHOR_CLUBS, anchorColors } from './anchors.js';
 import { MANAGER_FIRST, MANAGER_LAST } from './names.js';
 import { generatePlayer, nationalityByCode, pickNationality, randomAge, type GeneratedPlayer } from './players.js';
 
@@ -192,14 +193,24 @@ export function buildWorldInitialization(seed: string, humans: readonly HumanClu
   let index = 0;
   for (const [tier, count] of tierCounts) {
     const targets = tierTargets(rng, tier, count);
+    let slot = 0;
     for (const target of targets) {
       const key = `ai${++index}`;
-      const { name, place, adjective, foundedYear } = generateClubName(rng, GERMAN_NAMING, registry);
-      const short = generateShortName(rng, name, place, registry);
+      // Zufallsfolge unverändert lassen (Namen werden immer erzeugt), dann ggf. durch den Orientierungsverein ersetzen
+      const gen = generateClubName(rng, GERMAN_NAMING, registry);
+      const genShort = generateShortName(rng, gen.name, gen.place, registry);
+      const anchor = ANCHOR_CLUBS.GER![(tier - 1) * LEAGUE_SIZE + slot++];
+      const useAnchor = !!anchor && !registry.hasName(anchor.name) && !registry.hasShort(anchor.short) && !isBlockedClubName(anchor.name);
+      const name = useAnchor ? anchor!.name : gen.name;
+      const place = useAnchor ? anchor!.place : gen.place;
+      const adjective = useAnchor ? null : gen.adjective;
+      const foundedYear = gen.foundedYear;
+      const short = useAnchor ? anchor!.short : genShort;
       registry.reserve(name, short);
 
       let colors = rng.pick(CLUB_COLOR_SETS);
       for (let i = 0; i < 30 && registry.colorsTaken(tier, colors[0], colors[1]); i++) colors = rng.pick(CLUB_COLOR_SETS);
+      if (useAnchor) colors = anchorColors(anchor!, (c1, c2) => registry.colorsTaken(tier, c1, c2));
       registry.reserveColors(tier, colors[0], colors[1]);
       const [primary, secondary, accent] = colors;
 

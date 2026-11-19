@@ -158,6 +158,10 @@ export interface Snapshot {
   players: Array<[string, number, number]>;
   red: [number, number];
   activeProfile: [TacticalProfileName, TacticalProfileName];
+  /** Art des fliegenden Balls (Darstellung): flach, hoch, Steilpass, Flanke, Schuss, Standard */
+  ballKind?: 'ground' | 'lofted' | 'through' | 'cross' | 'shot' | 'set_piece' | null;
+  /** Standard in Vorbereitung (Ecke, Freistoß mit Mauer, Elfmeter) */
+  setPiece?: { kind: 'corner' | 'free_kick' | 'penalty'; side: 'home' | 'away'; wall: string[] } | null;
 }
 
 /** Startelf mit Formation (Feldkoordinaten 0–100, wie in den Taktikprofilen) */

@@ -5,6 +5,7 @@ import type { Position } from '../domain.js';
 import { normalizeName } from '../naming.js';
 import { createRng, type Rng } from '../rng.js';
 import { KIT_PATTERNS, type KitConfig } from '../schemas.js';
+import { ANCHOR_CLUBS, anchorColors } from './anchors.js';
 import { CLUB_COLOR_SETS, NameRegistry, generateShortName, isBlockedClubName } from './clubNames.js';
 import { EUROPE_BLOCKLIST, EUROPE_PLACES, EUROPE_STYLES } from './europeData.js';
 import { generatePlayer, nationalityByCode, pickNationality, randomAge, type GeneratedPlayer } from './players.js';
@@ -133,11 +134,18 @@ export function buildEuropeAssociation(worldSeed: string, code: string, registry
 
   targets.forEach((target, i) => {
     const key = `${code}${i + 1}`;
-    const { name, place } = generateEuropeClubName(rng, code, registry, usedPlaces);
-    const short = generateShortName(rng, name, place, registry);
+    const gen = generateEuropeClubName(rng, code, registry, usedPlaces);
+    const genShort = generateShortName(rng, gen.name, gen.place, registry);
+    // Orientierungsvereine an den großen Standorten (fiktiv), sonst landestypischer Name
+    const anchor = ANCHOR_CLUBS[code]?.[i];
+    const useAnchor = !!anchor && !registry.hasName(anchor.name) && !registry.hasShort(anchor.short) && !isBlockedClubName(anchor.name);
+    const name = useAnchor ? anchor!.name : gen.name;
+    const place = useAnchor ? anchor!.place : gen.place;
+    const short = useAnchor ? anchor!.short : genShort;
     registry.reserve(name, short);
     let colors = rng.pick(CLUB_COLOR_SETS);
     for (let k = 0; k < 20 && registry.colorsTaken(100 + ASSOCIATIONS.indexOf(a), colors[0], colors[1]); k++) colors = rng.pick(CLUB_COLOR_SETS);
+    if (useAnchor) colors = anchorColors(anchor!, (c1, c2) => registry.colorsTaken(100 + ASSOCIATIONS.indexOf(a), c1, c2)) as unknown as typeof colors;
     registry.reserveColors(100 + ASSOCIATIONS.indexOf(a), colors[0], colors[1]);
     const [primary, secondary, accent] = colors;
     const foundedYear = rng.int(1878, 1975);
