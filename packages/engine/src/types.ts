@@ -4,20 +4,21 @@ import type { AdvancedOptions, Position, TacticalProfileName, TeamInstructions }
 export const PITCH_LENGTH = 105;
 export const PITCH_WIDTH = 68;
 /**
- * Zeitmodell (vier getrennte Ebenen):
- * 1. Fußballzeit: Die Engine simuliert in Schritten von 0,1 s echter Spielzeit (54.000 Ticks = 90 Minuten).
- *    Bewegung, Fitness und Einsatzminuten beziehen sich ausschließlich darauf.
- * 2. Autoritativer Zustand: liegt nur auf dem Match-Server (MatchEngine).
- * 3. Wiedergabe: gezeigte Szenen laufen mit PLAYBACK_SPEED (2-fach) – nie schneller.
- * 4. Szenenauswahl: die Regie (apps/match-server/src/presenter.ts) wählt aus den berechneten Aktionen,
- *    überspringt ruhige Phasen und hält die Gesamtdauer bei ca. MATCH_REAL_SECONDS.
+ * Zeitmodell (Wunsch: komplette Partie sehen, Bewegungen 2-fach, ca. 90 s je Halbzeit):
+ * 1. Bewegung: jeder Tick ist 0,1 s Bewegungszeit (TICK_SECONDS). Laufen, Pässe, Schüsse folgen
+ *    echter Physik und werden mit PLAYBACK_SPEED = 2 abgespielt (50 ms Echtzeit je Tick).
+ * 2. Spieluhr: läuft schneller als die Bewegung – CLOCK_SECONDS_PER_TICK = 1,5 s Spielzeit je Tick.
+ *    3.600 Ticks = 90 Spielminuten = 180 s Echtzeit (90 s je Halbzeit). Fitness, Einsatzminuten
+ *    und alle minutenbasierten Regeln laufen über die Spieluhr.
+ * 3. Wiedergabe: durchgehend, ohne Szenensprünge. Der Server ist autoritativ und rechnet im Gleichschritt.
  */
 export const TICK_SECONDS = 0.1;
-export const TICKS_PER_HALF = 27000;
+export const CLOCK_SECONDS_PER_TICK = 1.5;
+export const TICKS_PER_HALF = 1800;
 export const TOTAL_TICKS = TICKS_PER_HALF * 2;
 export const PLAYBACK_SPEED = 2;
 export const MATCH_REAL_SECONDS = 180;
-/** Echtzeit je Tick während einer gezeigten Szene */
+/** Echtzeit je Tick während der Wiedergabe */
 export const PLAYBACK_MS_PER_TICK = (TICK_SECONDS * 1000) / PLAYBACK_SPEED;
 
 export type Side = 'home' | 'away';

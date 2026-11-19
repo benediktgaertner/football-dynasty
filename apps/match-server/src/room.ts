@@ -12,7 +12,7 @@ export interface Client {
 }
 
 const LOOP_MS = 25;
-const CHECKPOINT_EVERY = 3000; // alle 5 Minuten Spielzeit (Seed + Befehlsprotokoll)
+const CHECKPOINT_EVERY = 400; // alle 20 s Echtzeit (Seed + Befehlsprotokoll)
 const START_COUNTDOWN_MS = 90_000; // spätestens 90 s nach Öffnen startet das Spiel automatisch
 
 /**

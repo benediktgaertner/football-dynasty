@@ -13,7 +13,7 @@ describe('Match Engine', () => {
     expect(a.stats).toEqual(b.stats);
   });
 
-  it('simuliert 90 Minuten in 54.000 Ticks à 0,1 s und liefert vollständige Statistiken', () => {
+  it('simuliert 90 Spielminuten in 3.600 Ticks und liefert vollständige Statistiken', () => {
     const e = new MatchEngine(setup('len'));
     while (!e.isFinished) e.step();
     expect(e.tick).toBe(TOTAL_TICKS);
@@ -42,12 +42,12 @@ describe('Match Engine', () => {
     const e = new MatchEngine(s);
     const bench = e.teamView('home').players.filter((p) => !p.onPitch);
     const field = e.teamView('home').players.filter((p) => p.onPitch && p.position !== 'GK');
-    for (let i = 0; i < 2000; i++) e.step();
-    expect(e.applyCommand('home', { kind: 'profile', name: 'offensive' }).ok).toBe(true);
     for (let i = 0; i < 1000; i++) e.step();
+    expect(e.applyCommand('home', { kind: 'profile', name: 'offensive' }).ok).toBe(true);
+    for (let i = 0; i < 600; i++) e.step();
     expect(e.applyCommand('home', { kind: 'sub', outId: field[0]!.id, inId: bench.find((b) => b.main !== 'GK')!.id }).ok).toBe(true);
     e.setAutopilot('home', true);
-    for (let i = 0; i < 1500; i++) e.step();
+    for (let i = 0; i < 800; i++) e.step();
     const r = replay(s, e.commandLog, e.tick);
     expect(r.snapshot()).toEqual(e.snapshot());
     while (!e.isFinished) { e.step(); r.step(); }
@@ -68,10 +68,10 @@ describe('Match Engine', () => {
     const used = [field[0]!.id];
     let ok = 1;
     for (let i = 1; i < 7; i++) {
-      for (let k = 0; k < 1200; k++) e.step();
+      for (let k = 0; k < 150; k++) e.step();
       const r = e.applyCommand('home', { kind: 'sub', outId: field[i]!.id, inId: bench[i]!.id });
       if (r.ok) { ok++; used.push(field[i]!.id); }
-      for (let k = 0; k < 1200; k++) e.step();
+      for (let k = 0; k < 150; k++) e.step();
     }
     const t = e.teamView('home');
     expect(t.subsUsed).toBeLessThanOrEqual(5);
@@ -93,7 +93,7 @@ describe('Match Engine', () => {
 
   it('Kalibrierung: realistische Tore, stärkeres Team gewinnt häufiger, Heimvorteil', () => {
     let goals = 0, strong = 0, home = 0, away = 0;
-    const n = 10;
+    const n = 30;
     for (let i = 0; i < n; i++) {
       const eq = simulate({ seed: `c${i}`, home: buildTestTeam(`hc${i}`, 70), away: buildTestTeam(`ac${i}`, 70), homeAdvantage: 0.01 });
       goals += eq.score[0] + eq.score[1];
@@ -121,7 +121,7 @@ describe('Match Engine', () => {
     const e = new MatchEngine(setup('speed'));
     let prev = new Map<string, [number, number]>();
     let max = 0;
-    for (let i = 0; i < 9000; i++) {
+    for (let i = 0; i < 3500; i++) {
       e.step();
       const cut = e.takeCut();
       const s = e.snapshot();
@@ -140,7 +140,7 @@ describe('Match Engine', () => {
     const top: Record<'home' | 'away', number> = { home: 0, away: 0 };
     let prev = new Map<string, [number, number]>();
     const sideOf = new Map([...fast.squad.map((p) => [p.id, 'home'] as const), ...slow.squad.map((p) => [p.id, 'away'] as const)]);
-    for (let i = 0; i < 12000; i++) {
+    for (let i = 0; i < 3500; i++) {
       e.step();
       const cut = e.takeCut();
       const s = e.snapshot();
@@ -157,9 +157,9 @@ describe('Match Engine', () => {
       const e = new MatchEngine({ seed: 'line', home, away: buildTestTeam('opp', 70), homeAdvantage: 0 });
       const ids = new Set(home.squad.filter((p) => ['CB', 'LB', 'RB'].includes(p.main_position)).map((p) => p.id));
       let sum = 0, n = 0;
-      for (let i = 0; i < 9000; i++) {
+      for (let i = 0; i < 3500; i++) {
         e.step();
-        if (i % 10) continue;
+        if (i % 5) continue;
         for (const [id, x] of e.snapshot().players) if (ids.has(id)) { sum += x; n++; }
       }
       return sum / n;

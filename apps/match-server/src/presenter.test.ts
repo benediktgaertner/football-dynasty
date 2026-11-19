@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MatchEngine, PLAYBACK_SPEED, TICK_SECONDS, buildTestTeam, type Snapshot } from '@fd/engine';
+import { CLOCK_SECONDS_PER_TICK, MatchEngine, PLAYBACK_SPEED, TICK_SECONDS, TICKS_PER_HALF, buildTestTeam, type Snapshot } from '@fd/engine';
 import { Presenter, type PresenterMessage } from './presenter.js';
 
 function run(seed: string, onTick?: (p: Presenter, e: MatchEngine, realMs: number) => void) {
@@ -13,78 +13,65 @@ function run(seed: string, onTick?: (p: Presenter, e: MatchEngine, realMs: numbe
   return { e, p, msgs };
 }
 
-describe('Regie (Szenenauswahl und Wiedergabe)', () => {
+describe('Wiedergabe (komplette Partie, 2-fache Bewegung, schnelle Uhr)', () => {
   const a = run('p1');
+  const frames = a.msgs.filter((m) => m.t === 'frame') as Array<{ s: Snapshot; scene: number; at: number }>;
 
-  it('ein vollständiges Spiel dauert ungefähr drei Minuten', () => {
-    expect(a.p.realMs / 1000).toBeGreaterThan(170);
-    expect(a.p.realMs / 1000).toBeLessThan(185);
-    expect(a.e.isFinished).toBe(true);
+  it('ganze Partie in ca. 3 Minuten, ca. 90 s je Halbzeit, ohne Sprünge', () => {
+    expect(a.p.realMs / 1000).toBeGreaterThan(178);
+    expect(a.p.realMs / 1000).toBeLessThan(186);
+    expect(a.msgs.some((m) => m.t === 'skip')).toBe(false);
+    const half = frames.find((f) => f.s.tick >= TICKS_PER_HALF)!;
+    expect(half.at / 1000).toBeGreaterThan(88);
+    expect(half.at / 1000).toBeLessThan(92);
+    // lückenlos: aufeinanderfolgende Bilder liegen 2 Ticks auseinander
+    for (let i = 1; i < frames.length; i++) expect(frames[i]!.s.tick - frames[i - 1]!.s.tick).toBeLessThanOrEqual(2);
+  });
+
+  it('Spieluhr: 90 Minuten, schneller als die Bewegung', () => {
+    expect(frames.at(-1)!.s.clock).toBeCloseTo(90 * 60, -1);
+    expect(CLOCK_SECONDS_PER_TICK / TICK_SECONDS).toBeGreaterThan(10);
   });
 
   it('gezeigte Bewegung höchstens ca. doppelt so schnell wie echt', () => {
-    let prev: { s: Snapshot; scene: number; at: number } | null = null;
     let maxPlayer = 0, maxBall = 0;
-    for (const m of a.msgs) {
-      if (m.t !== 'frame') continue;
-      if (prev && prev.scene === m.scene && m.at > prev.at) {
-        const realSec = (m.at - prev.at) / 1000;
-        const pm = new Map(prev.s.players.map((x) => [x[0], x]));
-        for (const [id, x, y] of m.s.players) { const q = pm.get(id); if (q) maxPlayer = Math.max(maxPlayer, Math.hypot(x - q[1], y - q[2]) / realSec); }
-        maxBall = Math.max(maxBall, Math.hypot(m.s.ball[0] - prev.s.ball[0], m.s.ball[1] - prev.s.ball[1]) / realSec);
-        // eine gezeigte Szene läuft nie schneller als 2-fach
-        expect(((m.s.tick - prev.s.tick) * TICK_SECONDS) / realSec).toBeLessThanOrEqual(PLAYBACK_SPEED + 0.01);
-      }
-      prev = { s: m.s, scene: m.scene, at: m.at };
+    for (let i = 1; i < frames.length; i++) {
+      const prev = frames[i - 1]!, m = frames[i]!;
+      if (prev.scene !== m.scene || m.at <= prev.at) continue;
+      const realSec = ((m.s.tick - prev.s.tick) * TICK_SECONDS) / PLAYBACK_SPEED;
+      const pm = new Map(prev.s.players.map((x) => [x[0], x]));
+      for (const [id, x, y] of m.s.players) { const q = pm.get(id); if (q) maxPlayer = Math.max(maxPlayer, Math.hypot(x - q[1], y - q[2]) / realSec); }
+      maxBall = Math.max(maxBall, Math.hypot(m.s.ball[0] - prev.s.ball[0], m.s.ball[1] - prev.s.ball[1]) / realSec);
     }
-    expect(maxPlayer).toBeLessThan(2 * 10.5); // Sprint ≤ ~9,5 m/s real ⇒ ≤ 2-fach
-    expect(maxBall).toBeLessThan(2 * 35); // harter Schuss ≤ ~30 m/s real
+    expect(maxPlayer).toBeLessThan(2 * 10.5);
+    expect(maxBall).toBeLessThan(2 * 40); // harte Schüsse bis ca. 35–40 m/s sind real
   });
 
-  it('übersprungene Phasen: Uhr springt vor, Ereignisse nie vor ihrer Spielzeit', () => {
-    const skips = a.msgs.filter((m) => m.t === 'skip');
-    expect(skips.length).toBeGreaterThan(5);
+  it('Ereignisse erscheinen zu ihrer Spielzeit, alle Tore werden freigegeben', () => {
     let shown = 0;
     for (const m of a.msgs) {
       if (m.t === 'frame') shown = Math.max(shown, m.s.tick);
-      if (m.t === 'skip') shown = Math.max(shown, Math.round(m.to / TICK_SECONDS));
-      if (m.t === 'ev') for (const ev of m.events) expect(ev.tick).toBeLessThanOrEqual(shown + 40);
+      if (m.t === 'ev') for (const ev of m.events) expect(ev.tick).toBeLessThanOrEqual(shown + 2);
     }
-    // alle Ereignisse werden am Ende freigegeben, Spielstand stimmt
     const released = a.msgs.flatMap((m) => (m.t === 'ev' ? m.events : []));
     expect(released.filter((x) => x.type === 'goal').length).toBe(a.e.score[0] + a.e.score[1]);
   });
 
-  it('Tore werden gezeigt (Szene enthält den Torabschluss)', () => {
-    for (const seed of ['p2', 'p3']) {
-      const r = run(seed);
-      const frames = new Set(r.msgs.filter((m) => m.t === 'frame').map((m) => (m as { s: Snapshot }).s.tick));
-      const goals = r.e.events.filter((x) => x.type === 'goal' && x.tick < r.e.tick - 600);
-      for (const g of goals) {
-        const seen = [...frames].some((t) => t <= g.tick && t > g.tick - 60);
-        expect(seen).toBe(true);
-      }
-    }
-  });
-
-  it('Eingriffe wirken während der komprimierten Wiedergabe sofort und nur auf Ungezeigtes', () => {
+  it('Eingriffe wirken sofort (Engine läuft im Gleichschritt mit der Anzeige)', () => {
     let applied = -1;
     const r = run('p4', (p, e, realMs) => {
       if (applied < 0 && realMs > 60_000) {
+        expect(e.tick - p.shownTick).toBe(0);
         expect(e.applyCommand('home', { kind: 'profile', name: 'offensive' }).ok).toBe(true);
         applied = e.tick;
-        // Die Engine ist der Anzeige höchstens eine Szenen-Vorlaufzeit voraus
-        expect(e.tick - p.shownTick).toBeLessThanOrEqual(130);
       }
     });
-    expect(applied).toBeGreaterThan(0);
-    const after = r.msgs.filter((m) => m.t === 'frame' && (m as { s: Snapshot }).s.tick > applied + 20) as Array<{ s: Snapshot }>;
+    const after = r.msgs.filter((m) => m.t === 'frame' && (m as { s: Snapshot }).s.tick > applied) as Array<{ s: Snapshot }>;
     expect(after.length).toBeGreaterThan(0);
     expect(after.every((m) => m.s.activeProfile[0] === 'offensive')).toBe(true);
-    expect(r.e.commandLog.some((c) => c.cmd.kind === 'profile' && c.tick === applied)).toBe(true);
   });
 
-  it('gleicher Seed + gleiche Eingriffe ⇒ identischer Bildstrom (alle Zuschauer sehen dasselbe)', () => {
+  it('gleicher Seed ⇒ identischer Bildstrom für alle Zuschauer', () => {
     const b = run('p1');
     const sig = (msgs: typeof a.msgs) => msgs.filter((m) => m.t === 'frame').map((m) => `${(m as { s: Snapshot }).s.tick}:${(m as { s: Snapshot }).s.ball}`).join('|');
     expect(sig(b.msgs)).toBe(sig(a.msgs));

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { TICK_SECONDS, type MatchResult } from '@fd/engine';
+import { CLOCK_SECONDS_PER_TICK, type MatchResult } from '@fd/engine';
 import type { DbSetup } from './setup.js';
 import { verifyAccessToken } from './auth.js';
 
@@ -24,7 +24,7 @@ export function toDbResult(result: MatchResult): MatchResult {
   return {
     ...result,
     events: result.events.map((e) => {
-      const second = Math.round(e.tick * TICK_SECONDS);
+      const second = Math.round(e.tick * CLOCK_SECONDS_PER_TICK);
       return { ...e, tick: Math.round(second / 0.75), second } as typeof e;
     }),
   };

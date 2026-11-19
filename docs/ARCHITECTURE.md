@@ -115,15 +115,10 @@ KI-gegen-KI-Partien laufen mit **derselben Engine** ohne Echtzeittakt (so schnel
 4. Sind alle menschlichen Partien beendet bzw. übersprungen, erfolgt die Freigabe.
 5. **Timeout:** Wer 15 Minuten keine Anwesenheit (`touch_presence`) zeigt, gilt als abwesend; seine Bereitschaft wird automatisch gesetzt, seine Partie läuft mit seiner gespeicherten Taktik und Automatik. Der Host kann zusätzlich sofort fortsetzen.
 
-## Zeitmodell und Regie (Update „realistische Bewegung“)
+## Zeitmodell und Wiedergabe (Stand: durchgehende Partie)
 
-Vier Ebenen sind strikt getrennt:
-
-1. **Fußballzeit** – die Engine simuliert in Schritten von 0,1 s echter Spielzeit (54.000 Ticks = 90 Minuten). Laufen, Sprinten, Pässe, Schüsse, Fitness und Einsatzminuten beziehen sich ausschließlich darauf. Spieler erreichen je nach Tempo und Fitness ca. 5–9 m/s; Spieler werden nie versetzt (Ballannahme: der Spieler läuft zum Ball).
-2. **Autoritativer Zustand** – nur der Match-Server hält die `MatchEngine`. Clients senden ausschließlich Befehle.
-3. **Wiedergabe** – gezeigte Szenen laufen mit `PLAYBACK_SPEED = 2` (50 ms Echtzeit je Tick, Bilder mit 10 Hz). Schneller wird nie abgespielt.
-4. **Szenenauswahl** – `apps/match-server/src/presenter.ts` wählt aus den tatsächlich berechneten Aktionen: Tore, Schüsse, Elfmeter, Platzverweise (immer), Ecken, Freistöße, Karten und Angriffe ins letzte Drittel (je nach Zeitplan). Jede Szene beginnt einige Sekunden vor dem Auslöser (Vorlauf aus dem Bildpuffer). Ruhige Phasen und lange Unterbrechungen werden übersprungen; die Uhr springt und alle Clients erhalten eine `skip`-Nachricht. Ein Zeitplan (90 Minuten auf ca. 174 s) regelt Szenenlänge und Auswahlstrenge, sodass eine Partie ca. 180 s dauert.
-
-**Konsistenz mit Live-Entscheidungen:** Die Engine rechnet nie weit voraus. Während einer Szene läuft sie im Gleichschritt mit der Anzeige (höchstens die Vorlaufzeit von max. 13 s Fußballzeit voraus); übersprungene Phasen werden erst im Moment des Sprungs berechnet. Ein Befehl gilt ab dem aktuellen Engine-Tick und damit für alles, was noch nicht gezeigt wurde. Ereignisse (Tore, Karten, Wechsel) werden erst freigegeben, wenn ihre Spielzeit gezeigt oder übersprungen ist – niemand kann vorauslesen.
-
-**Synchronität:** Alle verbundenen Clients erhalten denselben Nachrichtenstrom (`frame`, `skip`, `ev`, `status`). Bei Wiederverbindung liefert `init` das aktuelle Bild, die Szene und alle freigegebenen Ereignisse. Nach einem Serverneustart wird die Engine aus Seed + Befehlsprotokoll exakt wiederhergestellt und die Regie setzt mit anteiligem Zeitbudget fort.
+- **Bewegung:** 0,1 s je Tick, echte Physik (Spieler ca. 5–9 m/s, Pässe/Schüsse bis ca. 30 m/s). Wiedergabe mit 2-facher Geschwindigkeit (50 ms Echtzeit je Tick, 10 Bilder/s).
+- **Spieluhr:** 1,5 s Spielzeit je Tick ⇒ 3.600 Ticks = 90 Minuten = 180 s Echtzeit (90 s je Halbzeit, 3 s Halbzeitpause). Fitness, Einsatzminuten, Wechsel- und Automatikregeln laufen über die Spieluhr.
+- **Verdichtung:** Weil in 180 s nur ca. 6 Minuten echter Bewegung passen, ist die Partie verdichtet: Angriffe sind zielstrebiger, jede gezeigte Chance ist gefährlicher, kurze Ballstafetten zwischen den gezeigten Aktionen werden in der Passstatistik mitgezählt. Kalibrierung (100 Spiele): ca. 2,8 Tore, 8 Schüsse und 1,3 xG je Team, 26 % Remis.
+- **Wiedergabe:** `apps/match-server/src/presenter.ts` spielt die komplette Partie ohne Sprünge ab; die Engine rechnet im Gleichschritt mit der Anzeige, Eingriffe wirken ab dem nächsten Tick, alle Clients erhalten denselben Bildstrom. Bei Neuaufstellungen (Anstoß, Standard, Wechsel) gibt es einen kurzen Schnitt.
+- **Headless-Spiele** (KI gegen KI, übersprungene Spiele) laufen in derselben Engine ohne Echtzeittakt.
