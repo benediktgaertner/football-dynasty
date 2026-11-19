@@ -138,6 +138,12 @@ if [ "${FULL_EUROPE:-0}" = "1" ]; then
   done
   MS="$(run -tA -c '\timing on' -c "set role authenticated" -c "select tests.login('00000000-0000-0000-0000-0000000000a1')" -c "select length(public.transfer_market_options('$WORLD')::text)" 2>&1 | grep -o 'Time: [0-9.]* ms' | tail -1)"
   echo "  Filteroptionen → $MS"
+  # Saisonstart-Pfad: Amateurvereine neu anlegen (lief vor dem Hotfix in das Zeitlimit)
+  run -tAc "update public.clubs set amateur = false, association_code = 'AUT', name = name || ' Alt', short_name = 'Z' || right(short_name, 3) where world_id = '$WORLD' and amateur" >/dev/null
+  OUT="$(run -tA -c '\timing on' -c "select public.fd_ensure_amateurs('$WORLD')" 2>&1 || true)"
+  grep -i 'error' <<<"$OUT" || true
+  MS="$(grep -o 'Time: [0-9.]* ms' <<<"$OUT" | tail -1)"
+  echo "  Amateurvereine anlegen (Saisonstart) → $MS, neu: $(run -tAc "select count(*) from public.clubs where world_id = '$WORLD' and amateur") Vereine mit $(run -tAc "select count(*) from public.players p join public.clubs c on c.id = p.club_id where c.world_id = '$WORLD' and c.amateur") Spielern"
 fi
 rm -rf "$PDIR"
 exit $status
