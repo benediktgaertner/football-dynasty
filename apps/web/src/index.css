@@ -88,3 +88,7 @@ select {
 @media (prefers-reduced-motion: reduce) { .fd-banner { animation: none; } }
 @keyframes fd-toast-in { 0% { opacity: 0; } 12% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
 .fd-toast { animation: fd-toast-in 2.2s ease-out both; }
+
+/* Drag-and-drop (Aufstellung, Wechsel) */
+.fd-drag-ghost { position: fixed; z-index: 100; pointer-events: none; transform: translate(-50%, -120%); padding: 6px 12px; border-radius: 999px; background: #f2c14e; color: #141814; font-weight: 700; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.45); white-space: nowrap; }
+.fd-drop-hover > span:first-child { outline: 4px solid #f2c14e; outline-offset: 2px; }

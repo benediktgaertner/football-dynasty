@@ -19,6 +19,7 @@ import {
 import { useMemo, useState } from 'react';
 import type { ClubTactics, ProfileState, SquadPlayer } from '../../lib/teamApi';
 import { Button, Card, ErrorBanner, Pill } from '../ui';
+import { BenchList } from './BenchList';
 import { PitchEditor, POS_LABEL, SlotPicker } from './PitchEditor';
 
 export const PROFILE_LABEL: Record<TacticalProfileName, string> = { offensive: 'Offensiv', neutral: 'Neutral', defensive: 'Defensiv' };
@@ -62,6 +63,7 @@ export function TacticsTab({
   const [active, setActive] = useState<TacticalProfileName>(clubTactics.active_profile);
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [panel, setPanel] = useState<'team' | 'advanced' | 'auto'>('team');
+  const [big, setBig] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -106,6 +108,12 @@ export function TacticsTab({
       formation_code: code,
       slots: f.slots.map((s) => ({ slotIndex: s.index, position: s.position, x: s.x, y: s.y, playerId: s.position === 'GK' ? gkPlayer : (fieldPlayers[i++] ?? null) })),
     });
+  }
+
+  /** Spieler von der Bank auf eine Position: der bisherige Spieler geht auf die Bank */
+  function place(slotIndex: number, playerId: string) {
+    setSlots(profile.slots.map((s) => (s.slotIndex === slotIndex ? { ...s, playerId } : s.playerId === playerId ? { ...s, playerId: null } : s)));
+    setSelectedSlot(null);
   }
 
   function moveSlot(slotIndex: number, x: number, y: number, position: Position) {
@@ -153,8 +161,16 @@ export function TacticsTab({
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)]">
-      <div className="space-y-3 lg:w-[max(360px,calc(min(58vh,680px)*0.68))]">
+    <div className={big ? 'fixed inset-0 z-50 overflow-y-auto bg-ink/95 p-3 backdrop-blur sm:p-5' : ''}>
+    {big && (
+      <div className="mb-3 flex items-center gap-3">
+        <h2 className="display mr-auto text-3xl font-extrabold uppercase">Aufstellung & Taktik</h2>
+        <Button onClick={() => void save()} busy={busy === 'save'} disabled={!!lineupProblem}>Profil speichern</Button>
+        <Button variant="secondary" onClick={() => setBig(false)}>Schließen</Button>
+      </div>
+    )}
+    <div className={`grid gap-4 ${big ? 'lg:grid-cols-[auto_300px_minmax(0,1fr)]' : 'lg:grid-cols-[auto_minmax(0,1fr)]'}`}>
+      <div className={`space-y-3 ${big ? 'lg:w-[calc(min(82vh,900px)*0.68)]' : 'lg:w-[max(360px,calc(min(58vh,680px)*0.68))]'}`}>
         <div className="flex flex-wrap items-center gap-2">
           {TACTICAL_PROFILE_NAMES.map((n) => (
             <button
@@ -173,8 +189,9 @@ export function TacticsTab({
             ))}
           </select>
         </div>
-        <PitchEditor slots={profile.slots} squad={squad} selectedSlot={selectedSlot} onSelectSlot={setSelectedSlot} onMoveSlot={moveSlot} kit={kit} />
+        <PitchEditor slots={profile.slots} squad={squad} selectedSlot={selectedSlot} onSelectSlot={setSelectedSlot} onMoveSlot={moveSlot} kit={kit} big={big} />
         <div className="flex flex-wrap gap-2">
+          {!big && <Button variant="secondary" onClick={() => setBig(true)}>Großes Taktikfenster</Button>}
           <Button
             variant="secondary"
             onClick={() => setSlots(autoLineup(profile.slots.map(({ playerId: _p, ...s }) => s), squad.map((p) => ({ ...p }))))}
@@ -194,8 +211,13 @@ export function TacticsTab({
         {lineupProblem && <p className="text-sm text-sunset">{lineupProblem}</p>}
         {notice && <p className="text-sm text-pitch-light">{notice}</p>}
         <ErrorBanner error={error} />
-        <p className="text-xs text-cream-dim">Tippe einen Spieler an, um ihn zu tauschen und ihm Anweisungen zu geben. Ziehe ihn, um seine Position frei zu verändern – die Rolle passt sich der Feldposition an.</p>
+        <p className="text-xs text-cream-dim">Tippe einen Spieler an, um ihn zu tauschen und ihm Anweisungen zu geben. Ziehe ihn, um seine Position frei zu verändern – die Rolle passt sich der Feldposition an.{big ? ' Spieler von der Ersatzbank ziehst du direkt auf eine Position.' : ''}</p>
       </div>
+      {big && (
+        <Card className="h-fit">
+          <BenchList squad={squad} slots={profile.slots} selectedSlot={selectedSlot} onPlace={place} />
+        </Card>
+      )}
 
       <div className="space-y-4">
         {selected ? (
@@ -328,6 +350,7 @@ export function TacticsTab({
           </Card>
         )}
       </div>
+    </div>
     </div>
   );
 }

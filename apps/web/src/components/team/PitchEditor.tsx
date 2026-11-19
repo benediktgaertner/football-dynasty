@@ -35,6 +35,7 @@ export function PitchEditor({
   onSelectSlot,
   onMoveSlot,
   kit,
+  big = false,
 }: {
   slots: LineupSlot[];
   squad: SquadPlayer[];
@@ -42,6 +43,8 @@ export function PitchEditor({
   onSelectSlot: (slotIndex: number | null) => void;
   onMoveSlot: (slotIndex: number, x: number, y: number, position: Position) => void;
   kit: { primary: string; secondary: string };
+  /** großes Taktikfenster */
+  big?: boolean;
 }) {
   const pitchRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ slot: number; startX: number; startY: number; moved: boolean } | null>(null);
@@ -82,7 +85,7 @@ export function PitchEditor({
     <div
       ref={pitchRef}
       className="relative mx-auto touch-none select-none overflow-hidden rounded-2xl border-2 border-cream/30 bg-pitch shadow-inner"
-      style={{ width: 'min(100%, calc(min(58vh, 680px) * 0.68))', aspectRatio: '68 / 100' }}
+      style={{ width: big ? 'min(100%, calc(min(82vh, 900px) * 0.68))' : 'min(100%, calc(min(58vh, 680px) * 0.68))', aspectRatio: '68 / 100' }}
       onClick={(e) => e.target === pitchRef.current && onSelectSlot(null)}
     >
       {/* Rasenstreifen und Markierungen */}
@@ -111,6 +114,7 @@ export function PitchEditor({
           <button
             key={slot.slotIndex}
             type="button"
+            data-drop={slot.slotIndex}
             onPointerDown={(e) => onPointerDown(e, slot)}
             onPointerMove={(e) => onPointerMove(e, slot)}
             onPointerUp={() => onPointerUp(slot)}
@@ -120,7 +124,7 @@ export function PitchEditor({
             aria-label={`${POS_LABEL[slot.position]}: ${p ? `${p.first_name} ${p.last_name}` : 'frei'}`}
           >
             <span
-              className={`relative flex aspect-square w-[min(44px,70%)] items-center justify-center rounded-full border-2 text-sm font-extrabold shadow-lg transition ${selected ? 'ring-4 ring-gold' : ''} ${p ? '' : 'border-dashed'}`}
+              className={`relative flex aspect-square ${big ? 'w-[min(58px,72%)]' : 'w-[min(44px,70%)]'} items-center justify-center rounded-full border-2 text-sm font-extrabold shadow-lg transition ${selected ? 'ring-4 ring-gold' : ''} ${p ? '' : 'border-dashed'}`}
               style={{ background: p ? kit.primary : 'rgba(0,0,0,0.25)', borderColor: p ? kit.secondary : 'rgba(244,235,208,0.7)', color: numberColor }}
             >
               <span className="display text-base">{p ? (p.shirt_number ?? '') : '+'}</span>

@@ -34,6 +34,7 @@ export function Team() {
   const [error, setError] = useState<string | null>(null);
   const [params] = useSearchParams();
   const [tab, setTab] = useState<Tab>((params.get('tab') as Tab | null) ?? 'tactics');
+  // Sponsor & Saisonstart nur in der Vorbereitung (danach ist der Sponsor festgelegt)
   const [profileOpen, setProfileOpen] = useState<SquadPlayer | null>(null);
 
   const reload = useCallback(async (full = true) => {
@@ -90,7 +91,7 @@ export function Team() {
       </Card>
 
       <nav className="mb-4 flex flex-wrap gap-2" aria-label="Team-Bereiche">
-        {TABS.map((t) => (
+        {TABS.filter((t) => t.key !== 'season' || ctx.world_status === 'preseason').map((t) => (
           <button key={t.key} type="button" onClick={() => setTab(t.key)} className={`display min-h-11 rounded-full px-5 text-base font-semibold uppercase ${tab === t.key ? 'bg-gold text-ink' : 'bg-olive-800 text-cream-dim hover:text-cream'}`}>
             {t.label}
           </button>
@@ -140,7 +141,7 @@ export function Team() {
         />
       )}
       {tab === 'matches' && <FriendliesTab worldId={worldId} myClubId={ctx.club_id} />}
-      {tab === 'season' && (
+      {tab === 'season' && ctx.world_status === 'preseason' && (
         <SeasonTab
           ctx={ctx}
           myUserId={session?.user.id ?? ''}

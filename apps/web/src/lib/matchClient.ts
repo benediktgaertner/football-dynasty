@@ -55,6 +55,8 @@ export class MatchClient {
   private nextId = 1;
   private pending = new Map<number, (r: { ok: boolean; error?: string }) => void>();
   private retry = 0;
+  private gotInit = false;
+  private initTimer: ReturnType<typeof setTimeout> | undefined;
   private scene = 0;
   /** Zeitpunkt des letzten Schnitts (für kurze Überblendung) */
   cutAt = 0;
@@ -76,7 +78,13 @@ export class MatchClient {
     if (!token) { this.emit({ connection: 'error', error: 'Nicht angemeldet.' }); return; }
     const ws = new WebSocket(this.url);
     this.ws = ws;
-    ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', token, fixtureId: this.fixtureId }));
+    this.gotInit = false;
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ t: 'hello', token, fixtureId: this.fixtureId }));
+      // Antwortet der Server nicht, neu verbinden statt endlos zu warten
+      clearTimeout(this.initTimer);
+      this.initTimer = setTimeout(() => { if (this.ws === ws && !this.gotInit) ws.close(4008, 'init_timeout'); }, 12000);
+    };
     ws.onmessage = (e) => this.onMessage(JSON.parse(String(e.data)));
     ws.onclose = (e) => {
       for (const [, r] of this.pending) r({ ok: false, error: 'Verbindung unterbrochen.' });
@@ -102,12 +110,17 @@ export class MatchClient {
     };
   }
 
-  close(): void { this.stopped = true; this.ws?.close(); }
+  close(): void { this.stopped = true; clearTimeout(this.initTimer); this.ws?.close(); }
+
+  /** Nach einem Fehler erneut versuchen */
+  retryNow(): void { this.fatal = false; this.stopped = false; this.retry = 0; this.emit({ error: null, connection: 'connecting' }); void this.connect(); }
 
   private onMessage(m: any): void {
     switch (m.t) {
       case 'init':
         this.retry = 0;
+        this.gotInit = true;
+        clearTimeout(this.initTimer);
         this.scene = m.scene ?? 0;
         this.buffer = [{ at: performance.now(), s: m.snapshot }];
         this.emit({ connection: 'open', error: null, role: m.role, status: m.status, teams: m.teams, events: m.events, view: m.view, latest: m.snapshot, kind: m.kind });

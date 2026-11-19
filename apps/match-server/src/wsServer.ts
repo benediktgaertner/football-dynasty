@@ -65,13 +65,19 @@ export function attachMatchServer(server: Server, backend: Backend, opts: { allo
           if (!userId) return fail('Sitzung ungültig oder abgelaufen.', 4401);
           const role = await backend.role(m.fixtureId, userId);
           if (!role) return fail('Kein Zugriff auf dieses Spiel.', 4403);
-          room = await getRoom(m.fixtureId);
+          // Laden des Spiels darf nicht hängen bleiben (z. B. Datenbank langsam)
+          room = await Promise.race([
+            getRoom(m.fixtureId),
+            new Promise<never>((_, rej) => setTimeout(() => rej(new Error('room_load_timeout')), 20_000)),
+          ]);
           if (ws.readyState !== 1) return;
           client = { ws, userId, role, cmdWindow: [] };
           clearTimeout(helloTimeout);
           room.join(client);
         } catch (e) {
-          const message = e instanceof Error && /already_finished/.test(e.message) ? 'Das Spiel ist bereits beendet.' : 'Spiel konnte nicht geladen werden.';
+          const message = e instanceof Error && /already_finished/.test(e.message) ? 'Das Spiel ist bereits beendet. Das Ergebnis siehst du nach der Freigabe am Spieltag.'
+            : e instanceof Error && /slot_not_live|not_current/.test(e.message) ? 'Dieses Spiel ist gerade nicht angesetzt.'
+            : 'Spiel konnte nicht geladen werden. Bitte neu verbinden.';
           console.error('hello fehlgeschlagen', e);
           return fail(message, 4500);
         } finally {

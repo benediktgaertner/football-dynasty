@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { Link, useParams } from 'react-router-dom';
 import { Button, Card, ErrorBanner, Pill, Shell, Spinner } from '../components/ui';
 import { MatchPitch } from '../components/match/MatchPitch';
+import { LiveBoard } from '../components/match/LiveBoard';
 import { matchServerUrl } from '../lib/matchApi';
 import { MatchClient, type EndResult, type MatchEvent, type ProfileName, type RosterTeam, type Side, type TeamView } from '../lib/matchClient';
 
@@ -52,7 +53,10 @@ export function Match() {
         {state?.error ? (
           <Card className="mx-auto max-w-xl">
             <ErrorBanner error={state.error} />
-            <Link to={`/w/${worldId}/team`} className="mt-4 inline-block text-gold underline">Zurück zum Team</Link>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button onClick={() => client?.retryNow()}>Neu verbinden</Button>
+              <Link to={`/w/${worldId}/spieltag`} className="text-gold underline">Zum Spieltag</Link>
+            </div>
           </Card>
         ) : (
           <Spinner label={state?.connection === 'reconnecting' ? 'Verbindung wird wiederhergestellt …' : 'Verbinde mit dem Stadion …'} />
@@ -127,7 +131,7 @@ export function Match() {
       </div>
 
       {panel && mySide && view && (
-        <ManagementPanel view={view} team={teams[mySide]} onClose={() => setPanel(false)} send={send} />
+        <LiveBoard view={view} team={teams[mySide]} activeProfile={activeProfile} onClose={() => setPanel(false)} send={send} />
       )}
       {end && <Summary result={end.result} saved={end.saved} teams={teams} homeColor={homeColor} awayColor={awayColor} worldId={worldId} kind={state.kind} />}
     </Shell>
@@ -225,77 +229,6 @@ function Ticker({ events, teams, homeColor, awayColor }: { events: MatchEvent[];
         {list.length === 0 && <li className="text-sm text-cream-dim">Noch keine Ereignisse.</li>}
       </ol>
     </Card>
-  );
-}
-
-function ManagementPanel({ view, team, onClose, send }: { view: TeamView; team: RosterTeam; onClose: () => void; send: (c: any) => Promise<boolean> }) {
-  const [outId, setOutId] = useState<string | null>(null);
-  const field = view.players.filter((p) => p.onPitch).sort((a, b) => (a.position === 'GK' ? -1 : b.position === 'GK' ? 1 : b.y - a.y));
-  const bench = view.players.filter((p) => !p.onPitch && !p.subbedOff && !p.sentOff && !p.unavailable && !p.injured);
-  const pendingIn = new Set(view.pendingSubs.map((s) => s.inId));
-  const pendingOut = new Set(view.pendingSubs.map((s) => s.outId));
-  void team;
-  return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-ink/40" onClick={onClose}>
-      <aside className="h-full w-full max-w-[560px] overflow-y-auto border-l border-olive-700 bg-olive-900 p-4 shadow-2xl" onClick={(e) => e.stopPropagation()} aria-label="Team-Management">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="display text-2xl font-bold uppercase">Team-Management</h2>
-          <Button variant="ghost" onClick={onClose}>Schließen</Button>
-        </div>
-        <p className="mb-3 text-sm text-cream-dim">Das Spiel läuft weiter. Änderungen gelten sofort; Wechsel beim nächsten Halt (spätestens nach 45 Spielsekunden).</p>
-
-        <section className="mb-5">
-          <h3 className="display mb-2 text-lg font-bold uppercase text-gold">Schnelleinstellungen</h3>
-          {QUICK_SETTINGS.map((k) => (
-            <div key={k} className="mb-2">
-              <div className="mb-1 text-sm text-cream-dim">{TEAM_SETTINGS[k].label}</div>
-              <div className="grid grid-cols-5 gap-1">
-                {TEAM_SETTINGS[k].values.map((v, i) => (
-                  <button key={v} type="button" onClick={() => void send({ kind: 'settings', team_instructions: { [k]: v } })}
-                    className={`min-h-11 rounded-lg px-1 text-xs font-semibold ${view.team_instructions[k] === v ? 'bg-gold text-ink' : 'bg-olive-800 text-cream hover:bg-olive-700'}`}>
-                    {TEAM_SETTINGS[k].valueLabels[i]}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </section>
-
-        <section>
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="display text-lg font-bold uppercase text-gold">Wechsel</h3>
-            <span className="text-sm text-cream-dim">{view.subsUsed}/5 Wechsel · {view.subWindowsUsed}/3 Fenster</span>
-          </div>
-          <p className="mb-2 text-sm text-cream-dim">{outId ? 'Jetzt den Einwechselspieler wählen.' : 'Spieler auf dem Platz antippen, der raus soll.'}</p>
-          <div className="grid gap-1.5">
-            {field.map((p) => (
-              <button key={p.id} type="button" disabled={pendingOut.has(p.id)} onClick={() => setOutId(outId === p.id ? null : p.id)}
-                className={`flex min-h-11 items-center gap-2 rounded-lg px-3 text-left text-sm ${outId === p.id ? 'bg-sunset text-ink' : 'bg-olive-800 hover:bg-olive-700'} disabled:opacity-50`}>
-                <span className="w-8 font-mono text-cream-dim">{p.position}</span>
-                <span className="w-6 text-right tabular-nums">{p.shirt}</span>
-                <span className="flex-1 truncate font-semibold">{p.name}{p.yellow ? ' 🟨' : ''}{pendingOut.has(p.id) ? ' (geht raus)' : ''}</span>
-                <FitnessBar value={p.fitness} />
-              </button>
-            ))}
-          </div>
-          {outId && (
-            <div className="mt-3 grid gap-1.5">
-              <div className="text-sm font-semibold text-gold">Bank</div>
-              {bench.map((p) => (
-                <button key={p.id} type="button" disabled={pendingIn.has(p.id)} onClick={async () => { if (await send({ kind: 'sub', outId, inId: p.id })) setOutId(null); }}
-                  className="flex min-h-11 items-center gap-2 rounded-lg bg-olive-700 px-3 text-left text-sm hover:bg-olive-600 disabled:opacity-50">
-                  <span className="w-8 font-mono text-cream-dim">{p.main}</span>
-                  <span className="w-6 text-right tabular-nums">{p.shirt}</span>
-                  <span className="flex-1 truncate font-semibold">{p.name} <span className="text-cream-dim">({p.overall})</span></span>
-                  <FitnessBar value={p.fitness} />
-                </button>
-              ))}
-              {bench.length === 0 && <p className="text-sm text-cream-dim">Keine Spieler verfügbar.</p>}
-            </div>
-          )}
-        </section>
-      </aside>
-    </div>
   );
 }
 
