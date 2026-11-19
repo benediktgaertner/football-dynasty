@@ -310,7 +310,7 @@ begin
 
   -- Termine (Liga samstags, Pokal mittwochs, Winterpause nach dem 17. Spieltag)
   create temp table if not exists fd_tmp_slots (slot_key text, kind text, label text, slot_date date, matchday smallint, cup_stage public.stage_kind) on commit drop;
-  delete from fd_tmp_slots;
+  delete from fd_tmp_slots where true; -- Supabase (pg-safeupdate) verlangt eine WHERE-Klausel
   insert into fd_tmp_slots values ('C1', 'cup', 'Pokal · 1. Runde', v_start, null, 'round_of_64');
   for v_md in 1..34 loop
     v_date := v_start + 7 * v_md + case when v_md > 17 then 35 else 0 end;
