@@ -1,3 +1,4 @@
+import { ClubLink, PlayerLink } from '../components/links';
 import { readableTextColor } from '@fd/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -99,7 +100,7 @@ export function League() {
                       <td className="py-1.5">
                         <span className="flex items-center gap-2">
                           <span className="display grid h-6 min-w-9 place-items-center rounded px-1 text-[11px] font-bold" style={{ background: r.color ?? '#3a4a3a', color: readableTextColor(r.color ?? '#3a4a3a') }}>{r.short_name}</span>
-                          <span className="truncate">{r.name}</span>
+                          <ClubLink club={{ id: r.club_id, name: r.name }} className="truncate" />
                           {r.control === 'human' && <Pill tone="gold">Manager</Pill>}
                         </span>
                       </td>
@@ -122,9 +123,9 @@ export function League() {
                 <ul className="divide-y divide-olive-700/50 text-sm">
                   {mdFixtures.map((f) => (
                     <li key={f.id} className={`flex items-center gap-2 py-1.5 ${f.home.id === myClub || f.away.id === myClub ? 'font-semibold text-gold' : ''}`}>
-                      <span className="flex-1 truncate text-right">{f.home.name}</span>
+                      <ClubLink club={f.home} className="flex-1 truncate text-right" />
                       <span className="display w-14 text-center text-lg font-bold tabular-nums">{f.result ? `${f.result.home_goals}:${f.result.away_goals}` : '–:–'}</span>
-                      <span className="flex-1 truncate">{f.away.name}</span>
+                      <ClubLink club={f.away} className="flex-1 truncate" />
                     </li>
                   ))}
                 </ul>
@@ -133,20 +134,20 @@ export function League() {
                 <h2 className="display mb-2 text-2xl font-bold uppercase">Torschützen</h2>
                 <ol className="space-y-1 text-sm">
                   {(leaders?.scorers ?? []).slice(0, 10).map((s, i) => (
-                    <li key={s.player + i} className="flex gap-2"><span className="w-5 text-cream-dim">{i + 1}.</span><span className="flex-1 truncate">{s.player} <span className="text-cream-dim">({s.club})</span></span><span className="tabular-nums">{s.goals}</span></li>
+                    <li key={s.player + i} className="flex gap-2"><span className="w-5 text-cream-dim">{i + 1}.</span><span className="flex-1 truncate"><PlayerLink id={s.player_id}>{s.player}</PlayerLink> <span className="text-cream-dim">({s.club})</span></span><span className="tabular-nums">{s.goals}</span></li>
                   ))}
                   {!leaders?.scorers.length && <li className="text-cream-dim">Noch keine Tore.</li>}
                 </ol>
                 <h3 className="display mb-1 mt-4 text-lg font-bold uppercase text-gold">Vorlagen</h3>
                 <ol className="space-y-1 text-sm">
                   {(leaders?.assists ?? []).slice(0, 5).map((s, i) => (
-                    <li key={s.player + i} className="flex gap-2"><span className="w-5 text-cream-dim">{i + 1}.</span><span className="flex-1 truncate">{s.player} <span className="text-cream-dim">({s.club})</span></span><span className="tabular-nums">{s.assists}</span></li>
+                    <li key={s.player + i} className="flex gap-2"><span className="w-5 text-cream-dim">{i + 1}.</span><span className="flex-1 truncate"><PlayerLink id={s.player_id}>{s.player}</PlayerLink> <span className="text-cream-dim">({s.club})</span></span><span className="tabular-nums">{s.assists}</span></li>
                   ))}
                 </ol>
                 <h3 className="display mb-1 mt-4 text-lg font-bold uppercase text-gold">Beste Noten</h3>
                 <ol className="space-y-1 text-sm">
                   {(leaders?.ratings ?? []).slice(0, 5).map((s, i) => (
-                    <li key={s.player + i} className="flex gap-2"><span className="w-5 text-cream-dim">{i + 1}.</span><span className="flex-1 truncate">{s.player} <span className="text-cream-dim">({s.club})</span></span><span className="tabular-nums">{Number(s.rating).toFixed(2).replace('.', ',')}</span></li>
+                    <li key={s.player + i} className="flex gap-2"><span className="w-5 text-cream-dim">{i + 1}.</span><span className="flex-1 truncate"><PlayerLink id={s.player_id}>{s.player}</PlayerLink> <span className="text-cream-dim">({s.club})</span></span><span className="tabular-nums">{Number(s.rating).toFixed(2).replace('.', ',')}</span></li>
                   ))}
                 </ol>
               </Card>

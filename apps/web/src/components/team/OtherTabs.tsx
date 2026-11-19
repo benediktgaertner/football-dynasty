@@ -1,3 +1,5 @@
+import { PlayerLink } from '../links';
+import { StatusBadges } from './PlayerStatus';
 import {
   CORNER_ROUTINES,
   DEFENSIVE_SET_PIECES,
@@ -20,7 +22,7 @@ import { PlayerAvatar } from '../PlayerAvatar';
 import { Button, Card, ErrorBanner, Pill } from '../ui';
 import { POS_LABEL, ratingTone } from './PitchEditor';
 
-const ATTR_LABEL: Record<string, string> = {
+export const ATTR_LABEL: Record<string, string> = {
   pace: 'Tempo', shooting: 'Schießen', passing: 'Passen', dribbling: 'Dribbling', defending: 'Verteidigung', physical: 'Physis',
   stamina: 'Ausdauer', gameIntelligence: 'Spielintelligenz', heading: 'Kopfball', mentality: 'Mentalität', freeKicks: 'Freistöße',
   penalties: 'Elfmeter', corners: 'Eckbälle', crossing: 'Flanken', throwIns: 'Einwürfe', reflexes: 'Reflexe', handling: 'Fangen',
@@ -82,7 +84,10 @@ export function PlayerProfile({ player, kit, onClose }: { player: SquadPlayer; k
           <div><dt className="text-xs uppercase text-cream-dim">Gehalt / Jahr</dt><dd className="display text-lg font-bold">{player.salary ? formatEuro(player.salary) : '–'}</dd></div>
           <div><dt className="text-xs uppercase text-cream-dim">Vertrag bis</dt><dd className="display text-lg font-bold">{player.contract_end ?? '–'}</dd></div>
         </dl>
-        <Button variant="secondary" className="mt-5 w-full" onClick={onClose}>Schließen</Button>
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <PlayerLink id={player.id} className="display flex min-h-11 items-center justify-center rounded-xl bg-gold px-4 font-semibold uppercase text-ink !no-underline">Vollständiges Profil</PlayerLink>
+          <Button variant="secondary" onClick={onClose}>Schließen</Button>
+        </div>
       </div>
     </div>
   );
@@ -121,6 +126,7 @@ export function SquadTab({ squad, kit, onOpen }: { squad: SquadPlayer[]; kit: { 
                     <div>
                       <div className="font-semibold">{p.first_name} {p.last_name}</div>
                       <div className="text-xs text-cream-dim">{p.nationality}{p.secondary_positions.length > 0 && ` · auch ${p.secondary_positions.map((x) => POS_LABEL[x]).join(', ')}`}</div>
+                      <StatusBadges s={p.status} />
                     </div>
                   </div>
                 </td>
@@ -256,69 +262,114 @@ export function SetPiecesTab({
 // ---------------------------------------------------------------------------
 // Training (G1/G4)
 // ---------------------------------------------------------------------------
-export function TrainingTab({ squad, ctx, kit, onTrain }: { squad: SquadPlayer[]; ctx: TeamContext; kit: { primary: string; secondary: string }; onTrain: (playerId: string, focus: string) => Promise<void> }) {
+/** OVR-Badge: grün ≥ 75, gelb 65–74, rot < 65 */
+export function OvrBadge({ value, size = 'md' }: { value: number; size?: 'sm' | 'md' }) {
+  const tone = value >= 75 ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-200' : value >= 65 ? 'border-gold/60 bg-gold/15 text-gold' : 'border-danger/60 bg-danger/15 text-red-200';
+  return (
+    <span className={`display inline-flex items-center justify-center rounded-md border font-bold tabular-nums ${tone} ${size === 'sm' ? 'h-6 min-w-8 px-1 text-sm' : 'h-8 min-w-10 px-1.5 text-lg'}`} title="Gesamtstärke (OVR)">
+      {value}
+    </span>
+  );
+}
+
+type TrainSort = 'overall' | 'age' | 'dev' | 'fitness';
+const TRAIN_SORT: Array<{ key: TrainSort; label: string }> = [
+  { key: 'overall', label: 'Stärke' }, { key: 'age', label: 'Alter' }, { key: 'dev', label: 'Entwicklung' }, { key: 'fitness', label: 'Fitness' },
+];
+
+export function TrainingTab({ squad, ctx, kit, onTrain }: { squad: SquadPlayer[]; ctx: TeamContext; kit: { primary: string; secondary: string }; onTrain: (playerId: string, focus: string) => Promise<{ points?: number; total?: number } | void> }) {
   const [focus, setFocus] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sort, setSort] = useState<TrainSort>('overall');
+  const [gain, setGain] = useState<Record<string, { points: number; total: number }>>({});
   const trained = new Map(ctx.trainees_this_week.map((t) => [t.player_id, t.focus]));
   const used = ctx.trainees_this_week.length;
   const focusLabel = (v: string) => TRAINING_FOCI.find((f) => f.value === v)?.label ?? v;
+  const sorted = [...squad].sort((x, y) =>
+    sort === 'overall' ? y.overall - x.overall
+      : sort === 'age' ? x.age - y.age
+        : sort === 'dev' ? trainingAgeMultiplier(y.age) - trainingAgeMultiplier(x.age) || y.overall - x.overall
+          : y.fitness - x.fitness);
+  const fmt = (n: number) => n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
 
   return (
     <Card className="p-0">
       <div className="flex flex-wrap items-center gap-3 border-b border-olive-700 p-4">
         <h2 className="display text-2xl font-bold uppercase">Zusatztraining</h2>
         <Pill tone={used >= MAX_TRAINEES_PER_WEEK ? 'warn' : 'gold'}>{used}/{MAX_TRAINEES_PER_WEEK} diese Woche</Pill>
-        <span className="text-sm text-cream-dim">{ctx.week === 0 ? 'Saisonvorbereitung' : `Woche ${ctx.week}`} · jede Einheit kostet 20 Fitness · junge Spieler entwickeln sich schneller</span>
+        <span className="text-sm text-cream-dim">{ctx.week === 0 ? 'Saisonvorbereitung' : `Woche ${ctx.week}`} · jede Einheit kostet 20 Fitness</span>
+        <div className="ml-auto flex items-center gap-1" role="group" aria-label="Sortierung">
+          <span className="mr-1 text-xs uppercase text-cream-dim">Sortieren</span>
+          {TRAIN_SORT.map((o) => (
+            <button key={o.key} type="button" onClick={() => setSort(o.key)} aria-pressed={sort === o.key}
+              className={`min-h-9 rounded-lg px-3 text-sm font-semibold ${sort === o.key ? 'bg-gold text-ink' : 'bg-olive-800 text-cream-dim hover:text-cream'}`}>{o.label}</button>
+          ))}
+        </div>
       </div>
       <div className="px-4 pt-3"><ErrorBanner error={error} /></div>
+      <div className="hidden grid-cols-[minmax(0,2.4fr)_70px_110px_150px_minmax(0,2fr)] gap-3 px-4 pb-1 pt-3 text-[11px] uppercase tracking-wide text-cream-dim lg:grid">
+        <span>Spieler</span><span>Alter</span><span>Entwicklung</span><span>Fitness</span><span>Training</span>
+      </div>
       <ul className="divide-y divide-olive-800">
-        {squad.map((p) => {
+        {sorted.map((p) => {
           const done = trained.get(p.id);
+          const g = gain[p.id];
+          const mult = trainingAgeMultiplier(p.age);
           return (
-            <li key={p.id} className="flex flex-wrap items-center gap-3 px-4 py-2">
-              <PlayerAvatar id={p.id} nationality={p.nationality} age={p.age} size={34} shirt={kit.primary} collar={kit.secondary} />
-              <div className="min-w-40 flex-1">
-                <div className="font-semibold">{p.first_name} {p.last_name}</div>
-                <div className="text-xs text-cream-dim">{POS_LABEL[p.main_position]} · {p.age} J. · Entwicklungstempo ×{trainingAgeMultiplier(p.age).toLocaleString('de-DE')}</div>
+            <li key={p.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-2 lg:grid-cols-[minmax(0,2.4fr)_70px_110px_150px_minmax(0,2fr)]">
+              <div className="flex min-w-0 items-center gap-3">
+                <PlayerAvatar id={p.id} nationality={p.nationality} age={p.age} size={34} shirt={kit.primary} collar={kit.secondary} />
+                <OvrBadge value={p.overall} />
+                <div className="min-w-0">
+                  <div className="truncate font-semibold">{p.first_name} {p.last_name}</div>
+                  <div className="text-xs text-cream-dim">{POS_LABEL[p.main_position]}<span className="lg:hidden"> · {p.age} J. · ×{fmt(mult)}</span></div>
+                </div>
               </div>
-              <FitnessBar value={p.fitness} />
-              {done ? (
-                <Pill tone="good">Trainiert: {focusLabel(done)}</Pill>
-              ) : (
-                <>
-                  <select value={focus[p.id] ?? 'technique'} onChange={(e) => setFocus({ ...focus, [p.id]: e.target.value })} className="min-h-9 rounded-lg border border-olive-600 bg-anthracite px-2 text-sm text-cream" aria-label={`Schwerpunkt für ${p.last_name}`}>
-                    {TRAINING_FOCI.map((f) => (
-                      <option key={f.value} value={f.value}>{f.label}</option>
-                    ))}
-                  </select>
-                  <Button
-                    variant="secondary"
-                    className="!min-h-9 !px-3 !text-sm"
-                    disabled={used >= MAX_TRAINEES_PER_WEEK}
-                    busy={busy === p.id}
-                    onClick={() => void (async () => {
-                      if (p.fitness < 40 && !window.confirm(`${p.last_name} hat nur noch ${Math.round(p.fitness)} Fitness. Trotzdem trainieren?`)) return;
-                      setBusy(p.id); setError(null);
-                      try { await onTrain(p.id, focus[p.id] ?? 'technique'); } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
-                    })()}
-                  >
-                    Trainieren
-                  </Button>
-                </>
-              )}
+              <span className="hidden text-sm tabular-nums lg:block">{p.age} J.</span>
+              <span className={`hidden w-fit rounded-md px-2 py-0.5 text-sm font-semibold tabular-nums lg:block ${mult >= 1.3 ? 'bg-emerald-500/15 text-emerald-300' : mult >= 1 ? 'bg-olive-800 text-cream' : 'bg-olive-800 text-cream-dim'}`} title="Entwicklungstempo nach Alter">×{fmt(mult)}</span>
+              <div className="col-span-2 lg:col-span-1"><FitnessBar value={p.fitness} /></div>
+              <div className="col-span-2 flex flex-wrap items-center gap-2 lg:col-span-1">
+                {done ? (
+                  <>
+                    <Pill tone="good">Trainiert: {focusLabel(done)}</Pill>
+                    {g && <span className="text-sm font-semibold text-emerald-300" title="Entwicklungspunkte">+{fmt(g.points)} Entwicklung <span className="font-normal text-cream-dim">(gesamt {fmt(g.total)})</span></span>}
+                  </>
+                ) : (
+                  <>
+                    <select value={focus[p.id] ?? 'technique'} onChange={(e) => setFocus({ ...focus, [p.id]: e.target.value })} className="min-h-9 min-w-0 flex-1 rounded-lg border border-olive-600 bg-anthracite px-2 text-sm text-cream" aria-label={`Schwerpunkt für ${p.last_name}`}>
+                      {TRAINING_FOCI.map((f) => (
+                        <option key={f.value} value={f.value}>{f.label}</option>
+                      ))}
+                    </select>
+                    <Button
+                      variant="secondary"
+                      className="!min-h-9 !px-3 !text-sm"
+                      disabled={used >= MAX_TRAINEES_PER_WEEK}
+                      busy={busy === p.id}
+                      onClick={() => void (async () => {
+                        if (p.fitness < 40 && !window.confirm(`${p.last_name} hat nur noch ${Math.round(p.fitness)} Fitness. Trotzdem trainieren?`)) return;
+                        setBusy(p.id); setError(null);
+                        try {
+                          const r = await onTrain(p.id, focus[p.id] ?? 'technique');
+                          if (r && typeof r.points === 'number') setGain((x) => ({ ...x, [p.id]: { points: r.points!, total: r.total ?? r.points! } }));
+                        } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
+                      })()}
+                    >
+                      Trainieren
+                    </Button>
+                  </>
+                )}
+              </div>
             </li>
           );
         })}
       </ul>
-      <p className="p-4 text-xs text-cream-dim">Training sammelt Entwicklungspunkte; ob und wann sich Attribute verbessern, entscheidet die Spielerentwicklung (Leistung, Alter, Potenzial). Leistung bei niedriger Fitness: z. B. 60 Fitness → ×{fitnessPerformanceMultiplier(60).toLocaleString('de-DE')}.</p>
+      <p className="p-4 text-xs text-cream-dim">Training sammelt Entwicklungspunkte (junge Spieler schneller). Die Gesamtstärke wird immer aus der Datenbank geladen und nach Training und Spieltagsfreigabe sofort aktualisiert. Leistung bei niedriger Fitness: z. B. 60 Fitness → ×{fitnessPerformanceMultiplier(60).toLocaleString('de-DE')}.</p>
     </Card>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Sponsor und Saisonstart (I7, B2.12)
-// ---------------------------------------------------------------------------
 export function describeSponsor(o: SponsorOffer): string {
   const m = formatEuro(o.amount);
   switch (o.kind) {

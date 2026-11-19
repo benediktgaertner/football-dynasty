@@ -1,3 +1,4 @@
+import { ClubLink } from '../components/links';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { WorldNav } from '../components/WorldNav';
@@ -62,12 +63,12 @@ function FixtureList({ fixtures, myClub }: { fixtures: FixtureRow[]; myClub: str
         return (
           <li key={f.id} className={`flex items-center gap-2 py-1.5 ${f.home.id === myClub || f.away.id === myClub ? 'text-gold' : ''}`}>
             {f.leg && <span className="w-6 text-xs text-cream-dim">{f.leg === 1 ? 'H' : 'R'}</span>}
-            <span className={`flex-1 truncate text-right ${homeWon && !f.leg ? 'font-bold' : ''}`}>{f.home.name}</span>
+            <span className={`flex-1 truncate text-right ${homeWon && !f.leg ? 'font-bold' : ''}`}><ClubLink club={f.home} /></span>
             <span className="display w-16 text-center text-lg font-bold tabular-nums">
               {r ? `${r.home_goals}:${r.away_goals}` : '–:–'}
               {r && r.home_penalties !== null && <span className="block text-[11px] font-normal text-cream-dim">i. E. {r.home_penalties}:{r.away_penalties}</span>}
             </span>
-            <span className={`flex-1 truncate ${awayWon && !f.leg ? 'font-bold' : ''}`}>{f.away.name}</span>
+            <span className={`flex-1 truncate ${awayWon && !f.leg ? 'font-bold' : ''}`}><ClubLink club={f.away} /></span>
           </li>
         );
       })}

@@ -1,3 +1,4 @@
+import { ClubLink, PlayerLink } from '../components/links';
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { PlayerAvatar } from '../components/PlayerAvatar';
@@ -141,12 +142,12 @@ export function Transfers() {
                   <li key={p.id} className="flex flex-wrap items-center gap-3 py-2">
                     <PlayerAvatar id={p.id} nationality={p.nationality} age={p.age} size={36} />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-semibold">{p.first_name} {p.last_name}</div>
+                      <div className="truncate font-semibold"><PlayerLink id={p.id}>{p.first_name} {p.last_name}</PlayerLink></div>
                       <div className="flex flex-wrap items-center gap-1 text-xs text-cream-dim">
                         <span>{p.main_position} · {p.age} J. · {p.nationality}</span>
                         {p.club ? (
                           <span className="inline-flex items-center gap-1">· <span className="inline-block h-2.5 w-2.5 rounded-full border border-cream/30" style={{ background: p.club.color ?? '#555' }} />
-                            {p.club.name}{p.club.control === 'human' ? ' (Manager)' : ''}{p.league_name ? ` · ${p.league_name}` : ''}</span>
+                            <ClubLink club={p.club} />{p.club.control === 'human' ? ' (Manager)' : ''}{p.league_name ? ` · ${p.league_name}` : ''}</span>
                         ) : <span>· vereinslos</span>}
                       </div>
                     </div>
@@ -224,7 +225,7 @@ export function Transfers() {
 
 function OfferDialog({ player, free, onClose, onSubmit }: { player: MarketPlayer; free: boolean; onClose: () => void; onSubmit: (fee: number, salary: number, years: number) => void }) {
   const [fee, setFee] = useState(Math.round(player.market_value / 1e5) / 10);
-  const [salary, setSalary] = useState(Math.round((player.salary ?? estimateSalary(player.market_value, player.age)) / 1e4) / 100);
+  const [salary, setSalary] = useState(Math.round((player.salary ?? estimateSalary(player.overall, player.age)) / 1e4) / 100);
   const [years, setYears] = useState(3);
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-ink/60 p-4" onClick={onClose}>

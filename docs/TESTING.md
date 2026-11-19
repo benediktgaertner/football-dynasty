@@ -71,3 +71,10 @@ npm run build
 
 - `supabase/tests/60_europe.sql` (läuft in `npm run test:db`): Aufbau je Verband (idempotent, konfliktsicher), alle Filter, internationaler Kauf und Verkauf.
 - `FULL_EUROPE=1 npm run test:db`: legt alle 54 Verbände an und misst die Suchzeiten (Referenz: 782 Vereine, ~17.800 Spieler, Suche 14–64 ms).
+
+## Finanzen, Verfügbarkeit, Dashboard, Stadion (Migrationen 0018–0021)
+
+- `supabase/tests/70_finance.sql`: Gehaltsformel (identisch zu `contractSalary`), Gehälter je Saison exakt = Jahresgehalt (vorher 38/34 = 112 %), keine Doppelbuchung, Ticketbuchung „Ticketverkauf – N Zuschauer“, nie mehr Zuschauer als Plätze, Kontostand = Summe der Buchungen für jeden Verein, Neuberechnung bestehender Gehälter ohne Kontoänderung.
+- `supabase/tests/80_availability.sql`: Verletzung/Sperre je Wettbewerb, Startelf-Prüfung blockiert die Bereitmeldung, Trainingsfortschritt.
+- `supabase/tests/90_dashboard.sql`: Dashboard, Pflicht-Spieltagsübersicht, keine vorzeitige Freigabe verborgener Ergebnisse, keine geheimen Taktikdaten in Profilen.
+- `supabase/tests/95_stadium.sql`: Stadiondesign kostenlos und validiert.

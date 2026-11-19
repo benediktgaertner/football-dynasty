@@ -1,3 +1,4 @@
+import { StatusIcon } from './PlayerStatus';
 import { matchReadyRating, type LineupSlot } from '@fd/shared';
 import { startDrag } from '../../lib/dragDrop';
 import type { SquadPlayer } from '../../lib/teamApi';
@@ -29,13 +30,14 @@ export function BenchList({ squad, slots, selectedSlot, onPlace }: {
               onPointerDown={(e) => startDrag(e, `${p.shirt_number ?? ''} ${p.last_name}`, {
                 onDrop: (t) => onPlace(Number(t), p.id),
                 onTap: () => { if (selected) onPlace(selected.slotIndex, p.id); },
+
               })}
               style={{ touchAction: 'none' }}
               className="flex w-full cursor-grab items-center gap-2 rounded-xl bg-olive-800 px-3 py-2 text-left hover:bg-olive-700"
             >
               <span className="display w-9 shrink-0 rounded bg-ink/60 text-center text-xs font-bold text-gold">{POS_LABEL[p.main_position]}</span>
               <span className="w-6 text-right tabular-nums text-cream-dim">{p.shirt_number ?? ''}</span>
-              <span className="min-w-0 flex-1 truncate font-semibold">{p.last_name}
+              <span className={`min-w-0 flex-1 truncate font-semibold ${p.status?.unavailable ? 'text-cream-dim line-through decoration-danger' : ''}`}>{p.last_name} <StatusIcon s={p.status} />
                 {p.secondary_positions.length > 0 && <span className="ml-1 text-xs font-normal text-cream-dim">({p.secondary_positions.map((x) => POS_LABEL[x]).join(', ')})</span>}
               </span>
               <span className="text-xs tabular-nums text-cream-dim">{Math.round(p.fitness)}%</span>

@@ -118,6 +118,10 @@ node "$ROOT/scripts/build-europe-payload.mjs" "$SEED" "$EXISTING" "$PDIR" ENG IT
 # Konflikttest: ein unabhängig erzeugter Payload (veraltete Namensliste) darf keine Fehler auslösen
 node "$ROOT/scripts/build-europe-payload.mjs" "$SEED" "$EXISTING" "$PDIR/stale" POR
 check "60_europe.sql" -v world="$WORLD" -v dir="$PDIR" -f "$ROOT/supabase/tests/60_europe.sql"
+check "70_finance.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/70_finance.sql"
+check "80_availability.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/80_availability.sql"
+check "90_dashboard.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/90_dashboard.sql"
+check "95_stadium.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/95_stadium.sql"
 
 # Optional (FULL_EUROPE=1): alle Verbände anlegen und Suchzeiten des Transfermarkts messen
 if [ "${FULL_EUROPE:-0}" = "1" ]; then

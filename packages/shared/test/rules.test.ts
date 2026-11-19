@@ -8,6 +8,7 @@ import {
   OUTFIELD_POSITIONS,
   STARTING_CAPITAL,
   annualSalary,
+  contractSalary,
   applyRestDays,
   applyTraining,
   baseMarketValue,
@@ -75,12 +76,27 @@ describe('D4: Marktwert', () => {
 
 describe('H5: Gehälter', () => {
   it('ältere Spieler verdienen bei gleicher Stärke mehr', () => {
-    const ages = [19, 22, 26, 30, 34, 37];
+    const ages = [19, 22, 26, 29, 32, 35];
     const salaries = ages.map((a) => annualSalary(76, a));
     for (let i = 1; i < salaries.length; i++) expect(salaries[i]!).toBeGreaterThan(salaries[i - 1]!);
   });
-  it('liegt für Stärke 76 / Alter 26 bei rund 1 Mio. €', () => {
-    expect(annualSalary(76, 26)).toBe(1_008_000);
+  it('Formel: Stärke 70 in der 2. Liga = 330.000 €, Stärke 76 ≈ 805.000 €', () => {
+    expect(contractSalary(70, 25, 2)).toBe(330_000);
+    expect(annualSalary(76, 26)).toBe(805_000);
+  });
+  it('Spielklasse, Vereinsgröße und Laufzeit wirken in die richtige Richtung', () => {
+    expect(contractSalary(75, 26, 1)).toBeGreaterThan(contractSalary(75, 26, 2));
+    expect(contractSalary(75, 26, 2)).toBeGreaterThan(contractSalary(75, 26, 3));
+    expect(contractSalary(75, 26, 2, 80)).toBeGreaterThan(contractSalary(75, 26, 2, 30));
+    expect(contractSalary(75, 26, 2, 50, 1)).toBeGreaterThan(contractSalary(75, 26, 2, 50, 5));
+  });
+  it('durchschnittlicher Zweitligakader (22 Spieler) kostet 6–10 Mio. € pro Jahr', () => {
+    // 11 Stammspieler um 73, 11 Ergänzungsspieler um 67, gemischtes Alter
+    const squad = [74, 73, 73, 72, 74, 73, 72, 73, 74, 72, 73, 68, 67, 66, 67, 68, 66, 65, 67, 66, 62, 60];
+    const ages = [27, 25, 29, 31, 24, 26, 28, 33, 22, 27, 30, 21, 26, 29, 19, 24, 32, 28, 23, 26, 34, 18];
+    const total = squad.reduce((s, o, i) => s + contractSalary(o, ages[i]!, 2), 0);
+    expect(total).toBeGreaterThan(6_000_000);
+    expect(total).toBeLessThan(10_000_000);
   });
 });
 

@@ -1,4 +1,8 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { Calendar } from './pages/Calendar';
+import { ClubPage } from './pages/ClubPage';
+import { MatchdayOverview } from './pages/MatchdayOverview';
+import { PlayerPage } from './pages/PlayerPage';
 import { AuthProvider, useAuth } from './lib/auth';
 import { missingEnv } from './lib/supabase';
 import { Card, Shell, Spinner } from './components/ui';
@@ -34,6 +38,10 @@ function Routed() {
       <Route path="/w/:worldId/pokal" element={<Cup />} />
       <Route path="/w/:worldId/transfers" element={<Transfers />} />
       <Route path="/w/:worldId/finanzen" element={<Finance />} />
+      <Route path="/w/:worldId/kalender" element={<Calendar />} />
+      <Route path="/w/:worldId/uebersicht/:slotId" element={<MatchdayOverview />} />
+      <Route path="/w/:worldId/spieler/:playerId" element={<PlayerPage />} />
+      <Route path="/w/:worldId/club/:clubId" element={<ClubPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

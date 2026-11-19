@@ -41,14 +41,19 @@ export interface MatchState {
   latest: Snapshot | null;
   end: { saved: boolean; result: EndResult } | null;
   kind: string | null;
+  /** Stadion (Design + Zuschauerzahl) für Tribünen und Fans */
+  stadium: StadiumView | null;
 }
 
 /**
  * WebSocket-Client: Authentifizierung per Supabase-Token, automatische Wiederverbindung
  * (exponentielles Backoff) und Snapshot-Puffer für flüssige Interpolation (~100 ms Verzögerung).
  */
+export interface StadiumView { name: string; capacity: number; attendance: number | null; design: StadiumDesign }
+export interface StadiumDesign { style?: 'classic' | 'modern' | 'arena' | 'traditional'; stand?: string; seat?: string; accent?: string; club_colors?: boolean; roof?: boolean }
+
 export class MatchClient {
-  state: MatchState = { connection: 'connecting', error: null, role: null, status: 'loading', skip: null, teams: null, events: [], view: null, latest: null, end: null, kind: null };
+  state: MatchState = { connection: 'connecting', error: null, role: null, status: 'loading', skip: null, teams: null, events: [], view: null, latest: null, end: null, kind: null, stadium: null };
   private ws: WebSocket | null = null;
   private listeners = new Set<() => void>();
   private buffer: Array<{ at: number; s: Snapshot }> = [];
@@ -142,7 +147,7 @@ export class MatchClient {
         clearTimeout(this.initTimer);
         this.scene = m.scene ?? 0;
         this.buffer = [{ at: performance.now(), s: m.snapshot }];
-        this.emit({ connection: 'open', error: null, role: m.role, status: m.status, teams: m.teams, events: m.events, view: m.view, latest: m.snapshot, kind: m.kind });
+        this.emit({ connection: 'open', error: null, role: m.role, status: m.status, teams: m.teams, events: m.events, view: m.view, latest: m.snapshot, kind: m.kind, stadium: m.stadium ?? null });
         break;
       case 'frame':
         // Neue Szene (Schnitt/Sprung): nicht über den Schnitt hinweg interpolieren

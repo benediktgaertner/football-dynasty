@@ -30,6 +30,22 @@ export interface SquadPlayer {
   attributes: Record<string, number>;
   contract_end: number | null;
   salary: number | null;
+  /** Verletzung/Sperren/Einsatzberechtigung aus Supabase (fd_player_availability) */
+  status?: PlayerStatus;
+}
+
+export interface PlayerStatus {
+  injury: { kind: string; until: string; days: number; matches: number } | null;
+  suspensions: Array<{ scope: 'league' | 'domestic_cup' | 'uefa'; card: 'yellow' | 'second_yellow' | 'red' | null; remaining: number }>;
+  unavailable: boolean;
+  next_scope: string | null;
+  next_date: string | null;
+}
+
+export async function loadAvailability(clubId: string): Promise<Record<string, PlayerStatus>> {
+  const { data, error } = await requireSupabase().rpc('squad_availability', { p_club: clubId });
+  if (error) return {};
+  return (data ?? {}) as Record<string, PlayerStatus>;
 }
 
 export interface ProfileState {
@@ -108,6 +124,7 @@ export async function loadTeam(worldId: string) {
     if (r.error) throw new ApiError(r.error.message, r.error.code);
   }
 
+  const availability = await loadAvailability(ctx.club_id);
   const squad: SquadPlayer[] = (squadRes.data ?? []).map((row) => {
     const r = row as unknown as SquadPlayer & {
       player_attributes: Embedded<{ kind: 'outfield' | 'goalkeeper'; attributes: Record<string, number> }>;
@@ -131,6 +148,7 @@ export async function loadTeam(worldId: string) {
       attributes: attrs?.attributes ?? {},
       contract_end: contract?.end_season_year ?? null,
       salary: contract?.annual_salary ?? null,
+      status: availability[r.id],
     };
   });
   squad.sort((a, b) => (a.shirt_number ?? 99) - (b.shirt_number ?? 99));
@@ -187,7 +205,7 @@ export const teamApi = {
   saveClubTactics: (worldId: string, t: ClubTactics) => rpc<void>('save_club_tactics', { p_world: worldId, p_data: t }),
   saveSetPieces: (worldId: string, sp: Record<string, string[]>) =>
     rpc<void>('save_set_pieces', { p_world: worldId, p_data: Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, v.filter(Boolean)])) }),
-  train: (worldId: string, playerId: string, focus: string) => rpc<{ fitness: number }>('schedule_training', { p_world: worldId, p_player: playerId, p_focus: focus }),
+  train: (worldId: string, playerId: string, focus: string) => rpc<{ fitness: number; points?: number; total_points?: number }>('schedule_training', { p_world: worldId, p_player: playerId, p_focus: focus }),
   chooseSponsor: (worldId: string, offerId: number) => rpc<void>('choose_sponsor', { p_world: worldId, p_offer: offerId }),
   setReady: (worldId: string, ready: boolean) => rpc<void>('set_preseason_ready', { p_world: worldId, p_ready: ready }),
 };

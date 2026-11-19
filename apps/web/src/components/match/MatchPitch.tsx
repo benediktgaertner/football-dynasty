@@ -1,16 +1,22 @@
 import { readableTextColor } from '@fd/shared';
 import { useEffect, useRef } from 'react';
-import type { MatchClient, RosterTeam } from '../../lib/matchClient';
+import type { MatchClient, RosterTeam, StadiumView } from '../../lib/matchClient';
+import { renderStadiumLayer, stadiumMargin } from '../../lib/stadiumArt';
 
 const L = 105;
 const W = 68;
-const M = 4; // Rand in Metern (Platz für Tore und Namen)
+/** Seitenverhältnis der Spielansicht inkl. Stadion */
+export function pitchAspect(stadium: StadiumView | null | undefined): string {
+  const m = stadiumMargin(stadium?.capacity);
+  return `${L + 2 * m} / ${W + 2 * m}`;
+}
 
 /**
  * Canvas-Darstellung der Live-Partie: 60 fps mit Interpolation zwischen den Snapshots,
  * Trikots in Vereinsfarben, Ballhöhe mit Schatten, Ballspur und Name des Ballführenden.
  */
-export function MatchPitch({ client, teams, homeColor, awayColor, highlight }: {
+export function MatchPitch({ client, teams, homeColor, awayColor, highlight, stadium }: {
+  stadium?: StadiumView | null;
   client: MatchClient;
   teams: { home: RosterTeam; away: RosterTeam };
   homeColor: string;
@@ -31,6 +37,10 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight }: {
       away: awayColor.toLowerCase() === teams.away.color.toLowerCase() && teams.away.colorAlt.toLowerCase() !== awayColor.toLowerCase() ? teams.away.colorAlt : teams.away.color.toLowerCase() !== awayColor.toLowerCase() ? teams.away.color : txt.away,
     };
     const trail: Array<[number, number]> = [];
+    // Rand in Metern: Tore/Namen, bei bekanntem Stadion zusätzlich die Tribünen
+    const M = stadiumMargin(stadium?.capacity);
+    let layer: HTMLCanvasElement | null = null;
+    let layerKey = '';
     let raf = 0;
     const draw = () => {
       raf = requestAnimationFrame(draw);
@@ -44,9 +54,23 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight }: {
       const X = (x: number) => ox + x * s;
       const Y = (y: number) => oy + y * s;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      // Rasen mit Mähmuster und leichter Vignette
-      ctx.fillStyle = '#1f4626';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Stadion (Tribünen + Fans nach realer Auslastung) als vorberechnete Ebene, sonst Rasen bis zum Rand
+      if (stadium) {
+        ctx.fillStyle = '#15191a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const key = `${canvas.width}x${canvas.height}`;
+        if (key !== layerKey) {
+          layer = renderStadiumLayer({ capacity: stadium.capacity, attendance: stadium.attendance ?? stadium.capacity * 0.5, design: stadium.design,
+            homeColors: [teams.home.color, teams.home.colorAlt], awayColor, s, ox, oy, width: canvas.width, height: canvas.height });
+          layerKey = key;
+        }
+        if (layer) ctx.drawImage(layer, 0, 0);
+        ctx.fillStyle = '#1f4626';
+        ctx.fillRect(X(-2.4), Y(-1.5), (L + 4.8) * s, (W + 3) * s);
+      } else {
+        ctx.fillStyle = '#1f4626';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
       for (let i = 0; i < 18; i++) { ctx.fillStyle = i % 2 ? '#2f6c3a' : '#2a6234'; ctx.fillRect(X((i * L) / 18), Y(-1.5), (L / 18) * s + 1, (W + 3) * s); }
       const vg = ctx.createRadialGradient(X(L / 2), Y(W / 2), W * s * 0.3, X(L / 2), Y(W / 2), L * s * 0.75);
       vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.28)');
@@ -146,6 +170,6 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight }: {
     };
     draw();
     return () => cancelAnimationFrame(raf);
-  }, [client, teams, homeColor, awayColor, highlight]);
+  }, [client, teams, homeColor, awayColor, highlight, stadium]);
   return <canvas ref={ref} className="block h-full w-full rounded-xl" aria-label="Spielfeld mit Live-Positionen" />;
 }

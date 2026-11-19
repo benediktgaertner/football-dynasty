@@ -53,25 +53,55 @@ export function marketValue(overall: number, age: number): number {
  * Ältere Spieler verdienen bei gleicher Stärke mehr.
  */
 export function salaryAgeFactor(age: number): number {
-  if (age <= 20) return 0.75;
-  if (age <= 24) return 0.85;
-  if (age <= 28) return 1.0;
-  if (age <= 32) return 1.1;
-  if (age <= 35) return 1.2;
+  if (age <= 20) return 0.7;
+  if (age <= 23) return 0.85;
+  if (age <= 27) return 1.0;
+  if (age <= 30) return 1.1;
+  if (age <= 33) return 1.2;
   return 1.25;
 }
 
-/**
- * Jahresgehalt als Anteil des altersneutralen Marktwerts.
- * Ausgangswert für das Balancing (I8): 12 % des Basismarktwerts pro Jahr.
- * Beispiel: Stärke 76, Alter 26 → 8,4 Mio. × 0,12 ≈ 1,0 Mio. € pro Jahr.
- */
-export const SALARY_TO_VALUE_RATIO = 0.12;
-export const MIN_ANNUAL_SALARY = 60_000;
+/** Spielklasse des Vereins (1 = Bundesliga … 4 = Amateure/kleine Ligen) */
+export function salaryTierFactor(tier: number): number {
+  return tier <= 1 ? 1.25 : tier === 2 ? 1.0 : tier === 3 ? 0.8 : 0.55;
+}
 
+/** Vereinsgröße/Attraktivität (Reputation 0–100, 50 = neutral) */
+export function salaryReputationFactor(reputation: number): number {
+  return Math.min(1.15, Math.max(0.85, 0.85 + reputation / 333));
+}
+
+/** Vertragslaufzeit: längere Verträge haben ein etwas geringeres Jahresgehalt */
+export function salaryYearsFactor(years: number): number {
+  return years <= 1 ? 1.08 : years === 2 ? 1.04 : years === 3 ? 1.0 : years === 4 ? 0.97 : 0.95;
+}
+
+/** Referenzgehalt bei Stärke 70 in der 2. Liga (Alter 24–27, Reputation 50, 3 Jahre) */
+export const SALARY_BASE_AT_70 = 330_000;
+/** +16 % je Stärkepunkt */
+export const SALARY_GROWTH_PER_POINT = 1.16;
+export const MIN_ANNUAL_SALARY = 30_000;
+
+/**
+ * Jahresgehalt (nachvollziehbare Formel, identisch zu SQL fd_salary):
+ * 330.000 € × 1,16^(Stärke − 70) × Alter × Spielklasse × Vereinsgröße × Laufzeit, auf 5.000 € gerundet.
+ * Beispiele: Stärke 70, 25 J., 2. Liga → 330.000 €; Stärke 76 → ≈ 805.000 €; Stärke 64 → ≈ 135.000 €.
+ * Ein durchschnittlicher Zweitligakader (22 Spieler) kostet damit ≈ 6–10 Mio. € pro Jahr.
+ */
+export function contractSalary(overall: number, age: number, tier: number, reputation = 50, years = 3): number {
+  const raw = SALARY_BASE_AT_70 * SALARY_GROWTH_PER_POINT ** (overall - 70)
+    * salaryAgeFactor(age) * salaryTierFactor(tier) * salaryReputationFactor(reputation) * salaryYearsFactor(years);
+  return Math.max(MIN_ANNUAL_SALARY, Math.round(raw / 5_000) * 5_000);
+}
+
+/** Spielklasse, in die ein Spieler dieser Stärke typischerweise gehört */
+export function typicalTier(overall: number): 1 | 2 | 3 | 4 {
+  return overall >= 77 ? 1 : overall >= 71 ? 2 : overall >= 64 ? 3 : 4;
+}
+
+/** Gehalt ohne Vereinskontext (Draft-Pool, Free Agents, neu erzeugte Spieler) */
 export function annualSalary(overall: number, ageAtSigning: number): number {
-  const raw = baseMarketValue(overall) * SALARY_TO_VALUE_RATIO * salaryAgeFactor(ageAtSigning);
-  return Math.max(MIN_ANNUAL_SALARY, roundTo(raw, 1_000));
+  return contractSalary(overall, ageAtSigning, typicalTier(overall), 50, 3);
 }
 
 /** I3: Gültige Stadionkapazität? */

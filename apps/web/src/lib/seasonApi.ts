@@ -1,3 +1,4 @@
+import { annualSalary } from '@fd/shared';
 import { ApiError } from './api';
 import { matchServerUrl } from './matchApi';
 import { requireSupabase } from './supabase';
@@ -31,6 +32,57 @@ export interface TableRow { club_id: string; name: string; short_name: string; c
 export interface SplitRecord { p: number; w: number; d: number; l: number; gf: number; ga: number }
 export interface Competition { id: string; kind: string; tier: number | null; name: string }
 export interface FixtureRow { id: string; matchday: number | null; slot_key: string; status: string; scheduled_date: string; home: ClubRef; away: ClubRef; result: { home_goals: number; away_goals: number; home_penalties: number | null; away_penalties: number | null; attendance: number | null } | null; stage: string | null; leg: number | null; neutral_venue: boolean }
+
+import type { ClubRefFull } from '../components/links';
+import type { PlayerStatus } from './teamApi';
+
+export interface TableRowLite { pos: number; prev?: number | null; club: ClubRefFull; played: number; gf: number; ga: number; gd: number; points: number; won?: number; drawn?: number; lost?: number; mine?: boolean }
+export interface LeaderRow { player: string; player_id: string; club_id: string; club: string; goals?: number; assists?: number; games: number; rating?: number }
+export interface DashboardData {
+  my_club: ClubRefFull;
+  league: { id: string; name: string; rows: TableRowLite[] } | null;
+  next: { id: string; date: string; status: string; home: boolean; opponent: ClubRefFull; competition: string; kind: string; matchday: number | null; leg: number | null; neutral: boolean; label: string | null; stadium: string | null } | null;
+  calendar: Array<{ id: string; date: string; status: string; home: boolean; competition: string; kind: string; label: string | null; opponent: ClubRefFull }>;
+  recent: Array<{ id: string; date: string; home: boolean; competition: string; opponent: ClubRefFull; gf: number; ga: number }>;
+  leaders: { scorers: LeaderRow[]; assists: LeaderRow[]; ratings: LeaderRow[] } | null;
+  best_offense: { club: ClubRefFull; value: number; played: number } | null;
+  best_defense: { club: ClubRefFull; value: number; played: number } | null;
+  pending_review: { slot_id: string; label: string; date: string } | null;
+}
+export interface ReportGame { id: string; home: ClubRefFull; away: ClubRefFull; hg: number; ag: number; hp: number | null; ap: number | null; attendance: number | null; mine: boolean;
+  events: Array<{ type: 'goal' | 'red' | 'second_yellow'; minute: number; player_id: string; name: string; home: boolean }> }
+export interface MatchdayReport {
+  slot: { id: string; label: string; date: string; kind: string; matchday: number | null };
+  my_club: string | null;
+  competitions: Array<{ id: string; name: string; kind: string; games: ReportGame[] }>;
+  table: { name: string; rows: TableRowLite[] } | null;
+  top_ratings: Array<{ player_id: string; name: string; club: ClubRefFull; rating: number; goals: number; assists: number }>;
+  top_scorers: Array<{ player_id: string; name: string; club: ClubRefFull; goals: number; assists: number }>;
+  seen: boolean;
+}
+export interface PlayerProfileData {
+  id: string; first_name: string; last_name: string; age: number; nationality: string; main_position: string; secondary_positions: string[]; overall: number; fitness: number;
+  market_value: number; shirt: number | null; retired: boolean;
+  attributes: { kind: 'outfield' | 'goalkeeper'; values: Record<string, number> } | null;
+  club: ClubRefFull | null; free_agent: { salary: number } | null;
+  contract: { start: number; end: number; salary: number | null } | null;
+  status: PlayerStatus | null;
+  season: { apps: number; minutes: number; goals: number; assists: number; rating: number | null; shots: number; xg: number };
+  by_competition: Array<{ competition: string; apps: number; goals: number; assists: number; rating: number | null }>;
+  history: Array<{ season: number; apps: number; goals: number; assists: number; rating: number | null }>;
+  recent: Array<{ date: string; competition: string; rating: number | null; goals: number; assists: number; minutes: number; opponent: ClubRefFull }>;
+  development: { points: number; trainings: number } | null;
+  own: boolean;
+}
+export interface ClubProfileData {
+  club: ClubRefFull; founded: number | null; reputation: number; amateur: boolean;
+  country: { code: string; name: string } | null; league: string | null; manager: string | null;
+  stadium: { name: string; capacity: number } | null; position: number | null; table_size: number;
+  strength: number | null; squad_avg: number | null;
+  squad: Array<{ id: string; name: string; last_name: string; shirt: number | null; position: string; age: number; overall: number; nationality: string; fitness: number; rating: number | null; apps: number; goals: number; assists: number; status: PlayerStatus | null }>;
+  formation: { date: string; code: string; slots: Array<{ player_id: string; position: string; x: number; y: number; name: string | null; shirt: number | null; overall: number | null }> } | null;
+  results: Array<{ id: string; date: string; competition: string; home: boolean; opponent: ClubRefFull; gf: number; ga: number; pf: number | null; pa: number | null }>;
+}
 
 export interface TransferOffer {
   id: string; status: string; fee: number; salary: number; years: number; counter_fee: number | null; counter_salary: number | null; created_at: string;
@@ -111,7 +163,7 @@ export const seasonApi = {
     }));
   },
 
-  leaders: (compId: string) => rpc<{ scorers: Array<{ player: string; club: string; goals: number; assists: number; games: number }>; assists: Array<{ player: string; club: string; assists: number; games: number }>; ratings: Array<{ player: string; club: string; rating: number; games: number }> }>('league_leaders', { p_comp: compId }),
+  leaders: (compId: string) => rpc<{ scorers: LeaderRow[]; assists: LeaderRow[]; ratings: LeaderRow[] }>('league_leaders', { p_comp: compId }),
 
   // Transfers
   myOffers: (worldId: string) => rpc<TransferOffer[]>('my_transfer_offers', { p_world: worldId }),
@@ -123,6 +175,13 @@ export const seasonApi = {
   signFreeAgent: (playerId: string, years: number) => rpc<{ status: string; message?: string }>('sign_free_agent', { p_player: playerId, p_years: years }),
   release: (playerId: string) => rpc<{ status: string; compensation: number }>('release_player', { p_player: playerId }),
 
+  dashboard: (worldId: string) => rpc<DashboardData>('dashboard', { p_world: worldId }),
+  report: (worldId: string, slotId: string) => rpc<MatchdayReport>('matchday_report', { p_world: worldId, p_slot: slotId }),
+  pendingReview: (worldId: string) => rpc<{ slot_id: string; label: string; date: string } | null>('pending_review', { p_world: worldId }),
+  markReviewSeen: (worldId: string, slotId: string) => rpc<void>('mark_review_seen', { p_world: worldId, p_slot: slotId }),
+  playerProfile: (playerId: string) => rpc<PlayerProfileData>('player_profile', { p_player: playerId }),
+  clubProfile: (clubId: string) => rpc<ClubProfileData>('club_profile', { p_club: clubId }),
+  lineupIssues: (worldId: string) => rpc<Array<{ player_id: string; name: string; reason: 'injured' | 'suspended' }>>('lineup_issues', { p_world: worldId }),
   retryRelease: (worldId: string) => rpc<{ released: boolean }>('retry_slot_release', { p_world: worldId }),
   marketSearch: (worldId: string, filters: MarketFilters, limit = 50, offset = 0) =>
     rpc<{ total: number; rows: MarketPlayer[] }>('transfer_market_search', { p_world: worldId, p_filters: Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== '' && v !== undefined && v !== null && v !== 0 && v !== false)), p_limit: limit, p_offset: offset }),
@@ -169,20 +228,23 @@ export const seasonApi = {
 
   // Finanzen & Stadion
   finance: (worldId: string) => rpc<{
-    balance: number; salaries: number; status: string;
-    stadium: { club_id: string; name: string; capacity: number; ticket_price_league: number; ticket_price_cup: number; ticket_price_international: number };
+    balance: number; salaries: number; status: string; squad_size: number; league_slots: number; slot_live: boolean; season_sum: number; ledger_ok: boolean;
+    tickets: { income: number; games: number; avg_attendance: number; avg_utilization: number } | null;
+    stadium: { club_id: string; name: string; capacity: number; ticket_price_league: number; ticket_price_cup: number; ticket_price_international: number; design: import('./matchClient').StadiumDesign };
     season_totals: Record<string, number>;
     transactions: Array<{ id: number; kind: string; amount: number; balance_after: number; description: string; created_at: string }>;
     last_attendance: { attendance: number; label: string } | null;
   }>('finance_overview', { p_world: worldId }),
   setTickets: (worldId: string, league: number, cup: number, intl: number) => rpc<void>('set_ticket_prices', { p_world: worldId, p_league: league, p_cup: cup, p_international: intl }),
+  /** Zuschauer, Auslastung und Ticketeinnahmen eines Spiels (erst sichtbar, wenn das Ergebnis sichtbar ist) */
+  gate: (fixtureId: string) => rpc<{ attendance: number; capacity: number; utilization: number; ticket_price: number; income: number; booked: boolean; home_club_id: string; friendly: boolean } | null>('fixture_gate', { p_fixture: fixtureId }),
+  saveStadiumDesign: (worldId: string, name: string, design: import('./matchClient').StadiumDesign) => rpc<{ name: string }>('save_stadium_design', { p_world: worldId, p_name: name, p_design: design }),
   expandStadium: (worldId: string) => rpc<{ capacity: number }>('expand_stadium', { p_world: worldId }),
 };
 
-/** H5: geschätzte Gehaltsforderung (Marktwert × 12 % × Altersfaktor) als Startwert für Angebote */
-export function estimateSalary(value: number, age: number): number {
-  const f = age <= 20 ? 0.75 : age <= 24 ? 0.85 : age <= 28 ? 1 : age <= 32 ? 1.1 : age <= 35 ? 1.2 : 1.25;
-  return Math.max(50000, Math.round((value * 0.12 * f) / 10000) * 10000);
+/** Startwert für Gehaltsangebote: gemeinsame Gehaltsformel (Server prüft die echte Forderung) */
+export function estimateSalary(overall: number, age: number): number {
+  return annualSalary(overall, age);
 }
 
 export const STAGE_LABEL: Record<string, string> = {
@@ -190,6 +252,6 @@ export const STAGE_LABEL: Record<string, string> = {
 };
 export const TX_LABEL: Record<string, string> = {
   starting_capital: 'Startkapital', stadium_build: 'Stadionbau', stadium_expansion: 'Stadionausbau', draft_purchase: 'Draft', transfer_fee_paid: 'Ablöse gezahlt',
-  transfer_fee_received: 'Ablöse erhalten', salary: 'Gehälter', ticket_income: 'Zuschauer', match_bonus: 'Spielprämien', placement_prize: 'Platzierungsprämie',
+  transfer_fee_received: 'Ablöse erhalten', salary: 'Gehälter', ticket_income: 'Ticketverkauf', match_bonus: 'Spielprämien', placement_prize: 'Platzierungsprämie',
   sponsor: 'Sponsor', competition_prize: 'Wettbewerbsprämien', stadium_running_cost: 'Stadionbetrieb', adjustment: 'Sonstiges',
 };

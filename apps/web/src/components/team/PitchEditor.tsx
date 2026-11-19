@@ -1,3 +1,4 @@
+import { StatusIcon } from './PlayerStatus';
 import {
   POSITIONS,
   clampSlotCoordinates,
@@ -133,6 +134,7 @@ export function PitchEditor({
                   {matchReadyRating(p, slot.position)}
                 </span>
               )}
+              {p?.status && (p.status.injury || p.status.suspensions.length > 0) && <span className="absolute -bottom-1 -left-2"><StatusIcon s={p.status} /></span>}
             </span>
             <span className="display mt-0.5 rounded bg-ink/70 px-1 text-[10px] font-semibold uppercase leading-4 text-gold">{POS_LABEL[slot.position]}</span>
             <span className="max-w-full truncate rounded bg-ink/60 px-1 text-[11px] leading-4 text-cream">{p ? p.last_name : 'frei'}</span>

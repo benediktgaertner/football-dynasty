@@ -1,3 +1,4 @@
+import { statusText } from './PlayerStatus';
 import {
   ADVANCED_OPTIONS,
   FORMATIONS,
@@ -77,6 +78,7 @@ export function TacticsTab({
   const lineupIds = useMemo(() => new Set(profile.slots.map((s) => s.playerId).filter(Boolean) as string[]), [profile.slots]);
   const squadIds = useMemo(() => new Set(squad.map((p) => p.id)), [squad]);
   const lineupProblem = validateLineup(profile.slots, squadIds);
+  const blocked = profile.slots.map((s) => squad.find((p) => p.id === s.playerId)).filter((p): p is SquadPlayer => !!p && !!p.status?.unavailable);
   const load = tacticLoadFactor({
     pressingIntensity: profile.team_instructions.pressingIntensity as 1 | 2 | 3 | 4 | 5,
     tempo: profile.team_instructions.tempo as 1 | 2 | 3 | 4 | 5,
@@ -112,6 +114,11 @@ export function TacticsTab({
 
   /** Spieler von der Bank auf eine Position: der bisherige Spieler geht auf die Bank */
   function place(slotIndex: number, playerId: string) {
+    const pl = squad.find((x) => x.id === playerId);
+    if (pl?.status?.unavailable) {
+      setError(`${pl.first_name} ${pl.last_name} ist nicht einsatzberechtigt: ${statusText(pl.status)}`);
+      return;
+    }
     setSlots(profile.slots.map((s) => (s.slotIndex === slotIndex ? { ...s, playerId } : s.playerId === playerId ? { ...s, playerId: null } : s)));
     setSelectedSlot(null);
   }
@@ -209,6 +216,12 @@ export function TacticsTab({
           </select>
         </div>
         {lineupProblem && <p className="text-sm text-sunset">{lineupProblem}</p>}
+        {blocked.length > 0 && (
+          <div className="rounded-xl border border-danger/60 bg-danger/10 px-3 py-2 text-sm">
+            <p className="font-semibold text-red-200">Nicht einsatzberechtigt in der Startelf – vor dem Anpfiff ersetzen:</p>
+            <ul className="mt-1 list-disc pl-5">{blocked.map((p) => <li key={p.id}>{p.first_name} {p.last_name}: {statusText(p.status)}</li>)}</ul>
+          </div>
+        )}
         {notice && <p className="text-sm text-pitch-light">{notice}</p>}
         <ErrorBanner error={error} />
         <p className="text-xs text-cream-dim">Tippe einen Spieler an, um ihn zu tauschen und ihm Anweisungen zu geben. Ziehe ihn, um seine Position frei zu verändern – die Rolle passt sich der Feldposition an.{big ? ' Spieler von der Ersatzbank ziehst du direkt auf eine Position.' : ''}</p>

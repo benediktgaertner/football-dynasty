@@ -103,6 +103,11 @@ export function formatEuro(amount: number): string {
   return `${amount.toLocaleString('de-DE')} €`;
 }
 
+/** Betrag mit Vorzeichen für Buchungen: „+412.500 €“ / „−1,2 Mio. €“ */
+export function formatEuroSigned(amount: number): string {
+  return `${amount > 0 ? '+' : amount < 0 ? '−' : ''}${formatEuro(Math.abs(amount))}`;
+}
+
 export const DIFFICULTY_LABEL: Record<Difficulty, string> = { easy: 'Einfach', medium: 'Mittel', hard: 'Schwer' };
 
 // ---------------------------------------------------------------------------

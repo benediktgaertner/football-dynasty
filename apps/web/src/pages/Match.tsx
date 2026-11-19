@@ -2,9 +2,11 @@ import { TEAM_SETTINGS, readableTextColor, resolveAwayDisplayColor } from '@fd/s
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Button, Card, ErrorBanner, Pill, Shell, Spinner } from '../components/ui';
-import { MatchPitch } from '../components/match/MatchPitch';
+import { MatchPitch, pitchAspect } from '../components/match/MatchPitch';
 import { LiveBoard } from '../components/match/LiveBoard';
 import { matchServerUrl } from '../lib/matchApi';
+import { seasonApi } from '../lib/seasonApi';
+import { formatEuro } from '../lib/api';
 import { MatchClient, type EndResult, type MatchEvent, type ProfileName, type RosterTeam, type Side, type TeamView } from '../lib/matchClient';
 
 const PROFILE_LABEL: Record<ProfileName, string> = { offensive: 'Offensiv', neutral: 'Neutral', defensive: 'Defensiv' };
@@ -31,6 +33,8 @@ function useMatch(fixtureId: string) {
 export function Match() {
   const { worldId = '', fixtureId = '' } = useParams();
   const { client, state, configured } = useMatch(fixtureId);
+  // KI-Spiele des Termins serverseitig berechnen lassen (idempotent), auch wenn direkt ins Spiel gewechselt wurde
+  useEffect(() => { if (worldId) void seasonApi.simulate(worldId); }, [worldId]);
   const [panel, setPanel] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const banner = useBanner(state?.events ?? [], state?.teams ?? null);
@@ -82,8 +86,8 @@ export function Match() {
 
       <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="relative">
-          <div className="aspect-[111/74] w-full max-h-[64vh]">
-            <MatchPitch client={client} teams={teams} homeColor={homeColor} awayColor={awayColor} />
+          <div className="w-full max-h-[64vh]" style={{ aspectRatio: pitchAspect(state.stadium) }}>
+            <MatchPitch client={client} teams={teams} homeColor={homeColor} awayColor={awayColor} stadium={state.stadium} />
           </div>
           {banner && banner.big && (
             <div key={banner.key} className="fd-banner pointer-events-none absolute left-1/2 top-[40%] text-center">
@@ -133,7 +137,7 @@ export function Match() {
       {panel && mySide && view && (
         <LiveBoard view={view} team={teams[mySide]} activeProfile={activeProfile} onClose={() => setPanel(false)} send={send} />
       )}
-      {end && <Summary result={end.result} saved={end.saved} teams={teams} homeColor={homeColor} awayColor={awayColor} worldId={worldId} kind={state.kind} />}
+      {end && <Summary result={end.result} saved={end.saved} teams={teams} homeColor={homeColor} awayColor={awayColor} worldId={worldId} kind={state.kind} fixtureId={fixtureId} />}
     </Shell>
   );
 }
@@ -242,7 +246,29 @@ function FitnessBar({ value }: { value: number }) {
   );
 }
 
-function Summary({ result, saved, teams, homeColor, awayColor, worldId, kind }: { result: EndResult; saved: boolean; teams: { home: RosterTeam; away: RosterTeam }; homeColor: string; awayColor: string; worldId: string; kind: string | null }) {
+/** Zuschauer, Auslastung und Ticketeinnahmen (Heimverein) */
+function GateInfo({ fixtureId, saved }: { fixtureId: string; saved: boolean }) {
+  const [g, setG] = useState<Awaited<ReturnType<typeof seasonApi.gate>>>(null);
+  useEffect(() => {
+    if (!saved) return;
+    let stop = false;
+    const load = (n: number) => void seasonApi.gate(fixtureId).then((r) => { if (stop) return; if (r) setG(r); else if (n < 4) setTimeout(() => load(n + 1), 1500); }).catch(() => undefined);
+    load(0);
+    return () => { stop = true; };
+  }, [fixtureId, saved]);
+  if (!g) return null;
+  return (
+    <div className="mt-4 grid grid-cols-3 gap-2 rounded-xl border border-olive-600 bg-olive-800/60 p-3 text-center">
+      <div><p className="text-xs uppercase text-cream-dim">Zuschauer</p><p className="display text-2xl font-bold tabular-nums">{g.attendance.toLocaleString('de-DE')}</p></div>
+      <div><p className="text-xs uppercase text-cream-dim">Auslastung</p><p className="display text-2xl font-bold tabular-nums">{g.utilization.toLocaleString('de-DE')} %</p>
+        <p className="text-[11px] text-cream-dim">{g.capacity.toLocaleString('de-DE')} Plätze</p></div>
+      <div><p className="text-xs uppercase text-cream-dim">Ticketeinnahmen (Heim)</p><p className="display text-2xl font-bold tabular-nums text-emerald-300">+{formatEuro(g.income)}</p>
+        <p className="text-[11px] text-cream-dim">{g.ticket_price} € je Ticket{g.booked ? ' · verbucht' : ' · Buchung mit der Ergebnisfreigabe'}</p></div>
+    </div>
+  );
+}
+
+function Summary({ result, saved, teams, homeColor, awayColor, worldId, kind, fixtureId }: { result: EndResult; saved: boolean; teams: { home: RosterTeam; away: RosterTeam }; homeColor: string; awayColor: string; worldId: string; kind: string | null; fixtureId: string }) {
   const names = new Map([...teams.home.players, ...teams.away.players].map((p) => [p.id, p.name]));
   const h = result.stats.home;
   const a = result.stats.away;
@@ -293,6 +319,7 @@ function Summary({ result, saved, teams, homeColor, awayColor, worldId, kind }: 
             {result.playerOfTheMatch && <p className="mt-2 text-sm text-cream-dim">★ Spieler des Spiels: {names.get(result.playerOfTheMatch)}</p>}
           </div>
         </div>
+        {kind !== 'friendly' && <GateInfo fixtureId={fixtureId} saved={saved} />}
         {!saved && <p className="mt-3 text-sm text-danger">Das Ergebnis konnte noch nicht gespeichert werden – der Server versucht es erneut.</p>}
         <div className="mt-4 flex justify-center">
           <Link to={`/w/${worldId}/${kind === 'friendly' ? 'team?tab=matches' : 'spieltag'}`} className="display rounded-xl bg-gold px-5 py-2 text-lg font-semibold uppercase text-ink">Weiter</Link>

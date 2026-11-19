@@ -25,6 +25,7 @@ import {
   type MatchEvent,
   type MatchResult,
   type MatchSetup,
+  type StartingLineup,
   type PlayerMatchStats,
   type ProfileInput,
   type Side,
@@ -110,6 +111,8 @@ interface Run { u: number; v: number; until: number; kind: RunKind }
 interface TeamState {
   side: Side;
   input: TeamInput;
+  /** Startaufstellung (öffentlich nach dem Spiel: „zuletzt bekannte Formation“) */
+  startLineup: StartingLineup;
   profile: TacticalProfileName;
   ti: TeamInstructions;
   adv: ProfileInput['advanced_options'];
@@ -238,8 +241,12 @@ export class MatchEngine {
       };
     });
     const sp = input.setPieces;
+    const startLineup: StartingLineup = {
+      formation: getFormation(prof.formation_code) ? prof.formation_code : formation.code,
+      slots: slots.filter((x) => x.playerId).map((x) => ({ playerId: x.playerId!, position: x.position, x: x.x, y: x.y })),
+    };
     return {
-      side, input, profile, ti: { ...prof.team_instructions }, adv: { ...prof.advanced_options }, players, stats: emptyTeamStats(),
+      side, input, startLineup, profile, ti: { ...prof.team_instructions }, adv: { ...prof.advanced_options }, players, stats: emptyTeamStats(),
       pendingSubs: [], pendingSince: 0,
       takers: { free_kick: [...(sp.free_kick ?? [])], penalty: [...(sp.penalty ?? [])], corner: [...(sp.corner_left ?? []), ...(sp.corner_right ?? [])], throw_in: [...(sp.throw_in ?? [])] },
       autopilot: input.control === 'ai', lastAutoTick: 0, autoSwitched: false,
@@ -271,7 +278,8 @@ export class MatchEngine {
   private offCache: Record<Side, [number, number]> = { home: [-1, 0], away: [-1, 0] };
   onPitch(side: Side): LivePlayer[] {
     let c = this.pitchCache[side];
-    if (!c) { c = this.teams[side].players.filter((p) => p.onPitch); this.pitchCache[side] = c; }
+    // Verletzte nehmen sofort nicht mehr am Spiel teil (bis zur Auswechslung bzw. dauerhaft bei Unterzahl)
+    if (!c) { c = this.teams[side].players.filter((p) => p.onPitch && !p.injured); this.pitchCache[side] = c; }
     return c;
   }
   private dirty(): void { this.pitchCache.home = null; this.pitchCache.away = null; }
@@ -1103,6 +1111,15 @@ export class MatchEngine {
     if (!p.onPitch) return;
     const t = this.teams[p.side];
     p.injured = true; p.stats.injured = true;
+    p.vu = 0; p.vv = 0;
+    this.dirty();
+    // Hatte er den Ball, übernimmt der nächste Mitspieler
+    if (this.carrier === p) {
+      let best: LivePlayer | null = null; let bd = Infinity;
+      for (const m of this.onPitch(p.side)) { const d = dist(m.u, m.v, p.u, p.v); if (d < bd) { bd = d; best = m; } }
+      this.carrier = null;
+      if (best) this.giveBall(best, Math.round(4 * TS));
+    }
     this.log({ type: 'injury', side: p.side, playerId: p.input.id, text: `${p.input.name} ist verletzt.` });
     // Verletzte werden automatisch ersetzt, wenn möglich – sonst Unterzahl
     const bench = t.players.filter((x) => !x.onPitch && !x.subbedOff && !x.sentOff && !x.input.unavailable && !x.injured);
@@ -1811,6 +1828,7 @@ export class MatchEngine {
       events: this.events,
       playerOfTheMatch: potm?.playerId ?? null,
       possessionHome: total ? Math.round((this.teams.home.stats.possessionTicks / total) * 100) : 50,
+      lineups: { home: this.teams.home.startLineup, away: this.teams.away.startLineup },
     };
   }
 }

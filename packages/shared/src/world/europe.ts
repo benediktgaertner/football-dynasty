@@ -180,16 +180,27 @@ export function buildEuropeAssociation(worldSeed: string, code: string, registry
     }
   });
 
-  // Einige vereinslose Spieler je Land (Free Agents)
+  // Einige vereinslose Spieler je Land (Free Agents): bewusst schwächer als Vertragsspieler
   const faCount = Math.max(2, Math.round(a.leagueSize / 5));
   const positions: Position[] = ['GK', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LW', 'RW', 'ST'];
   for (let i = 0; i < faCount; i++) {
-    const t = targets[Math.min(targets.length - 1, Math.floor(targets.length * (0.4 + rng.next() * 0.6)))]! - 3 + rng.normal(0, 2);
-    const p = generatePlayer(rng, { nat: nationality(rng, a), position: rng.pick(positions), overall: Math.max(40, Math.min(88, Math.round(t))), age: randomAge(rng, 28, 4, 19, 35), usedNames });
+    const age = rng.next() < 0.25 ? rng.int(18, 21) : randomAge(rng, 28, 4, 22, 35);
+    const p = generatePlayer(rng, { nat: nationality(rng, a), position: rng.pick(positions), overall: freeAgentOverall(rng, age), age, usedNames });
     players.push({ ...p, club_key: null, contract_years: null, shirt: null });
   }
 
   return { association_code: code, clubs, players };
+}
+
+/**
+ * Stärke neu erzeugter Free Agents: überwiegend 55–68, selten 69–72, nie darüber.
+ * Junge Spieler (≤ 21) liegen eher im unteren Bereich; Potenzial vergibt der Spielergenerator.
+ */
+export function freeAgentOverall(rng: Rng, age: number): number {
+  if (rng.next() < 0.12) return rng.int(69, 72);
+  const lo = age <= 21 ? 55 : 57;
+  const hi = age <= 21 ? 64 : 68;
+  return Math.min(68, Math.max(55, Math.round(lo + (hi - lo) * (0.5 + rng.normal(0, 0.28)))));
 }
 
 /** Registry aus den bereits vorhandenen Vereinen einer Welt aufbauen */

@@ -46,3 +46,22 @@ describe('Europaweiter Transfermarkt', () => {
     expect(smr.clubs[0]!.level).toBe(4);
   });
 });
+
+describe('Free Agents', () => {
+  it('neu erzeugte Free Agents: überwiegend 55–68, wenige 69–72, keiner über 72', () => {
+    const reg = registryFrom([]);
+    const fas = ['ENG', 'ESP', 'ITA', 'FRA', 'POR', 'NED', 'TUR', 'POL'].flatMap((c) => buildEuropeAssociation('fa', c, reg).players.filter((p) => p.club_key === null));
+    expect(fas.length).toBeGreaterThan(20);
+    expect(Math.max(...fas.map((p) => p.overall))).toBeLessThanOrEqual(72);
+    expect(Math.min(...fas.map((p) => p.overall))).toBeGreaterThanOrEqual(55);
+    expect(fas.filter((p) => p.overall >= 69).length / fas.length).toBeLessThan(0.3);
+  });
+  it('Verteilung über viele Ziehungen', async () => {
+    const { createRng, freeAgentOverall } = await import('../src/index.js');
+    const rng = createRng('fa-dist');
+    const xs = Array.from({ length: 2000 }, () => freeAgentOverall(rng, rng.int(18, 34)));
+    expect(Math.max(...xs)).toBe(72);
+    expect(xs.filter((x) => x >= 69).length / xs.length).toBeLessThan(0.15);
+    expect(xs.filter((x) => x <= 68).length / xs.length).toBeGreaterThan(0.85);
+  });
+});

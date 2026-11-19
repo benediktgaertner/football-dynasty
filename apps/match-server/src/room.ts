@@ -155,6 +155,7 @@ export class MatchRoom {
       status: this.status,
       fixtureId: this.fixtureId,
       kind: this.db.kind,
+      stadium: this.db.stadium ?? null,
       teams: this.roster(),
       snapshot: this.presenter?.lastFrame ?? this.engine.snapshot(),
       scene: this.presenter?.scene ?? 0,

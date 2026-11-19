@@ -65,7 +65,7 @@ reset role;
 -- Internationaler Kauf: Spieler aus England zum deutschen Verein
 select p.id as eng_player, p.market_value as eng_value from public.players p join public.clubs c on c.id = p.club_id
 where c.world_id = :'world' and c.association_code = 'ENG' and p.overall between 70 and 80 order by p.overall desc limit 1 \gset
-update public.finances set balance = greatest(balance, 500000000) where club_id = :'host_club';
+select public.post_transaction(:'host_club', 'adjustment', greatest(0, 500000000 - balance), 'test:eu:topup', 'Test: Guthaben', null, true) from public.finances where club_id = :'host_club';
 set role authenticated;
 select tests.login(:'host');
 select public.make_transfer_offer(:'eng_player', (:eng_value * 1.5)::bigint, 20000000, 3) as eng_deal \gset
@@ -76,7 +76,8 @@ select tests.assert(exists (select 1 from public.transfers t where t.player_id =
 
 -- Internationaler Verkauf: KI-Käufer kann ein ausländischer Verein sein
 select p.id as cheap from public.players p where p.club_id = :'host_club' and p.id <> :'eng_player' order by p.overall limit 1 \gset
-update public.finances f set balance = 1 from public.clubs c where c.id = f.club_id and c.world_id = :'world' and c.association_code = 'GER' and c.control = 'ai';
+select count(public.post_transaction(f.club_id, 'adjustment', 1 - f.balance, 'test:eu:drain:' || f.club_id, 'Test: Konto leeren', null, true))
+from public.finances f join public.clubs c on c.id = f.club_id where c.world_id = :'world' and c.association_code = 'GER' and c.control = 'ai';
 set role authenticated;
 select tests.login(:'host');
 select public.sell_to_ai(:'cheap') as sale \gset

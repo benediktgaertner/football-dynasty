@@ -1,7 +1,8 @@
 import { NavLink } from 'react-router-dom';
 
 const ITEMS = [
-  { to: 'spieltag', label: 'Spieltag' },
+  { to: 'spieltag', label: 'Dashboard' },
+  { to: 'kalender', label: 'Kalender' },
   { to: 'team', label: 'Team' },
   { to: 'liga', label: 'Liga' },
   { to: 'pokal', label: 'Pokal' },

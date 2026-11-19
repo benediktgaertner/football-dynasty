@@ -160,7 +160,15 @@ export interface Snapshot {
   activeProfile: [TacticalProfileName, TacticalProfileName];
 }
 
+/** Startelf mit Formation (Feldkoordinaten 0–100, wie in den Taktikprofilen) */
+export interface StartingLineup {
+  formation: string;
+  slots: Array<{ playerId: string; position: string; x: number; y: number }>;
+}
+
 export interface MatchResult {
+  /** Startaufstellungen beider Teams */
+  lineups?: { home: StartingLineup; away: StartingLineup };
   score: [number, number];
   stats: { home: TeamMatchStats; away: TeamMatchStats };
   players: PlayerMatchStats[];

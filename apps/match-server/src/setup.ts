@@ -44,6 +44,8 @@ export interface DbSetup {
   home: DbTeam;
   away: DbTeam;
   checkpoint: { tick: number; log: unknown[] } | null;
+  /** Stadion des Heimvereins (rein optisch): Design und Zuschauerzahl = Ticketverkauf */
+  stadium?: { name: string; capacity: number; design: Record<string, unknown>; attendance: number | null } | null;
 }
 
 function profileFrom(raw: DbTeam['profiles'][TacticalProfileName] | undefined): ProfileInput {

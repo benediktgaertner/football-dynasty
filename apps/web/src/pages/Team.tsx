@@ -135,8 +135,9 @@ export function Team() {
           ctx={ctx}
           kit={kit}
           onTrain={async (playerId, focus) => {
-            await teamApi.train(worldId, playerId, focus);
+            const r = await teamApi.train(worldId, playerId, focus);
             await reload(false);
+            return { points: r.points, total: r.total_points };
           }}
         />
       )}
