@@ -3,11 +3,22 @@ import type { AdvancedOptions, Position, TacticalProfileName, TeamInstructions }
 /** Spielfeld in Metern. Heimteam spielt Richtung +x, Gastteam Richtung −x. */
 export const PITCH_LENGTH = 105;
 export const PITCH_WIDTH = 68;
-/** Virtuelle Sekunden je Tick und Ticks je Partie (90 Minuten). 7.200 Ticks in 180 s ⇒ 25 ms je Tick. */
-export const TICK_SECONDS = 0.75;
-export const TICKS_PER_HALF = 3600;
+/**
+ * Zeitmodell (vier getrennte Ebenen):
+ * 1. Fußballzeit: Die Engine simuliert in Schritten von 0,1 s echter Spielzeit (54.000 Ticks = 90 Minuten).
+ *    Bewegung, Fitness und Einsatzminuten beziehen sich ausschließlich darauf.
+ * 2. Autoritativer Zustand: liegt nur auf dem Match-Server (MatchEngine).
+ * 3. Wiedergabe: gezeigte Szenen laufen mit PLAYBACK_SPEED (2-fach) – nie schneller.
+ * 4. Szenenauswahl: die Regie (apps/match-server/src/presenter.ts) wählt aus den berechneten Aktionen,
+ *    überspringt ruhige Phasen und hält die Gesamtdauer bei ca. MATCH_REAL_SECONDS.
+ */
+export const TICK_SECONDS = 0.1;
+export const TICKS_PER_HALF = 27000;
 export const TOTAL_TICKS = TICKS_PER_HALF * 2;
-export const REAL_MS_PER_TICK = 25;
+export const PLAYBACK_SPEED = 2;
+export const MATCH_REAL_SECONDS = 180;
+/** Echtzeit je Tick während einer gezeigten Szene */
+export const PLAYBACK_MS_PER_TICK = (TICK_SECONDS * 1000) / PLAYBACK_SPEED;
 
 export type Side = 'home' | 'away';
 
@@ -130,6 +141,8 @@ export interface TeamMatchStats {
 
 export interface Snapshot {
   tick: number;
+  /** Spieluhr in Sekunden Fußballzeit */
+  clock: number;
   minute: number;
   phase: 'pre' | 'first' | 'second' | 'end';
   score: [number, number];

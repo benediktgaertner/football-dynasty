@@ -94,6 +94,12 @@ export function Match() {
               {banner.text}
             </div>
           )}
+          <SkipBadge skip={state.skip} />
+          {status === 'halftime' && (
+            <div className="pointer-events-none absolute inset-0 grid place-items-center rounded-xl bg-ink/45">
+              <div className="display rounded-2xl bg-ink/80 px-8 py-4 text-4xl font-extrabold uppercase tracking-wide">Halbzeit · {snap.score[0]}:{snap.score[1]}</div>
+            </div>
+          )}
           {status === 'waiting' && (
             <div className="absolute inset-0 grid place-items-center rounded-xl bg-ink/55">
               <div className="text-center">
@@ -128,6 +134,23 @@ export function Match() {
   );
 }
 
+/** Sprung der Regie: „23' ⏩ 31'“ – die Uhr springt, ruhige Phasen werden nicht gezeigt */
+function SkipBadge({ skip }: { skip: { from: number; to: number; at: number } | null }) {
+  const [, force] = useState(0);
+  useEffect(() => {
+    if (!skip) return;
+    const t = setTimeout(() => force((x) => x + 1), 1800);
+    return () => clearTimeout(t);
+  }, [skip]);
+  if (!skip || performance.now() - skip.at > 1700 || skip.to - skip.from < 20) return null;
+  const m = (sec: number) => `${Math.min(90, Math.floor(sec / 60) + 1)}'`;
+  return (
+    <div key={skip.at} className="fd-toast pointer-events-none absolute right-3 top-3 rounded-full bg-ink/80 px-3 py-1 text-sm font-semibold text-cream shadow-lg">
+      {m(skip.from)} ⏩ {m(skip.to)}
+    </div>
+  );
+}
+
 /** Einblendungen: großes „TOR!“ und kurze Hinweise bei Großchancen, Paraden, Karten */
 function useBanner(events: MatchEvent[], teams: { home: RosterTeam; away: RosterTeam } | null) {
   const [banner, setBanner] = useState<{ key: number; big: boolean; text: string; color: string } | null>(null);
@@ -153,7 +176,7 @@ function Scoreboard({ teams, homeColor, awayColor, score, minute, phase, status,
   teams: { home: RosterTeam; away: RosterTeam }; homeColor: string; awayColor: string; score: [number, number]; minute: number;
   phase: string; status: string; connection: string; role: string | null;
 }) {
-  const clock = status === 'waiting' ? 'Vor dem Spiel' : phase === 'end' || status === 'finished' ? 'Abpfiff' : `${minute}'`;
+  const clock = status === 'waiting' ? 'Vor dem Spiel' : status === 'halftime' ? 'Halbzeit' : phase === 'end' || status === 'finished' ? 'Abpfiff' : `${Math.min(phase === 'first' ? 45 : 90, minute + 1)}'`;
   return (
     <Card className="!p-3">
       <div className="flex items-center gap-3">

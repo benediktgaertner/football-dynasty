@@ -87,6 +87,12 @@ Noch nicht enthalten, weil es den Saisonkalender braucht (Phase 7): Regeneration
 - Web: Spiele-Tab im Team, Live-Seite mit Canvas, Spielstand, Liveticker, Profiltasten, Team-Management ohne Pause, Spielbericht
 - Gemeinsame Freigabe von Pflichtspielergebnissen und Überspringen gehören zum Spieltagsablauf und folgen mit Phase 7.
 
+### Update: realistische Bewegung und Regie ✅
+- Engine in echter Fußballzeit (0,1-s-Ticks), keine Teleports mehr (Ballannahme per Laufweg, sichtbare Schüsse, Schnitte nur bei Neuaufstellung)
+- Regie mit Szenenauswahl, 2-facher Wiedergabe, Zeitsprüngen, Halbzeitpause und ca. 180 s Gesamtdauer
+- Konter (Sofort-Läufe nach Ballgewinn), Ballbesitzspiel (Passdreiecke), Pressing/Linie wirken auf Laufwege
+- Kalibrierung: ca. 2,3 Tore/Spiel, 11 Schüsse und ca. 600 Pässe (78 %) je Team, Stärke 78 gegen 66 gewinnt ca. 75 %
+
 ## Phase 7 – Wettbewerbe und Kalender ⬜
 Spielpläne (inkl. Wochentagsregeln C8.5), Tabellen, Pokal, Relegation, vierte Liga, Fünfjahreswertung, Champions League, Europa League mit Qualifikation und Auslosungen, Prämien. **Abnahme:** P24, P29–P35.
 

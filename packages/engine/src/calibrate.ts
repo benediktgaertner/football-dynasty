@@ -2,7 +2,7 @@ import { simulate } from './engine.js';
 import { buildTestTeam } from './fixtures.js';
 
 /** Kalibrierung: npm run calibrate -w @fd/engine [-- N] */
-const n = Number(process.argv[2] ?? 200);
+const n = Number(process.argv[2] ?? 60);
 let goals = 0, draws = 0, homeWins = 0, awayWins = 0, shots = 0, xg = 0, onT = 0, fouls = 0, yellow = 0, red = 0, corners = 0, off = 0, passes = 0, pc = 0;
 let strongWins = 0, strongDraw = 0;
 const t0 = Date.now();

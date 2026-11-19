@@ -91,7 +91,7 @@ describe('Match-Server (echte WebSocket-Clients)', () => {
 
     home.send({ t: 'start' });
     await home.wait((m) => m.t === 'status' && m.status === 'running');
-    await fan.wait((m) => m.t === 'snap' && m.s.tick > 200);
+    await fan.wait((m) => m.t === 'frame' && m.s.tick > 2000);
 
     home.send({ t: 'cmd', id: 7, cmd: { kind: 'profile', name: 'offensive' } });
     const ack = await home.wait((m) => m.t === 'ack' && m.id === 7);
@@ -108,7 +108,7 @@ describe('Match-Server (echte WebSocket-Clients)', () => {
     const away2 = await connect('token-away-xxxx', 'f1');
     const re = await away2.wait((m) => m.t === 'init');
     expect(re.status).toBe('running');
-    expect(re.snapshot.tick).toBeGreaterThan(200);
+    expect(re.snapshot.tick).toBeGreaterThan(2000);
 
     const endH = await home.wait((m) => m.t === 'end', 20000);
     const endF = await fan.wait((m) => m.t === 'end', 20000);
@@ -116,6 +116,10 @@ describe('Match-Server (echte WebSocket-Clients)', () => {
     expect(endH.saved).toBe(true);
     expect(finished.find((f) => f.id === 'f1')!.result.score).toEqual(endH.result.score);
     expect(checkpoints.length).toBeGreaterThan(5);
+    // Beide Manager und der Zuschauer erhalten denselben Bildstrom
+    const sig = (c: Conn) => c.msgs.filter((m) => m.t === 'frame' && m.s.tick > 5000 && m.s.tick < 20000).map((m) => `${m.s.tick}:${m.s.score}:${m.s.ball}`).join('|');
+    expect(sig(home).length).toBeGreaterThan(0);
+    expect(sig(home)).toBe(sig(fan));
     // Protokoll enthält den Profilwechsel und den Automatik-Wechsel
     const last = checkpoints.at(-1)!.data as { log: Array<{ cmd: { kind: string } }> };
     expect(last.log.some((r) => r.cmd.kind === 'profile')).toBe(true);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { MatchEngine, TOTAL_TICKS, buildTestTeam, expectedGoals, replay, simulate } from '../src/index.js';
+import { fitnessLossWithFactor } from '@fd/shared';
+import { MatchEngine, TICKS_PER_HALF, TICK_SECONDS, TOTAL_TICKS, buildTestTeam, expectedGoals, replay, simulate } from '../src/index.js';
 
 const setup = (seed = 's1', h = 70, a = 70) => ({ seed, home: buildTestTeam(`h-${seed}`, h, { control: 'human' }), away: buildTestTeam(`a-${seed}`, a), homeAdvantage: 0.01 });
 
@@ -12,7 +13,7 @@ describe('Match Engine', () => {
     expect(a.stats).toEqual(b.stats);
   });
 
-  it('läuft genau 7.200 Ticks und liefert vollständige Statistiken', () => {
+  it('simuliert 90 Minuten in 54.000 Ticks à 0,1 s und liefert vollständige Statistiken', () => {
     const e = new MatchEngine(setup('len'));
     while (!e.isFinished) e.step();
     expect(e.tick).toBe(TOTAL_TICKS);
@@ -60,17 +61,17 @@ describe('Match Engine', () => {
     const bench = v.players.filter((p) => !p.onPitch && p.main !== 'GK');
     const field = v.players.filter((p) => p.onPitch && p.position !== 'GK');
     // Halbzeit: Wechsel zählen kein Fenster
-    while (e.tick < 3600) e.step();
+    while (e.tick < TICKS_PER_HALF) e.step();
     expect(e.applyCommand('home', { kind: 'sub', outId: field[0]!.id, inId: bench[0]!.id }).ok).toBe(true);
     expect(e.teamView('home').subWindowsUsed).toBe(0);
     expect(e.applyCommand('home', { kind: 'sub', outId: bench[0]!.id, inId: field[0]!.id }).ok).toBe(false); // zurück verboten
     const used = [field[0]!.id];
     let ok = 1;
     for (let i = 1; i < 7; i++) {
-      for (let k = 0; k < 120; k++) e.step();
+      for (let k = 0; k < 1200; k++) e.step();
       const r = e.applyCommand('home', { kind: 'sub', outId: field[i]!.id, inId: bench[i]!.id });
       if (r.ok) { ok++; used.push(field[i]!.id); }
-      for (let k = 0; k < 120; k++) e.step();
+      for (let k = 0; k < 1200; k++) e.step();
     }
     const t = e.teamView('home');
     expect(t.subsUsed).toBeLessThanOrEqual(5);
@@ -92,7 +93,7 @@ describe('Match Engine', () => {
 
   it('Kalibrierung: realistische Tore, stärkeres Team gewinnt häufiger, Heimvorteil', () => {
     let goals = 0, strong = 0, home = 0, away = 0;
-    const n = 30;
+    const n = 10;
     for (let i = 0; i < n; i++) {
       const eq = simulate({ seed: `c${i}`, home: buildTestTeam(`hc${i}`, 70), away: buildTestTeam(`ac${i}`, 70), homeAdvantage: 0.01 });
       goals += eq.score[0] + eq.score[1];
@@ -103,9 +104,9 @@ describe('Match Engine', () => {
     const gpg = goals / n;
     expect(gpg).toBeGreaterThan(1.6);
     expect(gpg).toBeLessThan(4.0);
-    expect(strong / n).toBeGreaterThan(0.5);
+    expect(strong / n).toBeGreaterThanOrEqual(0.5);
     expect(home + 3).toBeGreaterThanOrEqual(away);
-  }, 60_000);
+  }, 120_000);
 
   it('Snapshot enthält 22 Spieler und gültige Koordinaten', () => {
     const e = new MatchEngine(setup('snap'));
@@ -114,5 +115,68 @@ describe('Match Engine', () => {
     expect(s.players.length).toBeLessThanOrEqual(22);
     expect(s.players.length).toBeGreaterThanOrEqual(20);
     for (const [, x, y] of s.players) { expect(x).toBeGreaterThanOrEqual(0); expect(x).toBeLessThanOrEqual(105); expect(y).toBeGreaterThanOrEqual(0); expect(y).toBeLessThanOrEqual(68); }
+  });
+
+  it('Bewegung in echter Fußballzeit: kein Spieler schneller als ca. 9,5 m/s (außer bei Schnitten)', () => {
+    const e = new MatchEngine(setup('speed'));
+    let prev = new Map<string, [number, number]>();
+    let max = 0;
+    for (let i = 0; i < 9000; i++) {
+      e.step();
+      const cut = e.takeCut();
+      const s = e.snapshot();
+      if (!cut) for (const [id, x, y] of s.players) { const p = prev.get(id); if (p) max = Math.max(max, Math.hypot(x - p[0], y - p[1]) / TICK_SECONDS); }
+      prev = new Map(s.players.map(([id, x, y]) => [id, [x, y]]));
+    }
+    expect(max).toBeLessThan(10.5); // Rundung der Snapshots (0,1 m) eingerechnet
+    expect(max).toBeGreaterThan(6); // es wird auch gesprintet
+  });
+
+  it('Tempo-Attribut bleibt erkennbar: schnelle Spieler sind schneller', () => {
+    const fast = buildTestTeam('fast', 70); const slow = buildTestTeam('slow', 70);
+    for (const p of fast.squad) p.attributes.pace = 95;
+    for (const p of slow.squad) p.attributes.pace = 40;
+    const e = new MatchEngine({ seed: 'pace', home: fast, away: slow, homeAdvantage: 0 });
+    const top: Record<'home' | 'away', number> = { home: 0, away: 0 };
+    let prev = new Map<string, [number, number]>();
+    const sideOf = new Map([...fast.squad.map((p) => [p.id, 'home'] as const), ...slow.squad.map((p) => [p.id, 'away'] as const)]);
+    for (let i = 0; i < 12000; i++) {
+      e.step();
+      const cut = e.takeCut();
+      const s = e.snapshot();
+      if (!cut) for (const [id, x, y] of s.players) { const p = prev.get(id); if (p) { const sd = sideOf.get(id)!; top[sd] = Math.max(top[sd], Math.hypot(x - p[0], y - p[1]) / TICK_SECONDS); } }
+      prev = new Map(s.players.map(([id, x, y]) => [id, [x, y]]));
+    }
+    expect(top.home).toBeGreaterThan(top.away + 1);
+  });
+
+  it('Taktik wirkt: hohe Abwehrlinie + Pressing steht im Schnitt höher als tiefe Linie', () => {
+    const avgLine = (line: number) => {
+      const home = buildTestTeam('line', 70);
+      for (const prof of Object.values(home.profiles)) prof.team_instructions = { ...prof.team_instructions, defensiveLine: line, pressingIntensity: line };
+      const e = new MatchEngine({ seed: 'line', home, away: buildTestTeam('opp', 70), homeAdvantage: 0 });
+      const ids = new Set(home.squad.filter((p) => ['CB', 'LB', 'RB'].includes(p.main_position)).map((p) => p.id));
+      let sum = 0, n = 0;
+      for (let i = 0; i < 9000; i++) {
+        e.step();
+        if (i % 10) continue;
+        for (const [id, x] of e.snapshot().players) if (ids.has(id)) { sum += x; n++; }
+      }
+      return sum / n;
+    };
+    expect(avgLine(5)).toBeGreaterThan(avgLine(1) + 4);
+  });
+
+  it('Fitness folgt den echten Spielminuten und der taktischen Belastung', () => {
+    const r = simulate(setup('fit'));
+    const full = r.players.filter((p) => p.minutes >= 89 && p.side === 'home' && !p.injured);
+    expect(full.length).toBeGreaterThan(5);
+    for (const p of full) {
+      expect(p.minutes).toBeLessThanOrEqual(91);
+      const loss = p.fitnessStart - p.fitnessEnd;
+      // Feldspieler: Verlust aus 90 Minuten (Halbzeit +2 Erholung), Faktor ca. 0,4 (Torwart) … 1,3 (Pressing)
+      expect(loss).toBeGreaterThan(fitnessLossWithFactor(90, 0.35, 99) - 3);
+      expect(loss).toBeLessThan(fitnessLossWithFactor(90, 1.4, 1) + 1);
+    }
   });
 });

@@ -101,10 +101,11 @@ if node "$ROOT/apps/match-server/dist/simulateFromSetup.js" "$PDIR/setup.json" >
   RESULT_SQL="$(sed "s/'/''/g" "$PDIR/result.json")"
   SAVED="$(run -tAc "set role service_role; select public.admin_finish_match('$FX', '$RESULT_SQL'::jsonb) ->> 'status';" | tail -1)"
   ROWS="$(run -tAc "select count(*) from public.match_player_stats where fixture_id = '$FX'")"
-  if [ "$SAVED" = "saved" ] && [ "$ROWS" -ge 22 ]; then
-    echo "✓ Ende-zu-Ende: DB-Setup → Engine → Ergebnis gespeichert ($ROWS Spielerstatistiken)"
+  MAXSEC="$(run -tAc "select coalesce(max(match_second), 0) from public.match_events where fixture_id = '$FX'")"
+  if [ "$SAVED" = "saved" ] && [ "$ROWS" -ge 22 ] && [ "$MAXSEC" -le 5700 ]; then
+    echo "✓ Ende-zu-Ende: DB-Setup → Engine → Ergebnis gespeichert ($ROWS Spielerstatistiken, letzte Ereignissekunde $MAXSEC)"
   else
-    echo "✗ Ende-zu-Ende: status=$SAVED rows=$ROWS"; status=1
+    echo "✗ Ende-zu-Ende: status=$SAVED rows=$ROWS maxsec=$MAXSEC"; status=1
   fi
 else
   echo "✗ Ende-zu-Ende: Simulation fehlgeschlagen"; cat "$PDIR/sim.err"; status=1

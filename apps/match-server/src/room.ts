@@ -1,5 +1,6 @@
 import type { WebSocket } from 'ws';
-import { MatchEngine, REAL_MS_PER_TICK, TOTAL_TICKS, replay, type CommandRecord, type MatchCommand, type Side } from '@fd/engine';
+import { MatchEngine, TOTAL_TICKS, MATCH_REAL_SECONDS, replay, type CommandRecord, type MatchCommand, type Side } from '@fd/engine';
+import { Presenter } from './presenter.js';
 import type { Backend } from './backend.js';
 import { toEngineSetup, type DbSetup } from './setup.js';
 
@@ -10,8 +11,8 @@ export interface Client {
   cmdWindow: number[];
 }
 
-const SNAPSHOT_EVERY = 4; // 25 ms × 4 = 100 ms ⇒ 10 Hz
-const CHECKPOINT_EVERY = 400; // alle 10 s Echtzeit
+const LOOP_MS = 25;
+const CHECKPOINT_EVERY = 3000; // alle 5 Minuten Spielzeit (Seed + Befehlsprotokoll)
 const START_COUNTDOWN_MS = 90_000; // spätestens 90 s nach Öffnen startet das Spiel automatisch
 
 /**
@@ -25,12 +26,9 @@ export class MatchRoom {
   db!: DbSetup;
   status: 'loading' | 'waiting' | 'running' | 'finished' | 'failed' = 'loading';
   private timer: NodeJS.Timeout | null = null;
-  private startedAt = 0;
-  private startTick = 0;
-  private nextAt = 0;
-  private endAt = 0;
-  private avgWeight = 1;
-  private sentEvents = 0;
+  presenter: Presenter | null = null;
+  private lastLoop = 0;
+  private lastCheckpointTick = 0;
   private autoStart: NodeJS.Timeout | null = null;
   private onClose: () => void;
   private finishing = false;
@@ -47,7 +45,7 @@ export class MatchRoom {
     if (cp && Array.isArray(cp.log) && cp.tick > 0) {
       // Wiederaufnahme nach Neustart: Seed + Befehle deterministisch nachspielen
       this.engine = replay(setup, cp.log as CommandRecord[], cp.tick);
-      this.sentEvents = this.engine.events.length;
+      this.lastCheckpointTick = cp.tick;
       this.begin();
     } else {
       this.engine = new MatchEngine(setup);
@@ -76,44 +74,28 @@ export class MatchRoom {
     if (this.autoStart) clearTimeout(this.autoStart);
     this.updateAutopilot();
     this.status = 'running';
-    this.startedAt = Date.now();
-    this.startTick = this.engine.tick;
-    this.nextAt = this.startedAt;
-    this.endAt = this.startedAt + ((TOTAL_TICKS - this.engine.tick) * REAL_MS_PER_TICK) / this.speed;
+    // Bei Wiederaufnahme: Zeitbudget anteilig fortsetzen
+    const startRealMs = (this.engine.tick / TOTAL_TICKS) * MATCH_REAL_SECONDS * 1000;
+    this.presenter = new Presenter(this.engine, { startRealMs });
+    this.lastLoop = Date.now();
     this.broadcast({ t: 'status', status: 'running' });
-    this.timer = setInterval(() => this.loop(), Math.max(4, 10 / this.speed));
+    this.timer = setInterval(() => this.loop(), LOOP_MS);
   }
 
   private loop(): void {
-    // Regie: gefährliche Szenen langsamer, ruhiger Aufbau schneller – Gesamtdauer bleibt 180 s
     const now = Date.now();
-    let steps = 0;
-    while (now >= this.nextAt && !this.engine.isFinished && steps < 80) {
-      this.engine.step();
-      steps++;
-      const remaining = Math.max(1, TOTAL_TICKS - this.engine.tick);
-      const base = Math.max(1, (this.endAt - this.nextAt) / remaining);
-      const w = 0.7 + 0.9 * this.engine.intensity();
-      this.avgWeight = this.avgWeight * 0.995 + w * 0.005;
-      this.nextAt += Math.min(base * 3, Math.max(base * 0.3, (base * w) / this.avgWeight));
-      if (this.engine.tick % SNAPSHOT_EVERY === 0) this.broadcastSnapshot();
-      if (this.engine.tick % CHECKPOINT_EVERY === 0) void this.saveCheckpoint();
-    }
-    this.flushEvents();
-    if (this.engine.isFinished) void this.finish();
-  }
-
-  private broadcastSnapshot(): void {
-    this.broadcast({ t: 'snap', s: this.engine.snapshot() });
-  }
-
-  private flushEvents(): void {
-    if (this.engine.events.length > this.sentEvents) {
-      const events = this.engine.events.slice(this.sentEvents);
-      this.sentEvents = this.engine.events.length;
-      this.broadcast({ t: 'ev', events });
+    const dt = Math.min(500, now - this.lastLoop) * this.speed;
+    this.lastLoop = now;
+    const p = this.presenter!;
+    for (const m of p.advance(dt)) {
+      if (m.t === 'done') { void this.finish(); continue; }
+      this.broadcast(m);
       // Manager sehen ihr Team nach Ereignissen (Wechsel, Karten, Verletzungen) aktualisiert
-      if (events.some((e) => ['sub', 'yellow', 'second_yellow', 'red', 'injury', 'tactic', 'halftime'].includes(e.type))) this.sendViews();
+      if (m.t === 'ev' && m.events.some((e) => ['sub', 'yellow', 'second_yellow', 'red', 'injury', 'tactic', 'halftime'].includes(e.type))) this.sendViews();
+    }
+    if (this.engine.tick - this.lastCheckpointTick >= CHECKPOINT_EVERY && !this.engine.isFinished) {
+      this.lastCheckpointTick = this.engine.tick;
+      void this.saveCheckpoint();
     }
   }
 
@@ -172,8 +154,9 @@ export class MatchRoom {
       fixtureId: this.fixtureId,
       kind: this.db.kind,
       teams: this.roster(),
-      snapshot: this.engine.snapshot(),
-      events: this.engine.events,
+      snapshot: this.presenter?.lastFrame ?? this.engine.snapshot(),
+      scene: this.presenter?.scene ?? 0,
+      events: this.presenter ? this.presenter.released : this.engine.events,
       view: c.role === 'spectator' ? null : this.engine.teamView(c.role),
     });
     if (this.status === 'running') this.updateAutopilot();
@@ -199,10 +182,7 @@ export class MatchRoom {
     if (this.status === 'finished') return this.send(c, { t: 'ack', id, ok: false, error: 'Die Partie ist beendet.' });
     const res = this.engine.applyCommand(c.role, cmd);
     this.send(c, { t: 'ack', id, ok: res.ok, error: res.ok ? undefined : res.error, tick: this.engine.tick });
-    if (res.ok) {
-      this.flushEvents();
-      this.sendView(c.role);
-    }
+    if (res.ok) this.sendView(c.role);
   }
 
   private sendViews(): void {

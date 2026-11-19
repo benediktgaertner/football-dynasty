@@ -83,6 +83,8 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight }: {
 
       const st = client.interpolated();
       if (!st) return;
+      const sinceCut = performance.now() - client.cutAt;
+      if (sinceCut < 50) trail.length = 0;
       const [bx, by, bz] = st.ball;
       // Ballspur
       trail.push([bx, by - bz * 0.55]);
@@ -135,6 +137,11 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight }: {
         ctx.beginPath(); ctx.roundRect(X(x) - w / 2, ly - 0.95 * s, w, 1.9 * s, 0.5 * s); ctx.fill();
         ctx.fillStyle = '#f5efe0';
         ctx.fillText(name, X(x), ly + 0.05 * s);
+      }
+      // Schnitt: kurze Abblende, damit Sprünge nicht als Teleport wirken
+      if (sinceCut < 320) {
+        ctx.fillStyle = `rgba(10,14,10,${0.85 * (1 - sinceCut / 320)})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
     };
     draw();

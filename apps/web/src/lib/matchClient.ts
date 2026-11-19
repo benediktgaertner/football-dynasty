@@ -4,7 +4,7 @@ import { requireSupabase } from './supabase';
 export type Side = 'home' | 'away';
 export type ProfileName = 'offensive' | 'neutral' | 'defensive';
 export interface Snapshot {
-  tick: number; minute: number; phase: 'pre' | 'first' | 'second' | 'end'; score: [number, number];
+  tick: number; clock?: number; minute: number; phase: 'pre' | 'first' | 'second' | 'end'; score: [number, number];
   ball: [number, number, number?]; possession: Side | null; carrier?: string | null; intensity?: number; players: Array<[string, number, number]>; red: [number, number];
   activeProfile: [ProfileName, ProfileName];
 }
@@ -32,7 +32,9 @@ export interface MatchState {
   connection: 'connecting' | 'open' | 'reconnecting' | 'closed' | 'error';
   error: string | null;
   role: Side | 'spectator' | null;
-  status: 'loading' | 'waiting' | 'running' | 'finished' | 'failed';
+  status: 'loading' | 'waiting' | 'running' | 'halftime' | 'finished' | 'failed';
+  /** Zuletzt übersprungene Spielphase (Regie) */
+  skip: { from: number; to: number; at: number } | null;
   teams: { home: RosterTeam; away: RosterTeam } | null;
   events: MatchEvent[];
   view: TeamView | null;
@@ -46,13 +48,16 @@ export interface MatchState {
  * (exponentielles Backoff) und Snapshot-Puffer für flüssige Interpolation (~100 ms Verzögerung).
  */
 export class MatchClient {
-  state: MatchState = { connection: 'connecting', error: null, role: null, status: 'loading', teams: null, events: [], view: null, latest: null, end: null, kind: null };
+  state: MatchState = { connection: 'connecting', error: null, role: null, status: 'loading', skip: null, teams: null, events: [], view: null, latest: null, end: null, kind: null };
   private ws: WebSocket | null = null;
   private listeners = new Set<() => void>();
   private buffer: Array<{ at: number; s: Snapshot }> = [];
   private nextId = 1;
   private pending = new Map<number, (r: { ok: boolean; error?: string }) => void>();
   private retry = 0;
+  private scene = 0;
+  /** Zeitpunkt des letzten Schnitts (für kurze Überblendung) */
+  cutAt = 0;
   private stopped = false;
   private fatal = false;
 
@@ -103,10 +108,13 @@ export class MatchClient {
     switch (m.t) {
       case 'init':
         this.retry = 0;
+        this.scene = m.scene ?? 0;
         this.buffer = [{ at: performance.now(), s: m.snapshot }];
         this.emit({ connection: 'open', error: null, role: m.role, status: m.status, teams: m.teams, events: m.events, view: m.view, latest: m.snapshot, kind: m.kind });
         break;
-      case 'snap':
+      case 'frame':
+        // Neue Szene (Schnitt/Sprung): nicht über den Schnitt hinweg interpolieren
+        if (m.scene !== this.scene) { this.scene = m.scene; this.buffer = []; this.cutAt = performance.now(); }
         this.buffer.push({ at: performance.now(), s: m.s });
         if (this.buffer.length > 30) this.buffer.splice(0, this.buffer.length - 30);
         // Anzeige (Uhr/Score) nur bei Änderung neu rendern; Positionen zeichnet das Canvas selbst
@@ -121,6 +129,9 @@ export class MatchClient {
         break;
       case 'status':
         this.emit({ status: m.status });
+        break;
+      case 'skip':
+        this.emit({ skip: { from: m.from, to: m.to, at: performance.now() } });
         break;
       case 'ack': {
         const r = this.pending.get(m.id);
@@ -154,7 +165,7 @@ export class MatchClient {
   interpolated(now = performance.now()): { ball: [number, number, number]; carrier: string | null; players: Map<string, [number, number]> } | null {
     const b = this.buffer;
     if (b.length === 0) return null;
-    const renderAt = now - 140;
+    const renderAt = now - 150;
     let i = b.length - 1;
     while (i > 0 && b[i - 1]!.at > renderAt) i--;
     const a = b[Math.max(0, i - 1)]!;
