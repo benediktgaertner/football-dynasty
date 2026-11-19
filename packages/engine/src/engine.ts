@@ -47,7 +47,14 @@ const MAX_SUBS = 5;
 const MAX_SUB_WINDOWS = 3;
 const GOAL_U = L;
 const GOAL_V = W / 2;
-const BASE_HOME_ADVANTAGE = 0.035;
+const BASE_HOME_ADVANTAGE = 0.02;
+/**
+ * Qualitätskontrast: Duelle vergleichen Angreifer und Verteidiger direkt (nicht gegen einen festen Bezugswert).
+ * Größere Werte = Zufall wichtiger. Kalibriert mit packages/engine/scripts/balance.mjs (siehe docs/BALANCING.md).
+ */
+const Q_DUEL = 7;      // Zweikampf/Dribbling: Logit je Punkt Unterschied = 1/Q_DUEL
+const Q_PASS = 50;     // Passqualität gegen Abwehrqualität des Gegners
+const Q_SHOT = 0.032;  // Abschluss gegen Torwart: Torwahrscheinlichkeit × e^(Q_SHOT · Unterschied)
 /** Bewegungen laufen in echter Fußballzeit: Weg je Tick = Geschwindigkeit × 0,1 s. */
 const VIS = TICK_SECONDS;
 /** Dauer-Faktor für Ballbehandlung, Laufwege und Reaktionen (in Ticks) */
@@ -464,6 +471,19 @@ export class MatchEngine {
   }
 
   /** Torwartstärke (Feldspieler im Tor = sehr schwach) */
+  /** Mannschaftsqualität der aktuell eingesetzten Elf (Position, Fitness, Heimvorteil) – Cache je ~6 Spielsekunden */
+  private qCache: Record<Side, { tick: number; def: number; gk: number }> = { home: { tick: -999, def: 70, gk: 70 }, away: { tick: -999, def: 70, gk: 70 } };
+  private teamQuality(side: Side): { def: number; gk: number } {
+    const c = this.qCache[side];
+    if (this.tick - c.tick < 60) return c;
+    const field = this.onPitch(side).filter((p) => p.slotPos !== 'GK');
+    c.def = field.length ? field.reduce((s, p) => s + this.skill(p, 'defending') * 0.6 + this.skill(p, 'gameIntelligence') * 0.25 + this.skill(p, 'physical') * 0.15, 0) / field.length : 40;
+    const gk = this.onPitch(side).find((p) => p.slotPos === 'GK');
+    c.gk = gk ? (this.keeperSkill(gk, 'reflexes') + this.keeperSkill(gk, 'positioning') + this.keeperSkill(gk, 'handling') + this.keeperSkill(gk, 'oneOnOne')) / 4 : 30;
+    c.tick = this.tick;
+    return c;
+  }
+
   private keeperSkill(p: LivePlayer | undefined, key: string): number {
     if (!p) return 15;
     if (p.input.kind !== 'goalkeeper') return 25;
@@ -1025,7 +1045,7 @@ export class MatchEngine {
     const def = shielding
       ? this.skill(op, 'physical') * 0.5 + this.skill(op, 'defending') * 0.5
       : this.skill(op, 'defending') * 0.65 + this.skill(op, 'physical') * 0.2 + this.skill(op, 'gameIntelligence') * 0.15;
-    const pWin = sigmoid((def - att) / 10 + 0.15);
+    const pWin = sigmoid((def - att) / Q_DUEL + 0.15);
     // Foul?
     const [cu, cv] = [c.u, c.v];
     const inBox = cu > L - 16.5 && Math.abs(cv - GOAL_V) < 20.16;
@@ -1195,7 +1215,8 @@ export class MatchEngine {
   private finishing(p: LivePlayer, pressure: number, header = false): number {
     const sk = header ? this.skill(p, 'heading') : this.skill(p, 'shooting');
     const nerve = pressure < 3 ? 1 - (1 - this.skill(p, 'mentality') / 99) * 0.3 : 1;
-    return (sk / 70) ** 1.6 * nerve;
+    const q = this.teamQuality(OTHER[p.side]);
+    return Math.exp((sk - (q.gk * 0.45 + q.def * 0.55)) * Q_SHOT) * nerve;
   }
 
   /** Geschätzte Passerfolgsquote – dieselbe Formel nutzt passTo für die Ausführung */
@@ -1203,9 +1224,11 @@ export class MatchEngine {
     const d = dist(c.u, c.v, toU, toV);
     const { op: marker, d: open } = this.nearestOpponentAt(t.side, toU, toV);
     // Gute Verteidiger stehen enger am Gegenspieler und antizipieren
-    const mDef = marker ? ((this.skill(marker, 'defending') * 0.7 + this.skill(marker, 'gameIntelligence') * 0.3) / 70) ** 1.5 : 1;
+    const mDefQ = marker ? this.skill(marker, 'defending') * 0.7 + this.skill(marker, 'gameIntelligence') * 0.3 : 0;
     const passing = this.skill(c, 'passing') * 0.75 + this.skill(c, 'gameIntelligence') * 0.25;
-    const pq = passing / 99;
+    // Passqualität relativ zur Abwehrqualität des Gegners (gleich stark ≈ 0,7)
+    const pq = clamp(0.7 + (passing - this.teamQuality(OTHER[t.side]).def) / Q_PASS, 0.25, 1.05);
+    const mDef = marker ? clamp(Math.exp((mDefQ - passing) / 25), 0.45, 2.2) : 1;
     // Druck: Mentalität entscheidet, wie sauber unter Bedrängnis gespielt wird
     const nerve = 1.25 - this.skill(c, 'mentality') / 99 * 0.5;
     let p = 1.05 - (1 - pq) * 0.45 - d * 0.005 * (1.6 - pq) - Math.max(0, 3 - pressure) * 0.04 * nerve - Math.max(0, 5 - open) * 0.05 * mDef;
@@ -1333,7 +1356,7 @@ export class MatchEngine {
     } else if (near === 1 && op && op.beatenUntil < this.tick && c.u > 40) {
       const att = this.skill(c, 'dribbling') * 0.65 + this.skill(c, 'pace') * 0.25 + this.skill(c, 'physical') * 0.1;
       const def = this.skill(op, 'defending') * 0.65 + this.skill(op, 'pace') * 0.25 + this.skill(op, 'gameIntelligence') * 0.1;
-      const pBeat = sigmoid((att - def) / 9 - 0.25);
+      const pBeat = sigmoid((att - def) / Q_DUEL - 0.25);
       // Schlechte Entscheider überschätzen sich
       const pEst = clamp(pBeat + this.rng.normal(0, (1 - gi) * 0.15), 0.02, 0.98);
       const au2 = Math.min(L - 5, c.u + 9), av2 = c.v + (GOAL_V - c.v) * 0.3;
@@ -1465,7 +1488,7 @@ export class MatchEngine {
             // Ballannahme unter Druck: Dribbling (Ballkontrolle) und Mentalität
             const rp = this.nearestOpponent(recv);
             if (!opt.finish && rp.op && rp.d < 2.2) {
-              const miss = (0.16 * (1 - this.skill(recv, 'dribbling') / 99) + (opt.lofted ? 0.05 : 0)) * (1.3 - this.skill(recv, 'mentality') / 99 * 0.6) * (this.skill(rp.op, 'defending') / 70) ** 1.5;
+              const miss = (0.16 * (1 - this.skill(recv, 'dribbling') / 99) + (opt.lofted ? 0.05 : 0)) * (1.3 - this.skill(recv, 'mentality') / 99 * 0.6) * clamp(Math.exp((this.skill(rp.op, 'defending') - this.skill(recv, 'dribbling')) / 22), 0.4, 2.5);
               if (this.rng.next() < miss) { rp.op.stats.interceptions++; this.giveBall(rp.op, Math.round(4 * TS)); return; }
             }
             this.giveBall(recv, this.holdFor(t));
@@ -1516,7 +1539,7 @@ export class MatchEngine {
     const dt = this.teams[OTHER[t.side]];
     const gk = this.keeper(dt);
     // Verdichtete Partie: jede gezeigte Chance steht für mehr Spielzeit ⇒ höhere Torgefahr je Abschluss
-    let xg = xgBase * 2.6 * (pressure < 1.5 ? 0.65 : pressure < 3 ? 0.85 : 1);
+    let xg = xgBase * 2.45 * (pressure < 1.5 ? 0.65 : pressure < 3 ? 0.85 : 1);
     const shotSkill = header ? this.skill(c, 'heading') : setPiece === 'free_kick' ? this.skill(c, 'freeKicks') : setPiece === 'penalty' ? this.skill(c, 'penalties') : this.skill(c, 'shooting');
     xg = clamp(xg, 0.005, 0.95);
     t.stats.shots++; c.stats.shots++;
@@ -1529,7 +1552,7 @@ export class MatchEngine {
     // Verteidiger im Schussweg blocken (Verteidigung + Stellungsspiel)
     if (!setPiece || setPiece === 'free_kick') {
       for (const bl of this.laneBlockers(t.side, c.u, c.v)) {
-        const pB = 0.16 * (this.skill(bl, 'defending') * 0.7 + this.skill(bl, 'gameIntelligence') * 0.3) / 70 * (setPiece ? 1.4 : 1);
+        const pB = clamp(0.16 * Math.exp((this.skill(bl, 'defending') * 0.7 + this.skill(bl, 'gameIntelligence') * 0.3 - shotSkill) / 30), 0.04, 0.4) * (setPiece ? 1.4 : 1);
         if (this.rng.next() < pB) {
           this.diagnostics[OTHER[t.side]].blocks++;
           this.lastPasser = null;
@@ -1557,7 +1580,10 @@ export class MatchEngine {
           : (this.keeperSkill(gk, 'positioning') * 0.45 + this.keeperSkill(gk, 'handling') * 0.35 + this.keeperSkill(gk, 'reflexes') * 0.2);
     const reactF = clamp(1 + (0.75 - react) * 0.35, 0.85, 1.2);
     // Torwahrscheinlichkeit: Lage (xG) × Abschlussqualität × Torwart; Präzision verteilt sie auf „aufs Tor“
-    const pGoal = clamp(xg * ((shotSkill / 70) ** 1.6) * nerve * ((1.4 - gkSkill / 160) / 0.9625) * reactF, 0.004, 0.96);
+    // Schütze gegen Torwart direkt verglichen: gleich stark = Lage-xG, Qualitätsvorsprung wirkt exponentiell
+    // Torwart (45 %) und Abwehrqualität der gegnerischen Elf (55 %, Bedrängnis/Winkel) zusammen
+    const resist = gkSkill * 0.45 + this.teamQuality(OTHER[t.side]).def * 0.55;
+    const pGoal = clamp(xg * Math.exp((shotSkill - resist) * Q_SHOT) * nerve * reactF, 0.004, 0.96);
     const pOnTarget = clamp(Math.max(pGoal + 0.05, 0.12 + precision * 0.33 + xg * 0.45 - (pressure < 1.5 ? 0.06 : 0)), 0.1, 0.97);
     const pGoalGivenOn = clamp(pGoal / pOnTarget, 0.01, 0.99);
     const r = this.rng.next();

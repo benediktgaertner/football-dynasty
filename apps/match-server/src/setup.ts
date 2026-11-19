@@ -85,7 +85,7 @@ export function toTeamInput(t: DbTeam): TeamInput {
 }
 
 /** Grundheimvorteil der Engine (engine.ts BASE_HOME_ADVANTAGE); auf neutralem Platz wird er aufgehoben. */
-const ENGINE_BASE_HOME = 0.035;
+const ENGINE_BASE_HOME = 0.02;
 
 /**
  * I5: Pflichtspiele erhalten den Zuschauer-Heimvorteil aus der Datenbank (Auslastung × Stadiongröße, begrenzt).
@@ -93,7 +93,9 @@ const ENGINE_BASE_HOME = 0.035;
  */
 export function toEngineSetup(db: DbSetup): MatchSetup {
   const cap = db.home.capacity ?? 10000;
-  const crowd = db.homeAdvantage ?? Math.max(0, Math.min(0.02, ((cap - 10000) / 40000) * 0.02));
+  // Zuschlag aus Auslastung/Stadiongröße (DB, max. 0,04) – halbiert, da Duelle seit dem Stärke-Balancing direkt
+  // verglichen werden und 0,04 sonst rund 3 OVR-Punkten entspräche (siehe docs/BALANCING.md)
+  const crowd = (db.homeAdvantage ?? Math.max(0, Math.min(0.02, ((cap - 10000) / 40000) * 0.02))) * 0.5;
   return {
     seed: db.seed,
     home: toTeamInput(db.home),

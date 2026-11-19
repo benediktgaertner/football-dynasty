@@ -4,7 +4,7 @@ import { MatchEngine, buildTestTeam, type AiDiagnostics, type MatchResult, type 
 /** Viele automatisch simulierte Spiele: Entscheidungs-KI und Attributwirkung */
 
 function play(seed: string, home: TeamInput, away: TeamInput): { r: MatchResult; d: Record<'home' | 'away', AiDiagnostics> } {
-  const e = new MatchEngine({ seed, home, away, homeAdvantage: -0.035 });
+  const e = new MatchEngine({ seed, home, away, homeAdvantage: -0.02 });
   while (!e.isFinished) e.step();
   return { r: e.result(), d: e.diagnostics };
 }
