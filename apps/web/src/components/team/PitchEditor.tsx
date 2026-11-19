@@ -85,7 +85,7 @@ export function PitchEditor({
     <div
       ref={pitchRef}
       className="relative mx-auto touch-none select-none overflow-hidden rounded-2xl border-2 border-cream/30 bg-pitch shadow-inner"
-      style={{ width: big ? 'min(100%, calc(min(82vh, 900px) * 0.68))' : 'min(100%, calc(min(58vh, 680px) * 0.68))', aspectRatio: '68 / 100' }}
+      style={{ width: '100%', maxWidth: big ? 'calc(min(82vh, 900px) * 0.68)' : 'calc(min(58vh, 680px) * 0.68)', aspectRatio: '68 / 100' }}
       onClick={(e) => e.target === pitchRef.current && onSelectSlot(null)}
     >
       {/* Rasenstreifen und Markierungen */}

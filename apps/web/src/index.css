@@ -92,3 +92,12 @@ select {
 /* Drag-and-drop (Aufstellung, Wechsel) */
 .fd-drag-ghost { position: fixed; z-index: 100; pointer-events: none; transform: translate(-50%, -120%); padding: 6px 12px; border-radius: 999px; background: #f2c14e; color: #141814; font-weight: 700; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.45); white-space: nowrap; }
 .fd-drop-hover > span:first-child { outline: 4px solid #f2c14e; outline-offset: 2px; }
+
+/* Spielfeld + Bank + Taktik: feste Spaltenbreite für das Spielfeld (Safari kann „auto“-Spalten
+   mit prozentualer Kindbreite nicht auflösen und zeigt das Feld sonst mit 0 px Breite). */
+.fd-board-grid { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1024px) {
+  .fd-board-live { grid-template-columns: min(42vw, calc(min(80vh, 880px) * 0.68)) 280px minmax(0, 1fr); }
+  .fd-board-big { grid-template-columns: min(42vw, calc(min(82vh, 900px) * 0.68)) 300px minmax(0, 1fr); }
+  .fd-board-tab { grid-template-columns: min(48vw, calc(min(58vh, 680px) * 0.68)) minmax(0, 1fr); }
+}

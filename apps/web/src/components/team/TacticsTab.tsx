@@ -169,7 +169,7 @@ export function TacticsTab({
         <Button variant="secondary" onClick={() => setBig(false)}>Schließen</Button>
       </div>
     )}
-    <div className={`grid gap-4 ${big ? 'lg:grid-cols-[auto_300px_minmax(0,1fr)]' : 'lg:grid-cols-[auto_minmax(0,1fr)]'}`}>
+    <div className={`fd-board-grid ${big ? 'fd-board-big' : 'fd-board-tab'}`}>
       <div className={`space-y-3 ${big ? 'lg:w-[calc(min(82vh,900px)*0.68)]' : 'lg:w-[max(360px,calc(min(58vh,680px)*0.68))]'}`}>
         <div className="flex flex-wrap items-center gap-2">
           {TACTICAL_PROFILE_NAMES.map((n) => (

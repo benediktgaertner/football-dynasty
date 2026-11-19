@@ -67,12 +67,12 @@ export function LiveBoard({ view, team, activeProfile, onClose, send }: {
         <span className="text-sm text-cream-dim">Wechsel {view.subsUsed}/5 · Fenster {view.subWindowsUsed}/3 · Das Spiel läuft weiter</span>
         <Button variant="secondary" onClick={onClose}>Zurück zum Spiel</Button>
       </div>
-      <div className="grid gap-4 lg:grid-cols-[auto_280px_minmax(0,1fr)]">
+      <div className="fd-board-grid fd-board-live">
         {/* Spielfeld */}
         <div
           ref={pitchRef}
           className="relative mx-auto touch-none select-none overflow-hidden rounded-2xl border-2 border-cream/30 bg-pitch"
-          style={{ width: 'min(100%, calc(min(80vh, 880px) * 0.68))', aspectRatio: '68 / 100' }}
+          style={{ width: '100%', maxWidth: 'calc(min(80vh, 880px) * 0.68)', aspectRatio: '68 / 100' }}
         >
           <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 68 100" preserveAspectRatio="none" aria-hidden>
             <g fill="none" stroke="rgba(244,235,208,0.55)" strokeWidth="0.35">
