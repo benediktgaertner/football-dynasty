@@ -15,6 +15,8 @@ import { Match } from './pages/Match';
 import { Matchday } from './pages/Matchday';
 import { League } from './pages/League';
 import { Cup } from './pages/Cup';
+import { Europe } from './pages/Europe';
+import { FanCulture } from './pages/FanCulture';
 import { Transfers } from './pages/Transfers';
 import { Finance } from './pages/Finance';
 import { Home } from './pages/Home';
@@ -37,6 +39,8 @@ function Routed() {
       <Route path="/w/:worldId/spieltag" element={<Matchday />} />
       <Route path="/w/:worldId/liga" element={<League />} />
       <Route path="/w/:worldId/pokal" element={<Cup />} />
+      <Route path="/w/:worldId/europa" element={<Europe />} />
+      <Route path="/w/:worldId/fankultur" element={<FanCulture />} />
       <Route path="/w/:worldId/transfers" element={<Transfers />} />
       <Route path="/w/:worldId/finanzen" element={<Finance />} />
       <Route path="/w/:worldId/kalender" element={<Calendar />} />

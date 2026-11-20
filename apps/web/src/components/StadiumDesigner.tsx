@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { StadiumDesign } from '../lib/matchClient';
 import { DEFAULT_DESIGN, L, STADIUM_STYLES, W, renderFanLayers, renderStadiumLayer, stadiumMargin, standTiers, withDefaults } from '../lib/stadiumArt';
 import { Button, Card, TextInput } from './ui';
@@ -43,9 +44,10 @@ export function StadiumPreview({ capacity, attendance, design, homeColors, awayC
 }
 
 /** Kostenloser Stadion-Editor (rein optisch) */
-export function StadiumDesigner({ name, capacity, attendance, design, homeColors, onSave }: {
+export function StadiumDesigner({ name, capacity, attendance, design, homeColors, onSave, worldId }: {
   name: string; capacity: number; attendance: number | null; design: StadiumDesign; homeColors: [string, string];
   onSave: (name: string, design: StadiumDesign) => Promise<void>;
+  worldId?: string;
 }) {
   const [n, setN] = useState(name);
   const [d, setD] = useState<Required<StadiumDesign>>(withDefaults(design));
@@ -97,6 +99,7 @@ export function StadiumDesigner({ name, capacity, attendance, design, homeColors
             <Button variant="ghost" onClick={() => setD({ ...DEFAULT_DESIGN })}>Standard</Button>
           </div>
           {msg && <p className="text-sm text-cream-dim">{msg}</p>}
+          {worldId && <Link to={`/w/${worldId}/fankultur`} className="block rounded-lg border border-olive-600 px-3 py-2 text-sm font-semibold text-gold hover:bg-olive-800">Fankultur & Musik: Fahnen, Choreos, Ultras, Hymnen →</Link>}
         </div>
       </div>
     </Card>

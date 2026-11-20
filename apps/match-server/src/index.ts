@@ -90,6 +90,10 @@ server.listen(config.port, () => {
   console.log(`Match-Server läuft auf Port ${config.port}`);
 });
 
+// Letzte Absicherung: ein unerwarteter Fehler beendet nicht alle laufenden Partien und den Sweep
+process.on('uncaughtException', (err) => { console.error('Nicht abgefangener Fehler', err); });
+process.on('unhandledRejection', (err) => { console.error('Nicht behandeltes Promise', err); });
+
 // Fly.io stoppt Maschinen per SIGTERM: offene Verbindungen sauber schließen
 process.on('SIGTERM', () => {
   sim.stop();

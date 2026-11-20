@@ -10,7 +10,7 @@ async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
   return data as T;
 }
 
-export interface SlotInfo { id: string; ordinal: number; key: string; kind: 'league' | 'cup' | 'relegation' | 'season_end'; label: string; date: string; state: 'pending' | 'live' | 'released'; started_at: string | null; matchday: number | null }
+export interface SlotInfo { id: string; ordinal: number; key: string; kind: 'league' | 'cup' | 'relegation' | 'europe' | 'season_end'; label: string; date: string; state: 'pending' | 'live' | 'released'; started_at: string | null; matchday: number | null }
 export interface ClubRef { id: string; name: string; short_name: string; control: 'human' | 'ai'; color: string | null }
 export interface SlotFixture { id: string; competition: string; kind: string; status: string; neutral: boolean; leg: number | null; home: ClubRef; away: ClubRef; mine: boolean; decisions: Record<string, 'live' | 'skip'>; result: { home: number; away: number; hp: number | null; ap: number | null } | null }
 export interface WindowInfo { open: boolean; window_no: number | null; until_matchday: number | null; signings: number; sales: number; max_signings: number; max_sales: number; min_squad: number; max_squad: number }

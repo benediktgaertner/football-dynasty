@@ -74,7 +74,7 @@ export function Finance() {
       </div>
       <div className="mt-4">
         <StadiumDesigner name={data.stadium.name} capacity={data.stadium.capacity} attendance={data.last_attendance?.attendance ?? null}
-          design={data.stadium.design ?? {}} homeColors={colors}
+          design={data.stadium.design ?? {}} homeColors={colors} worldId={worldId}
           onSave={async (name, design) => { await seasonApi.saveStadiumDesign(worldId, name, design); await load(); }} />
       </div>
       <div className="mt-4 grid gap-4 lg:grid-cols-[340px_1fr]">

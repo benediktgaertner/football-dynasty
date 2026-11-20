@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { matchApi, matchServerUrl, type FixtureSummary, type OpponentClub } from '../../lib/matchApi';
-import { requireSupabase } from '../../lib/supabase';
 import { Button, Card, ErrorBanner, Pill } from '../ui';
 
 const STATUS: Record<string, string> = { scheduled: 'Bereit', live: 'Läuft', finished: 'Beendet', released: 'Beendet', cancelled: 'Abgesagt' };
@@ -26,11 +25,8 @@ export function FriendliesTab({ worldId, myClubId }: { worldId: string; myClubId
 
   useEffect(() => {
     void reload();
-    const sb = requireSupabase();
-    const ch = sb.channel(`fixtures:${worldId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'fixtures', filter: `world_id=eq.${worldId}` }, () => void reload())
-      .subscribe();
-    return () => void sb.removeChannel(ch);
+    const poll = setInterval(() => { if (document.visibilityState === 'visible') void reload(); }, 20000);
+    return () => clearInterval(poll);
   }, [worldId, reload]);
 
   const humans = clubs.filter((c) => c.control === 'human');

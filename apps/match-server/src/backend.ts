@@ -9,7 +9,7 @@ export interface Backend {
   role(fixtureId: string, userId: string): Promise<'home' | 'away' | 'spectator' | null>;
   setup(fixtureId: string): Promise<DbSetup>;
   checkpoint(fixtureId: string, tick: number, data: unknown): Promise<void>;
-  finish(fixtureId: string, result: MatchResult): Promise<void>;
+  finish(fixtureId: string, result: MatchResult): Promise<{ status?: string } | void>;
   /** Spiele des laufenden Termins, die headless berechnet werden sollen */
   pendingFixtures(worldId: string): Promise<string[]>;
   isMember(worldId: string, userId: string): Promise<boolean>;
@@ -64,6 +64,6 @@ export function supabaseBackend(admin: SupabaseClient): Backend {
       // Offene Hintergrundarbeit: KI-Training der Woche und Alterung nach dem Saisonwechsel
       return { pending: r.pending ?? [], trainingLeft: (r.training_left ?? 0) + (r.aging_left ?? 0) };
     },
-    async finish(fixtureId, result) { await rpc('admin_finish_match', { p_fixture: fixtureId, p_result: toDbResult(result) }); },
+    async finish(fixtureId, result) { return rpc<{ status?: string }>('admin_finish_match', { p_fixture: fixtureId, p_result: toDbResult(result) }); },
   };
 }

@@ -166,7 +166,7 @@ select tests.assert((select count(*) from public.tactical_profiles where club_id
 select tests.assert((select array_agg(name order by name)::text from public.tactical_profiles where club_id = :'club_a') = '{offensive,neutral,defensive}',
   'feste Profilnamen');
 select tests.assert((select count(*) from public.finances where club_id = :'club_a' and balance = 0) = 1, 'Konto vor Draft-Start leer (Buchung beim Draft-Start)');
-select tests.assert((select count(*) from pg_publication_tables where pubname = 'supabase_realtime') = 9, 'Realtime-Tabellen registriert');
+select tests.assert((select count(*) from pg_publication_tables where pubname = 'supabase_realtime') = 8, 'Realtime-Tabellen registriert (Lobby/Draft; Spielseiten laden per Polling)');
 
 -- KI-Vereine dürfen keine realen Namen tragen (C7.1)
 select tests.expect_error(format($$ insert into public.clubs(world_id, association_code, name, name_normalized, short_name, short_name_normalized, control)

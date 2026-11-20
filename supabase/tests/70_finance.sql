@@ -22,6 +22,7 @@ select tests.assert((select count(distinct t.idempotency_key) from public.financ
 select c.id as stable_club from public.clubs c where c.world_id = :'world' and c.control = 'ai' and c.association_code = 'GER' and not c.amateur
   and not exists (select 1 from public.transfers t where (t.to_club_id = c.id or t.from_club_id = c.id) and t.season_id = :'s1')
   and not exists (select 1 from public.player_contracts pc where pc.club_id = c.id and pc.start_season_year > (select year from public.seasons where id = :'s1'))
+  and exists (select 1 from public.financial_transactions t where t.club_id = c.id and t.kind = 'salary' and t.season_id = :'s1')
   order by c.name limit 1 \gset
 select tests.assert(-(select sum(amount) from public.financial_transactions where club_id = :'stable_club' and kind = 'salary' and season_id = :'s1')
   = (select sum(pc.annual_salary) from public.player_contracts pc where pc.club_id = :'stable_club' and pc.active), 'Gehaltsbuchungen der Saison = Jahresgehalt (exakt)');
@@ -53,7 +54,8 @@ select tests.assert((select balance from public.finances where club_id = :'host_
 select tests.assert((select sum(pc.annual_salary) from public.player_contracts pc join public.clubs c on c.id = pc.club_id
   where c.world_id = :'world' and c.control = 'ai' and public.fd_tier_of(c.id, (select current_season_id from public.career_worlds where id = :'world')) = 2 and pc.active)
   / nullif((select count(*) from public.clubs c where c.world_id = :'world' and c.control = 'ai' and public.fd_tier_of(c.id, (select current_season_id from public.career_worlds where id = :'world')) = 2), 0)
-  between 4000000 and 14000000, 'Ø Zweitligakader kostet einstelligen Millionenbetrag: ' ||
+  -- Testwelt: ohne Europa-Vereine füllen 32 deutsche Vereine den Europapokal (Prämien ⇒ etwas teurere Kader)
+  between 4000000 and 16000000, 'Ø Zweitligakader kostet einstelligen Millionenbetrag: ' ||
   (select round(sum(pc.annual_salary) / 1e6 / count(distinct c.id), 2) from public.player_contracts pc join public.clubs c on c.id = pc.club_id
    where c.world_id = :'world' and c.control = 'ai' and public.fd_tier_of(c.id, (select current_season_id from public.career_worlds where id = :'world')) = 2 and pc.active) || ' Mio.');
 

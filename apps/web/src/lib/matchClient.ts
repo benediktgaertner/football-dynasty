@@ -47,6 +47,8 @@ export interface MatchState {
   kind: string | null;
   /** Stadion (Design + Zuschauerzahl) für Tribünen und Fans */
   stadium: StadiumView | null;
+  /** Anpfiff nach der Einlaufzeremonie (lokale Uhr, aus der vom Server gemeldeten Restzeit) */
+  walkoutEndsAt: number | null;
 }
 
 /**
@@ -60,11 +62,19 @@ export interface StadiumView {
   weather?: Weather | null;
   atmosphere?: { choreo: boolean; banners: boolean; pyro_seed: number } | null;
   competition?: { kind: string; tier: number | null; association: string | null; name: string } | null;
+  /** Fankultur und Stadionsound des Heimvereins */
+  fans?: FanView | null;
 }
+export interface FlagDesign { shape: 'rect' | 'square' | 'triangle' | 'swallow' | 'banner'; size: 's' | 'm' | 'l'; pattern: 'solid' | 'stripes_h' | 'stripes_v' | 'diagonal' | 'halves' | 'cross' | 'checker' | 'star'; colors: string[]; text?: string }
+export type StandBlock = 'home_curve' | 'main_stand' | 'back_stand' | 'corner_left' | 'corner_right';
+export interface UltraGroup { id: string; name: string; colors: string[]; banner?: string; block: StandBlock; flag?: FlagDesign | null }
+export interface ChoreoDesign { pattern: 'stripes' | 'blocks' | 'checker' | 'wave' | 'gradient' | 'rays' | 'mosaic'; colors: string[]; text?: string; motif?: 'none' | 'star' | 'heart' | 'crown' | 'crest' | 'lion' | 'eagle' | 'anchor' | 'castle'; block?: 'home_curve' | 'main_stand' | 'back_stand' | 'all'; name?: string }
+export interface AudioRef { id: string; name: string; source: 'synth' | 'upload'; recipe: Record<string, unknown> | null; path: string | null; lyrics: string | null; volume: number; situation?: string | null }
+export interface FanView { flags: FlagDesign[]; ultras: UltraGroup[]; choreo: ChoreoDesign | null; audio: { anthem: AudioRef | null; signature: AudioRef | null; chants: AudioRef[] }; walkout: boolean }
 export interface StadiumDesign { style?: 'classic' | 'modern' | 'arena' | 'traditional'; stand?: string; seat?: string; accent?: string; club_colors?: boolean; roof?: boolean }
 
 export class MatchClient {
-  state: MatchState = { connection: 'connecting', error: null, role: null, status: 'loading', skip: null, teams: null, events: [], view: null, latest: null, end: null, kind: null, stadium: null };
+  state: MatchState = { connection: 'connecting', error: null, role: null, status: 'loading', skip: null, teams: null, events: [], view: null, latest: null, end: null, kind: null, stadium: null, walkoutEndsAt: null };
   private ws: WebSocket | null = null;
   private listeners = new Set<() => void>();
   private buffer: Array<{ at: number; s: Snapshot }> = [];
@@ -158,7 +168,8 @@ export class MatchClient {
         clearTimeout(this.initTimer);
         this.scene = m.scene ?? 0;
         this.buffer = [{ at: performance.now(), s: m.snapshot }];
-        this.emit({ connection: 'open', error: null, role: m.role, status: m.status, teams: m.teams, events: m.events, view: m.view, latest: m.snapshot, kind: m.kind, stadium: m.stadium ?? null });
+        this.emit({ connection: 'open', error: null, role: m.role, status: m.status, teams: m.teams, events: m.events, view: m.view, latest: m.snapshot, kind: m.kind, stadium: m.stadium ?? null,
+          walkoutEndsAt: m.status === 'waiting' && m.walkoutMs > 0 ? Date.now() + Number(m.walkoutMs) : null });
         break;
       case 'frame':
         // Neue Szene (Schnitt/Sprung): nicht über den Schnitt hinweg interpolieren
@@ -176,7 +187,7 @@ export class MatchClient {
         this.emit({ view: m.view });
         break;
       case 'status':
-        this.emit({ status: m.status });
+        this.emit({ status: m.status, walkoutEndsAt: m.status === 'running' ? null : this.state.walkoutEndsAt });
         break;
       case 'skip':
         this.emit({ skip: { from: m.from, to: m.to, at: performance.now() } });

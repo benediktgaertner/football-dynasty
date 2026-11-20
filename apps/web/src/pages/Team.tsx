@@ -3,7 +3,6 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { WorldNav } from '../components/WorldNav';
 import { formatEuro } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { requireSupabase } from '../lib/supabase';
 import { loadTeam, teamApi, type ClubTactics, type ProfileState, type SquadPlayer, type TeamContext } from '../lib/teamApi';
 import { Crest } from '../components/Crest';
 import { Card, ErrorBanner, Pill, Shell, Spinner } from '../components/ui';
@@ -55,14 +54,9 @@ export function Team() {
 
   useEffect(() => {
     void reload(true);
-    const sb = requireSupabase();
-    // Bereitschaft der Mitspieler live aktualisieren (ohne lokale Bearbeitungen zu überschreiben)
-    const channel = sb
-      .channel(`team:${worldId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'multiplayer_readiness', filter: `world_id=eq.${worldId}` }, () => void reload(false))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'career_worlds', filter: `id=eq.${worldId}` }, () => void reload(false))
-      .subscribe();
-    return () => void sb.removeChannel(channel);
+    // Bereitschaft der Mitspieler regelmäßig aktualisieren (ohne lokale Bearbeitungen zu überschreiben)
+    const poll = setInterval(() => { if (document.visibilityState === 'visible') void reload(false); }, 20000);
+    return () => clearInterval(poll);
   }, [worldId, reload]);
 
   if (!data || !clubTactics) return <Shell><WorldNav worldId={worldId} />{error ? <ErrorBanner error={error} /> : <Spinner label="Team wird geladen …" />}</Shell>;

@@ -24,7 +24,7 @@ const backend: Backend = {
   async verifyToken(t) { return users[t] ?? null; },
   async role(_f, u) { return u === 'u-home' ? 'home' : u === 'u-away' ? 'away' : u === 'u-fan' ? 'spectator' : null; },
   async setup(f) {
-    return { fixtureId: f, worldId: 'w', seed: `seed-${f}`, kind: 'friendly', neutral: false, home: dbTeam('h', 'human', 'u-home'), away: dbTeam('a', 'human', 'u-away'), checkpoint: f === 'resume' ? stored : null };
+    return { fixtureId: f, worldId: 'w', seed: `seed-${f}`, kind: f.startsWith('league') ? 'league' : 'friendly', neutral: false, home: dbTeam('h', 'human', 'u-home'), away: dbTeam('a', 'human', 'u-away'), checkpoint: f === 'resume' ? stored : null };
   },
   async checkpoint(_f, tick, data) { checkpoints.push({ tick, data }); },
   async finish(id, result) { finished.push({ id, result }); },
@@ -74,6 +74,22 @@ function connect(token: string, fixtureId: string, origin = 'http://ok.test'): P
 }
 
 describe('Match-Server (echte WebSocket-Clients)', () => {
+  it('Pflichtspiel: Einlaufzeremonie für alle gleich, Anpfiff serverseitig (Start-Befehl beschleunigt nichts)', async () => {
+    const home = await connect('token-home-xxxx', 'league-1');
+    const ih = await home.wait((m) => m.t === 'init');
+    expect(ih.status).toBe('waiting');
+    expect(ih.walkoutMs).toBeGreaterThan(0);
+    const t0 = Date.now();
+    home.send({ t: 'start' });
+    const fan = await connect('token-fan-xxxxx', 'league-1');
+    const iff = await fan.wait((m) => m.t === 'init');
+    expect(iff.walkoutMs).toBeLessThanOrEqual(ih.walkoutMs);
+    await Promise.all([home.wait((m) => m.t === 'status' && m.status === 'running'), fan.wait((m) => m.t === 'status' && m.status === 'running')]);
+    // 20 s Einlauf bei 40-facher Testgeschwindigkeit = 500 ms; der Start-Befehl darf nicht vorziehen
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(400);
+    home.ws.close(); fan.ws.close();
+  });
+
   it('lehnt fremde Origins und ungültige Tokens ab', async () => {
     await expect(connect('token-home-xxxx', 'f0', 'http://evil.test')).rejects.toThrow();
     const c = await connect('token-unknown-x', 'f0');

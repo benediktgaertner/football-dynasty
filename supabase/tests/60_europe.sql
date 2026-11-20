@@ -66,9 +66,11 @@ reset role;
 select p.id as eng_player, p.market_value as eng_value from public.players p join public.clubs c on c.id = p.club_id
 where c.world_id = :'world' and c.association_code = 'ENG' and p.overall between 70 and 80 order by p.overall desc limit 1 \gset
 select public.post_transaction(:'host_club', 'adjustment', greatest(0, 500000000 - balance), 'test:eu:topup', 'Test: Guthaben', null, true) from public.finances where club_id = :'host_club';
+-- sicher über der Annahmeschwelle (≥ 1,15 × KI-Bewertung); 1,5 × Marktwert reicht bei Stammspielern nicht immer
+select greatest((:eng_value * 1.5)::bigint, (public.fd_ai_valuation(:'eng_player') * 1.2)::bigint) as eng_fee \gset
 set role authenticated;
 select tests.login(:'host');
-select public.make_transfer_offer(:'eng_player', (:eng_value * 1.5)::bigint, 20000000, 3) as eng_deal \gset
+select public.make_transfer_offer(:'eng_player', :eng_fee, 20000000, 3) as eng_deal \gset
 reset role;
 select tests.assert((:'eng_deal'::jsonb ->> 'status') = 'completed', 'Transfer aus England abgeschlossen: ' || (:'eng_deal'::jsonb ->> 'message'));
 select tests.assert((select club_id from public.players where id = :'eng_player') = :'host_club', 'Spieler gehört jetzt dem deutschen Verein');

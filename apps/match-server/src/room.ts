@@ -14,6 +14,8 @@ export interface Client {
 const LOOP_MS = 25;
 const CHECKPOINT_EVERY = 400; // alle 20 s Echtzeit (Seed + Befehlsprotokoll)
 const START_COUNTDOWN_MS = 90_000; // spätestens 90 s nach Öffnen startet das Spiel automatisch
+/** Einlaufzeremonie vor Pflichtspielen: für alle Teilnehmer gleich lang, der Anpfiff folgt serverseitig */
+export const WALKOUT_MS = 20_000;
 
 /**
  * Ein Raum = eine Partie. Der Server ist autoritativ: Clients senden nur Befehle,
@@ -32,6 +34,9 @@ export class MatchRoom {
   private autoStart: NodeJS.Timeout | null = null;
   private onClose: () => void;
   private finishing = false;
+  /** Zeitpunkt des Anpfiffs nach der Einlaufzeremonie (Server-Uhr) */
+  private walkoutUntil = 0;
+  private walkoutTimer: NodeJS.Timeout | null = null;
 
   constructor(fixtureId: string, private backend: Backend, onClose: () => void, private speed = 1) {
     this.fixtureId = fixtureId;
@@ -51,8 +56,16 @@ export class MatchRoom {
       this.engine = new MatchEngine(setup);
       this.status = 'waiting';
       // Pflichtspiele starten sofort (der Termin läuft bereits), Testspiele nach Anpfiff oder Countdown
-      if (this.db.kind !== 'friendly') queueMicrotask(() => this.begin());
-      else this.autoStart = setTimeout(() => this.begin(), START_COUNTDOWN_MS / this.speed);
+      if (this.db.kind !== 'friendly') {
+        // Einlauf: Teams, Hymne, Fangesang – der Anpfiff erfolgt für alle gleichzeitig. Überspringen ist
+        // nur eine Anzeige beim Client und verändert den gemeinsamen Spielzustand nicht.
+        const walkout = (this.db.stadium as { fans?: { walkout?: boolean } } | null | undefined)?.fans?.walkout !== false;
+        if (walkout) {
+          const ms = WALKOUT_MS / this.speed;
+          this.walkoutUntil = Date.now() + ms;
+          this.walkoutTimer = setTimeout(() => this.begin(), ms);
+        } else queueMicrotask(() => this.begin());
+      } else this.autoStart = setTimeout(() => this.begin(), START_COUNTDOWN_MS / this.speed);
     }
   }
 
@@ -74,6 +87,9 @@ export class MatchRoom {
   begin(): void {
     if (this.status === 'running' || this.status === 'finished') return;
     if (this.autoStart) clearTimeout(this.autoStart);
+    if (this.walkoutTimer) clearTimeout(this.walkoutTimer);
+    this.walkoutTimer = null;
+    this.walkoutUntil = 0;
     this.updateAutopilot();
     this.status = 'running';
     // Bei Wiederaufnahme: Zeitbudget anteilig fortsetzen
@@ -85,6 +101,28 @@ export class MatchRoom {
   }
 
   private loop(): void {
+    try {
+      this.step();
+    } catch (e) {
+      // Fehler in einer Partie dürfen den Server (andere Räume, Spieltags-Sweep) nicht beenden
+      console.error('Spielschleife abgebrochen', this.fixtureId, e);
+      this.fail('Die Live-Übertragung wurde unterbrochen. Das Spiel wird automatisch zu Ende berechnet.');
+    }
+  }
+
+  /** Raum aufgeben: Clients informieren, Raum schließen – die Partie berechnet danach der Spieltags-Sweep */
+  private fail(message: string): void {
+    if (this.status === 'finished' || this.status === 'failed') return;
+    this.status = 'failed';
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.broadcast({ t: 'status', status: 'failed' });
+    this.broadcast({ t: 'error', message });
+    void this.saveCheckpoint();
+    setTimeout(() => this.close(), 2_000).unref();
+  }
+
+  private step(): void {
     const now = Date.now();
     const dt = Math.min(500, now - this.lastLoop) * this.speed;
     this.lastLoop = now;
@@ -119,23 +157,29 @@ export class MatchRoom {
     this.timer = null;
     const result = this.engine.result();
     let saved = false;
-    for (let attempt = 0; attempt < 5 && !saved; attempt++) {
+    let already = false;
+    // Ergebnis nie verwerfen: erst 5 schnelle Versuche, danach bis zu 10 Minuten alle 30 s
+    for (let attempt = 0; attempt < 25 && !saved; attempt++) {
       try {
-        await this.backend.finish(this.fixtureId, result); // idempotent
+        const r = await this.backend.finish(this.fixtureId, result); // idempotent
+        already = (r as { status?: string } | void)?.status === 'already_saved';
         saved = true;
       } catch (e) {
         console.error('Ergebnis speichern fehlgeschlagen, neuer Versuch', e);
-        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        if (attempt === 4) this.broadcast({ t: 'error', message: 'Ergebnis wird gespeichert – die Datenbank ist gerade ausgelastet.' });
+        await new Promise((r) => setTimeout(r, (attempt < 5 ? 1000 * (attempt + 1) : 30_000) / this.speed));
       }
     }
     this.status = 'finished';
-    this.broadcast({ t: 'end', saved, result: { score: result.score, stats: result.stats, players: result.players, playerOfTheMatch: result.playerOfTheMatch, possessionHome: result.possessionHome } });
+    // Wurde die Partie bereits anderweitig gespeichert, zählt das gespeicherte Ergebnis (Hinweis an die Clients)
+    this.broadcast({ t: 'end', saved, alreadySaved: already, result: { score: result.score, stats: result.stats, players: result.players, playerOfTheMatch: result.playerOfTheMatch, possessionHome: result.possessionHome } });
     setTimeout(() => this.close(), 30_000 / this.speed).unref();
   }
 
   close(): void {
     if (this.timer) clearInterval(this.timer);
     if (this.autoStart) clearTimeout(this.autoStart);
+    if (this.walkoutTimer) clearTimeout(this.walkoutTimer);
     for (const c of this.clients) c.ws.close(1000, 'match_closed');
     this.clients.clear();
     this.onClose();
@@ -155,6 +199,8 @@ export class MatchRoom {
       t: 'init',
       role: c.role,
       status: this.status,
+      // verbleibende Zeit bis zum Anpfiff (relativ, unabhängig von Uhrabweichungen der Geräte)
+      walkoutMs: this.walkoutUntil > 0 ? Math.max(0, this.walkoutUntil - Date.now()) : 0,
       fixtureId: this.fixtureId,
       kind: this.db.kind,
       stadium: this.db.stadium ?? null,
@@ -174,7 +220,8 @@ export class MatchRoom {
 
   handleStart(c: Client): void {
     if (c.role === 'spectator') return this.send(c, { t: 'error', message: 'Zuschauer können das Spiel nicht starten.' });
-    if (this.status === 'waiting') this.begin();
+    // Pflichtspiele: Anpfiff nach der Einlaufzeremonie für alle gleichzeitig (Überspringen ist nur lokal)
+    if (this.status === 'waiting' && this.walkoutUntil === 0) this.begin();
   }
 
   handleCommand(c: Client, id: number, cmd: MatchCommand): void {

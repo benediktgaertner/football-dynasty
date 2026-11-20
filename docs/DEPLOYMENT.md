@@ -86,3 +86,14 @@ npm run build -w @fd/shared
 npm run dev:web             # http://localhost:5173
 npm run dev:server          # http://localhost:2567/health
 ```
+
+## Update 0030 (aktive Länder, Europapokal, Fankultur, Stadionsound)
+1. **Supabase:**
+   - SQL-Editor → New query → Inhalt von `football_dynasty_update_0030.sql` einfügen → Run.
+   - Die Datei ist wiederholbar, enthält Migration `20261125000030` und legt den Speicher-Bucket `club-audio` an.
+2. **GitHub/Netlify:** Zip-Inhalt ins Repository kopieren und pushen. Netlify baut die Web-App, neue Umgebungsvariablen sind nicht nötig.
+3. **Fly.io (Match-Server):** neu deployen, wegen Einlaufzeremonie und Fehlerbehandlung:
+   `& "$env:USERPROFILE\.fly\bin\flyctl.exe" deploy -a football-dynasty`
+4. **Kontrolle nach dem nächsten Spieltag (SQL-Editor):**
+   `select * from public.admin_sim_report((select id from public.career_worlds where name = 'Das Clan Haus'));`
+Keine Schlüssel nötig, keine laufenden Kosten: Musik entsteht im Browser oder kommt als hochgeladene MP3.

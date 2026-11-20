@@ -94,3 +94,9 @@ npm run build
 * `50_season.sql`: Free-Agent-Frist (7 Tage), mehrere Interessenten, automatische Entscheidung.
 * `90_dashboard.sql`: Spieltagsübersicht nur eigene Liga.
 * Lasttest (782 Vereine): KI-Transfers 40–90 ms je 40 Vereine, KI-Free-Agent-Interesse 0,18 s, Sweep 0,6 s.
+
+- `99_active_countries.sql` (0030):
+  - Aktive Länder (27 Spiele je Ligaspieltag, keine fremden Ligen) und Hintergrundarbeit nur für Vereine mit Spielbetrieb.
+  - Europapokal: Auswahl nach Stärke, höchstens 2 je Land, kompakte Berechnung (nur Tore, Karten, Verletzungen; 22 Einsatzspieler; nie doppelt), Freigabe und Torschützen-Cache.
+  - Reine KI-Spiele ohne Ablaufereignisse.
+  - Fankultur und Stadionsound (Prüfungen, Rechte, Anzeige beim Heimspiel).

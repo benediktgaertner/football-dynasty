@@ -18,7 +18,7 @@ import type { StadiumDesign } from './matchClient';
 export const L = 105;
 export const W = 68;
 /** Abstand Seitenlinie → erste Sitzreihe (Bande und Laufweg) */
-const GAP = 2.6;
+export const GAP = 2.6;
 /** Umlauf zwischen zwei Rängen */
 const CONCOURSE = 0.7;
 
@@ -109,9 +109,10 @@ export interface StadiumArtOptions {
 
 type Side = 'top' | 'bottom' | 'left' | 'right';
 interface Band { side: Side; x0: number; y0: number; x1: number; y1: number; tier: number }
-interface Seat { x: number; y: number; taken: boolean; away: boolean; home: boolean; tier: number; side: Side; corner: boolean }
+export interface Seat { x: number; y: number; taken: boolean; away: boolean; home: boolean; tier: number; side: Side; corner: boolean }
 
 /** Geometrie: Ränge je Seite und alle Sitzplätze (deterministisch je Größe/Stil/Auslastung) */
+export function stadiumLayout(o: StadiumArtOptions) { return layout(o); }
 function layout(o: StadiumArtOptions) {
   const d = withDefaults(o.design);
   const tiers = standTiers(o.capacity);

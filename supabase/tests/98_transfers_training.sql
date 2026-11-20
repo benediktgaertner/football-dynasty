@@ -82,9 +82,23 @@ select tests.assert(:'o2'::jsonb ->> 'status' in ('completed', 'rejected'), 'sof
 select tests.assert((select count(*) from public.financial_transactions where club_id = :'host_club' and kind = 'transfer_fee_paid' and description like '%' || (select last_name from public.players where id = :'tgt2')) <= 1, 'Ablöse höchstens einmal gebucht');
 
 -- KI-Transfermarkt: Angebote zwischen KI-Vereinen, gleiche Limits
+select set_config('fd.world', :'world', false);
 delete from public.ai_transfer_log where world_id = :'world';
 select public.fd_ai_transfer_batch(:'world', 1000) as left_ \gset
 select tests.assert(:left_ = 0, 'alle KI-Vereine geprüft');
+-- Seit 0030 handeln nur Vereine mit Spielbetrieb (aktive Länder + Europapokal) aktiv: mehrere Wochen prüfen
+select current_week as week_now from public.career_worlds where id = :'world' \gset
+do $$
+declare i integer;
+begin
+  for i in 1..30 loop
+    exit when exists (select 1 from public.transfer_offers o join public.clubs b on b.id = o.to_club_id join public.clubs s on s.id = o.from_club_id
+                      where o.world_id = current_setting('fd.world')::uuid and b.control = 'ai' and s.control = 'ai');
+    update public.career_worlds set current_week = current_week + 1 where id = current_setting('fd.world')::uuid;
+    perform public.fd_ai_transfer_batch(current_setting('fd.world')::uuid, 1000);
+  end loop;
+end $$;
+update public.career_worlds set current_week = :week_now where id = :'world';
 select tests.assert((select count(*) from public.transfer_offers o join public.clubs b on b.id = o.to_club_id join public.clubs s on s.id = o.from_club_id
                      where o.world_id = :'world' and b.control = 'ai' and s.control = 'ai') > 0, 'KI-Vereine verhandeln untereinander');
 update public.transfer_offers set next_response_on = public.fd_world_date(:'world') where world_id = :'world' and status = 'pending' and next_response_on is not null;

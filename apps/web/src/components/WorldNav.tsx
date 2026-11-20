@@ -7,8 +7,10 @@ const ITEMS = [
   { to: 'entwicklung', label: 'Entwicklung' },
   { to: 'liga', label: 'Liga' },
   { to: 'pokal', label: 'Pokal' },
+  { to: 'europa', label: 'Europa' },
   { to: 'transfers', label: 'Transfers' },
   { to: 'finanzen', label: 'Finanzen' },
+  { to: 'fankultur', label: 'Fankultur' },
 ];
 
 /** Hauptmenü innerhalb einer Karrierewelt (auf dem iPad gut mit dem Finger erreichbar) */

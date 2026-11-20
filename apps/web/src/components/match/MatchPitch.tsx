@@ -2,6 +2,10 @@ import { readableTextColor } from '@fd/shared';
 import { useEffect, useRef } from 'react';
 import type { MatchClient, RosterTeam, StadiumView, Weather } from '../../lib/matchClient';
 import { renderChoreoLayer, renderFanLayers, renderStadiumLayer, stadiumMargin } from '../../lib/stadiumArt';
+import { drawFlag, flagSpots, renderChoreoDesign, renderUltrasLayer, type FlagSpot } from '../../lib/fanArt';
+
+/** Dauer der Einlaufzeremonie (muss zum Match-Server passen: WALKOUT_MS) */
+export const WALKOUT_MS = 20_000;
 
 const L = 105;
 const W = 68;
@@ -32,8 +36,12 @@ interface Puff { x: number; y: number; r: number; a: number; vx: number; vy: num
  * Versatz; Spur je Ballart (flach, hoch, Flanke, Schuss). Standards: Einblendung, Mauer, Positionierung.
  * Stadion: Ränge nach Kapazität, weiße Sitze, Fans in Bewegung, Choreografie, Banner, Pyrotechnik.
  */
-export function MatchPitch({ client, teams, homeColor, awayColor, highlight, stadium }: {
+export function MatchPitch({ client, teams, homeColor, awayColor, highlight, stadium, walkoutEndsAt = null, walkoutSkipped = false }: {
   stadium?: StadiumView | null;
+  /** Anpfiff nach der Einlaufzeremonie (lokale Uhr); null = kein Einlauf */
+  walkoutEndsAt?: number | null;
+  /** Einlauf lokal übersprungen (gemeinsamer Spielzustand bleibt unverändert) */
+  walkoutSkipped?: boolean;
   client: MatchClient;
   teams: { home: RosterTeam; away: RosterTeam };
   homeColor: string;
@@ -62,6 +70,10 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
     let base: HTMLCanvasElement | null = null;
     let fans: [HTMLCanvasElement, HTMLCanvasElement] | null = null;
     let choreo: HTMLCanvasElement | null = null;
+    let ultrasLayer: HTMLCanvasElement | null = null;
+    let spots: FlagSpot[] = [];
+    const fanView = stadium?.fans ?? null;
+    const important = !!atmo?.choreo;
     let layerKey = '';
     let raf = 0;
     let drops: Drop[] = [];
@@ -91,6 +103,7 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       const st = client.interpolated();
       const minute = st?.minute ?? 0;
+      const inWalkout = !!walkoutEndsAt && !walkoutSkipped && Date.now() < walkoutEndsAt;
       if (st) {
         if (lastScore && st.score[0] > lastScore[0]) { cheerUntil = now + 6000; homeGoalMinute = minute; }
         if (lastScore && st.score[1] > lastScore[1]) cheerUntil = now + 2500;
@@ -107,7 +120,11 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
             homeShort: teams.home.shortName, banners: atmo?.banners ?? false };
           base = renderStadiumLayer(o);
           fans = renderFanLayers(o);
-          choreo = atmo?.choreo ? renderChoreoLayer(o) : null;
+          // eigene Choreografie des Heimvereins (gewählt oder Standard), sonst die automatische bei wichtigen Spielen
+          choreo = fanView?.choreo ? renderChoreoDesign(o, fanView.choreo) : atmo?.choreo ? renderChoreoLayer(o) : null;
+          ultrasLayer = fanView?.ultras?.length ? renderUltrasLayer(o, fanView.ultras, important ? 1 : 0.6) : null;
+          // Schwenkfahnen: eigene Fahnen/Ultra-Fahnen, sonst Vereinsfahnen in den Heimfarben
+          spots = reduced ? [] : flagSpots(o, fanView?.flags?.length ? fanView.flags : [{ shape: 'rect', size: 'm', pattern: 'halves', colors: [teams.home.color, teams.home.colorAlt] }], fanView?.ultras ?? [], important ? 1 : 0.45);
           layerKey = key;
           drops = [];
         }
@@ -115,8 +132,16 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
         const fast = now < cheerUntil;
         const phase = reduced ? 0 : Math.floor(now / (fast ? 160 : 560)) % 2;
         if (fans) ctx.drawImage(fans[phase]!, 0, 0);
-        // Choreografie vor dem Anpfiff/zu Beginn beider Halbzeiten
-        if (choreo && (minute < 8 || (minute >= 45 && minute < 48))) ctx.drawImage(choreo, 0, 0);
+        if (ultrasLayer) ctx.drawImage(ultrasLayer, 0, 0);
+        // Choreografie beim Einlauf, vor dem Anpfiff und zu Beginn beider Halbzeiten
+        if (choreo && (inWalkout || minute < 8 || (minute >= 45 && minute < 48))) ctx.drawImage(choreo, 0, 0);
+        // Schwenkfahnen (schneller bei Toren und beim Einlauf)
+        const waveT = now / 1000 * (fast || inWalkout ? 1.6 : 1);
+        for (let i = 0; i < spots.length; i++) {
+          const sp = spots[i]!;
+          if (!fast && !inWalkout && !important && i % 2 === 1) continue;
+          drawFlag(ctx, sp.x, sp.y, sp.scale * 0.85, sp.flag, waveT + sp.phase, sp.side);
+        }
         ctx.fillStyle = weather === 'snow' ? '#dfe6ec' : '#1f4626';
         ctx.fillRect(X(-2.4), Y(-1.5), (L + 4.8) * s, (W + 3) * s);
       } else {
@@ -176,6 +201,7 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
       }
 
       if (!st) { drawWeather(); drawPyro(); return; }
+      if (inWalkout) { drawWalkout([...st.players].map(([id, [x, y]]) => [id, x, y] as [string, number, number]), 1 - (walkoutEndsAt! - Date.now()) / WALKOUT_MS); drawWeather(); drawPyro(); return; }
       const sp = st.setPiece;
       const sinceCut = performance.now() - client.cutAt;
       if (sinceCut < 50) trail.length = 0;
@@ -271,6 +297,64 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
 
+      /**
+       * Einlauf: beide Teams und das Schiedsrichtergespann kommen aus dem Spielertunnel (Haupttribüne),
+       * gehen in zwei Reihen zur Mitte, stellen sich vor der Haupttribüne auf und laufen dann auf
+       * ihre Startpositionen (= Positionen des ersten Snapshots, für alle gleich).
+       */
+      function drawWalkout(players: Array<[string, number, number]>, p: number) {
+        const home = players.filter(([id]) => info.get(id)?.side === 'home');
+        const away = players.filter(([id]) => info.get(id)?.side === 'away');
+        const tunnel: [number, number] = [L / 2, W + 2.4];
+        const lineY = W - 3.2;
+        const ease = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+        const pos = (side: 'home' | 'away', i: number, target: [number, number]): [number, number] => {
+          const lane = side === 'home' ? -0.9 : 0.9;
+          const lx = L / 2 + (side === 'home' ? -1 : 1) * (2.2 + i * 1.55);
+          const start = 0.1 + i * 0.012;
+          const walk = ease((p - start) / 0.26);
+          // Tunnel → Spielfeldrand (Reihe) → Aufstellung vor der Haupttribüne
+          let x: number, y: number;
+          if (walk < 0.4) { const k = walk / 0.4; x = tunnel[0] + lane; y = tunnel[1] + (W - 0.6 - tunnel[1]) * k; }
+          else { const k = (walk - 0.4) / 0.6; x = tunnel[0] + lane + (lx - tunnel[0] - lane) * k; y = W - 0.6 + (lineY - (W - 0.6)) * k; }
+          if (p < start) { x = tunnel[0] + lane; y = tunnel[1] + 0.5; }
+          const go = ease((p - 0.72) / 0.25);
+          return [x + (target[0] - x) * go, y + (target[1] - y) * go];
+        };
+        const rr = 1.45 * s;
+        ctx.font = `700 ${Math.round(1.5 * s)}px "Barlow Condensed", system-ui, sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        for (const [side, list] of [['home', home], ['away', away]] as const) {
+          list.forEach(([id, tx, ty], i) => {
+            if (p < 0.1 + i * 0.012) return;
+            const [x, y] = pos(side, i, [tx, ty]);
+            ctx.beginPath(); ctx.ellipse(X(x) + 0.3 * s, Y(y) + 0.5 * s, rr, rr * 0.55, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
+            ctx.beginPath(); ctx.arc(X(x), Y(y), rr, 0, Math.PI * 2); ctx.fillStyle = fill[side]; ctx.fill();
+            ctx.lineWidth = 0.32 * s; ctx.strokeStyle = ring[side]; ctx.stroke();
+            ctx.fillStyle = txt[side]; ctx.fillText(String(info.get(id)?.n ?? ''), X(x), Y(y) + 0.08 * s);
+          });
+        }
+        // Schiedsrichter-Gespann in der Mitte, danach an die Seitenlinie bzw. zum Mittelkreis
+        if (p > 0.08) {
+          const refTargets: Array<[number, number]> = [[L / 2 + 4, W / 2 - 6], [L * 0.25, W + 0.6], [L * 0.75, -0.6]];
+          refTargets.forEach((t, k) => {
+            const walk = ease((p - 0.08) / 0.26);
+            let x = L / 2 + (k - 1) * 1.4, y = tunnel[1] + (lineY - tunnel[1]) * walk;
+            const go = ease((p - 0.72) / 0.25);
+            x += (t[0] - x) * go; y += (t[1] - y) * go;
+            ctx.beginPath(); ctx.arc(X(x), Y(y), rr * 0.85, 0, Math.PI * 2); ctx.fillStyle = '#16181c'; ctx.fill();
+            ctx.lineWidth = 0.25 * s; ctx.strokeStyle = '#f2d43a'; ctx.stroke();
+          });
+        }
+        // Einblendung
+        const label = p < 0.42 ? 'Einlauf der Mannschaften' : p < 0.72 ? 'Aufstellung vor der Haupttribüne' : 'Gleich geht es los';
+        ctx.font = `800 ${Math.round(2.1 * s)}px "Barlow Condensed", system-ui, sans-serif`;
+        const w = ctx.measureText(label.toUpperCase()).width + 2.4 * s;
+        ctx.fillStyle = 'rgba(10,12,16,0.8)';
+        ctx.beginPath(); ctx.roundRect(X(L / 2) - w / 2, Y(3.2) - 1.5 * s, w, 3 * s, 0.8 * s); ctx.fill();
+        ctx.fillStyle = '#ffffff'; ctx.fillText(label.toUpperCase(), X(L / 2), Y(3.2) + 0.1 * s);
+      }
+
       function drawWeather() {
         if (reduced) return;
         const area = canvas.width * canvas.height;
@@ -331,6 +415,6 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
     };
     draw();
     return () => cancelAnimationFrame(raf);
-  }, [client, teams, homeColor, awayColor, highlight, stadium]);
+  }, [client, teams, homeColor, awayColor, highlight, stadium, walkoutEndsAt, walkoutSkipped]);
   return <canvas ref={ref} className="block h-full w-full rounded-xl" aria-label="Spielfeld mit Live-Positionen" />;
 }

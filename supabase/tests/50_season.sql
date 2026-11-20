@@ -35,7 +35,13 @@ reset role;
 
 select tests.assert((select status from public.career_worlds where id = :'world') = 'season', 'Saison läuft');
 select current_season_id as season from public.career_worlds where id = :'world' \gset
-select tests.assert((select count(*) from public.season_slots where season_id = :'season') = 43, '43 Termine (34 Liga, 6 Pokal, 2 Relegation, Abschluss)');
+select tests.assert((select count(*) from public.season_slots where season_id = :'season') = 54, '54 Termine (34 Liga, 6 Pokal, 11 Europapokal, 2 Relegation, Abschluss)');
+select tests.assert((select count(*) from public.season_slots where season_id = :'season' and kind = 'europe') = 11, '11 Europapokal-Termine (dienstags)');
+select tests.assert((select count(*) from public.competition_entries e join public.competitions c on c.id = e.competition_id where c.season_id = :'season' and c.kind::text = 'champions_league') = 16, 'Champions League: 16 Teilnehmer');
+select tests.assert((select count(*) from public.competition_entries e join public.competitions c on c.id = e.competition_id where c.season_id = :'season' and c.kind::text = 'europa_league') = 16, 'Europa League: 16 Teilnehmer');
+select tests.assert(not exists (select e.club_id from public.competition_entries e join public.competitions c on c.id = e.competition_id where c.season_id = :'season' and c.kind::text in ('champions_league', 'europa_league') group by e.club_id having count(*) > 1), 'kein Verein in beiden Wettbewerben');
+select tests.assert((select count(*) from public.fixtures f join public.competitions c on c.id = f.competition_id where c.season_id = :'season' and c.kind::text in ('champions_league', 'europa_league')) = 96, 'je Wettbewerb 48 Gruppenspiele');
+select tests.assert(not exists (select 1 from public.season_slots s1 join public.season_slots s2 on s2.season_id = s1.season_id and s2.slot_date = s1.slot_date and s2.id <> s1.id where s1.season_id = :'season'), 'kein Termin doppelt an einem Tag');
 select tests.assert((select count(*) from public.fixtures f join public.competitions c on c.id = f.competition_id where c.season_id = :'season' and c.kind = 'league') = 918, '918 Ligaspiele');
 select tests.assert(not exists (
   select 1 from public.competitions c where c.season_id = :'season' and c.kind = 'league'
@@ -54,7 +60,7 @@ select tests.assert(not exists (select 1 from public.clubs c where c.amateur and
 select tests.assert((select count(*) from public.fixtures f join public.competitions c on c.id = f.competition_id where c.season_id = :'season' and c.kind = 'domestic_cup') = 32, 'Pokal 1. Runde: 32 Spiele');
 select tests.assert(not exists (select 1 from public.fixtures f join public.competitions c on c.id = f.competition_id where c.season_id = :'season' and c.kind = 'domestic_cup'
   and public.fd_tier_of(f.home_club_id, :'season') < public.fd_tier_of(f.away_club_id, :'season')), 'Pokal: Unterklassige haben Heimrecht');
-select tests.assert((select count(*) from public.standings s join public.competitions c on c.id = s.competition_id where c.season_id = :'season') = 54, 'Tabellen angelegt');
+select tests.assert((select count(*) from public.standings s join public.competitions c on c.id = s.competition_id where c.season_id = :'season' and c.kind = 'league') = 54, 'Tabellen angelegt');
 
 -- ------------------------------------------------------------------
 -- B4: Termin vorbereiten, starten, Live/Überspringen, Freigabe
@@ -111,7 +117,7 @@ select balance as bal_before from public.finances where club_id = :'host_club' \
 set role authenticated; select tests.login(:'host'); select public.force_start_slot(:'world'); reset role;
 select tests.finish_slot(:'world');
 select tests.assert((select state from public.season_slots where season_id = :'season' and slot_key = 'L1') = 'released', 'Spieltag 1 freigegeben');
-select tests.assert((select sum(played) from public.standings s join public.competitions c on c.id = s.competition_id where c.season_id = :'season') = 54, 'jeder Verein hat ein Spiel');
+select tests.assert((select sum(played) from public.standings s join public.competitions c on c.id = s.competition_id where c.season_id = :'season' and c.kind = 'league') = 54, 'jeder Verein hat ein Spiel');
 select tests.assert((select sum(points) from public.standings s join public.competitions c on c.id = s.competition_id where c.season_id = :'season')
   = (select sum(case when r.home_goals = r.away_goals then 2 else 3 end) from public.fixture_results r join public.fixtures f on f.id = r.fixture_id where f.slot_key = 'L1' and f.season_id = :'season'),
   'Punkte stimmen');
@@ -131,7 +137,12 @@ select public.post_transaction(:'host_club', 'adjustment', 80000000, 'test:boost
 set role authenticated;
 select tests.login(:'host');
 select tests.assert((public.make_transfer_offer(:'target', 0, 100000, 2) ->> 'status') = 'rejected', 'KI lehnt Nullangebot ab');
-select public.make_transfer_offer(:'target', (:target_value * 1.0)::bigint, 100000, 2) as hes \gset
+-- 85 % der KI-Bewertung liegt sicher im Bereich „zögern“ (0,6–1,15); der Marktwert allein kann je nach Spieler darunter liegen
+reset role;
+select public.fd_ai_valuation(:'target') as target_val \gset
+set role authenticated;
+select tests.login(:'host');
+select public.make_transfer_offer(:'target', (:target_val * 0.85)::bigint, 100000, 2) as hes \gset
 select tests.assert((:'hes'::jsonb ->> 'status') = 'pending', 'KI zögert bei einem Angebot zum Marktwert (Antwort frühestens nach einer Woche)');
 select public.withdraw_transfer_offer((:'hes'::jsonb ->> 'offer')::uuid);
 select public.make_transfer_offer(:'target', (:target_value * 2.5)::bigint, 5000000, 3) as deal \gset
@@ -196,7 +207,11 @@ end $$;
 select tests.assert((select status from public.career_worlds where id = :'world') = 'preseason', 'Saison beendet ⇒ neue Vorbereitung');
 select current_season_id as season2 from public.career_worlds where id = :'world' \gset
 select tests.assert(:'season2' <> :'season', 'neue Saison angelegt');
-select tests.assert((select count(*) from public.season_slots where season_id = :'season' and state = 'released') = 43, 'alle 43 Termine abgeschlossen');
+select tests.assert((select count(*) from public.season_slots where season_id = :'season' and state = 'released') = 54, 'alle 54 Termine abgeschlossen');
+select tests.assert((select count(*) from public.season_awards where season_id = :'season' and kind in ('cl_winner', 'el_winner')) = 2, 'Champions-League- und Europa-League-Sieger ermittelt');
+select tests.assert(not exists (select 1 from public.standings s join public.competitions c on c.id = s.competition_id where c.season_id = :'season' and s.group_id is not null and s.played <> 6), 'jeder Gruppenteilnehmer 6 Spiele');
+select tests.assert((select count(*) from public.fixtures f join public.competition_stages st on st.id = f.stage_id join public.competitions c on c.id = f.competition_id where c.season_id = :'season' and c.kind::text in ('champions_league', 'europa_league') and st.kind <> 'group') = 2 * (8 + 4 + 1), 'K.-o.: Viertel- und Halbfinale mit Hin-/Rückspiel, Finale');
+select tests.assert(exists (select 1 from public.financial_transactions t where t.kind = 'competition_prize' and t.description like 'Champions League%'), 'Europapokal-Prämien gebucht');
 select tests.assert((select count(*) from public.fixtures where season_id = :'season' and status not in ('released', 'cancelled')
   and competition_id in (select id from public.competitions where season_id = :'season' and kind::text <> 'friendly')) = 0, 'alle Pflichtspiele freigegeben');
 select tests.assert(not exists (select 1 from public.competitions c where c.season_id = :'season2' and c.kind = 'league'

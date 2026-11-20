@@ -150,6 +150,7 @@ else
 fi
 check "97_development.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/97_development.sql"
 check "98_transfers_training.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/98_transfers_training.sql"
+check "99_active_countries.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/99_active_countries.sql"
 
 # Optional (FULL_EUROPE=1): alle Verbände anlegen und Suchzeiten des Transfermarkts messen
 if [ "${FULL_EUROPE:-0}" = "1" ]; then

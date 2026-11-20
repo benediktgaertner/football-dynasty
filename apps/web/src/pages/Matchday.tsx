@@ -59,15 +59,12 @@ export function Matchday() {
 
   useEffect(() => {
     void load();
-    const sb = requireSupabase();
-    const ch = sb.channel(`md:${worldId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'fixtures', filter: `world_id=eq.${worldId}` }, () => void reload())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'season_slots', filter: `world_id=eq.${worldId}` }, () => void reload())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'multiplayer_readiness', filter: `world_id=eq.${worldId}` }, () => void reload())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'career_worlds', filter: `id=eq.${worldId}` }, () => void reload())
-      .subscribe();
-    const poll = setInterval(() => void reload(), 15000);
-    return () => { void sb.removeChannel(ch); clearInterval(poll); };
+    // Leichtes Nachladen statt Realtime-Abos: Realtime liest jede Datenbankänderung mit und war auf dem
+    // Free-Plan die größte Last. Nur wenn der Tab sichtbar ist; sofort beim Zurückkehren in den Tab.
+    const poll = setInterval(() => { if (document.visibilityState === 'visible') void reload(); }, 8000);
+    const onVisible = () => { if (document.visibilityState === 'visible') void reload(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(poll); document.removeEventListener('visibilitychange', onVisible); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [worldId]);
 
@@ -161,7 +158,7 @@ export function Matchday() {
                 </NextMatchCard>
               )) : dash?.next ? (
                 <NextMatchCard dash={dash} slotLabel={dash.next.label ?? ''} slotDate={dash.next.date}>
-                  <p className="mt-3 text-sm text-cream-dim">An diesem Termin hast du spielfrei{slot.kind === 'cup' ? ' (ausgeschieden oder spielfrei)' : ''}.</p>
+                  <p className="mt-3 text-sm text-cream-dim">An diesem Termin hast du spielfrei{slot.kind === 'cup' ? ' (ausgeschieden oder spielfrei)' : slot.kind === 'europe' ? ' – Europapokal-Abend ohne dein Team (startet automatisch)' : ''}.</p>
                 </NextMatchCard>
               ) : <Card><p className="text-cream-dim">Keine anstehende Begegnung.</p></Card>}
 
