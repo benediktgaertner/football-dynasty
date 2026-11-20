@@ -60,7 +60,7 @@ Danach in **Netlify** die Variable `VITE_MATCH_SERVER_URL=https://<app>.fly.dev`
 Die Partien leben im Speicher genau einer Maschine. Deshalb sind in `fly.toml` `min_machines_running = 1` und `auto_stop_machines = "off"` gesetzt. Für die geplante Größe (eine Freundesrunde, mehrere Welten) reicht `shared-cpu-1x` mit 512 MB.
 
 ### Spieltagssteuerung
-Der Match-Server prüft alle 10 s selbst alle Welten mit laufendem Spieltag (optional `SWEEP_INTERVAL_MS`).
+Der Match-Server prüft alle 30 s selbst alle Welten mit laufendem Spieltag (optional `SWEEP_INTERVAL_MS`).
 Dafür muss mindestens eine Maschine laufen (`min_machines_running = 1`, bereits gesetzt).
 
 ## Kosten
