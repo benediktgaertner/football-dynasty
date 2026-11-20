@@ -10,7 +10,7 @@ auf „live“ und wurde erst nach 6 Minuten – und nur bei erneutem Anstoß du
 
 | Baustein | Aufgabe |
 |---|---|
-| Sweep im Match-Server (alle 10 s, `SWEEP_INTERVAL_MS`) | findet über `admin_due_worlds` selbst alle Welten mit laufendem Spieltag – kein Client nötig |
+| Sweep im Match-Server (alle 30 s, `SWEEP_INTERVAL_MS`) | findet über `admin_due_worlds` selbst alle Welten mit laufendem Spieltag – kein Client nötig |
 | `admin_sweep_world` | holt die Freigabe nach, liefert offene Partien, erledigt KI-Training und Alterung in Häppchen |
 | `fixture_jobs` | eindeutiger Verarbeitungsstatus: `queued → processing → done`, bei Fehler `failed` (sofort neu), nach 3 Fehlversuchen `fallback` |
 | `admin_claim_fixture` | Sperre (Lease 4 min): dieselbe Partie wird nie parallel simuliert, auch nicht von zwei Instanzen |
