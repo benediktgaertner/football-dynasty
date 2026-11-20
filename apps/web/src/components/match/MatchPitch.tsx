@@ -2,7 +2,8 @@ import { readableTextColor } from '@fd/shared';
 import { useEffect, useRef } from 'react';
 import type { MatchClient, RosterTeam, StadiumView, Weather } from '../../lib/matchClient';
 import { renderChoreoLayer, renderFanLayers, renderStadiumLayer, stadiumMargin } from '../../lib/stadiumArt';
-import { drawFlag, flagSpots, renderChoreoDesign, renderUltrasLayer, type FlagSpot } from '../../lib/fanArt';
+import { autoFanCulture, awayFlagSpots, drawFlag, flagSpots, renderAwayBanner, renderChoreoDesign, renderUltrasLayer, type FlagSpot } from '../../lib/fanArt';
+import type { FlagDesign, UltraGroup } from '../../lib/matchClient';
 
 /** Dauer der Einlaufzeremonie (muss zum Match-Server passen: WALKOUT_MS) */
 export const WALKOUT_MS = 20_000;
@@ -73,6 +74,19 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
     let ultrasLayer: HTMLCanvasElement | null = null;
     let spots: FlagSpot[] = [];
     const fanView = stadium?.fans ?? null;
+    // Heimseite: eigene Fankultur; KI-Vereine bzw. Vereine ohne Einstellungen erhalten eine automatisch erzeugte
+    const homeClub = fanView?.home_club ?? { id: teams.home.clubId, name: teams.home.name, short: teams.home.shortName, control: teams.home.control, colors: [teams.home.color, teams.home.colorAlt] as [string, string] };
+    const homeAuto = autoFanCulture(homeClub);
+    const ownHome = !!fanView && (fanView.flags.length > 0 || fanView.ultras.length > 0);
+    const homeFlags: FlagDesign[] = ownHome ? fanView!.flags : homeAuto.flags;
+    const homeUltras: UltraGroup[] = ownHome ? fanView!.ultras : homeAuto.ultras;
+    // Gäste im Gästeblock: eigene Fahnen des Gastvereins (Mensch) oder automatisch erzeugte
+    const awayClub = fanView?.away ?? { id: teams.away.clubId, name: teams.away.name, short: teams.away.shortName, control: teams.away.control, colors: [teams.away.color, teams.away.colorAlt] as [string, string], flags: [] as FlagDesign[], ultra: null as UltraGroup | null };
+    const awayAuto = autoFanCulture(awayClub);
+    const awayFlags: FlagDesign[] = awayClub.flags?.length ? awayClub.flags : awayAuto.flags;
+    const awayBannerText = awayClub.ultra?.banner || awayClub.ultra?.name || awayAuto.banner;
+    let awayBanner: HTMLCanvasElement | null = null;
+    let awaySpots: FlagSpot[] = [];
     const important = !!atmo?.choreo;
     let layerKey = '';
     let raf = 0;
@@ -81,6 +95,7 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
     let lastT = performance.now();
     let lastScore: [number, number] | null = null;
     let cheerUntil = 0;
+    let awayCheer = 0;
     let homeGoalMinute = -10;
     // Pyrotechnik: zwei feste Momente je Spiel aus dem Seed (für alle gleich) + nach Heimtoren
     const pyroSeed = atmo?.pyro_seed ?? 0.5;
@@ -106,7 +121,7 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
       const inWalkout = !!walkoutEndsAt && !walkoutSkipped && Date.now() < walkoutEndsAt;
       if (st) {
         if (lastScore && st.score[0] > lastScore[0]) { cheerUntil = now + 6000; homeGoalMinute = minute; }
-        if (lastScore && st.score[1] > lastScore[1]) cheerUntil = now + 2500;
+        if (lastScore && st.score[1] > lastScore[1]) { cheerUntil = now + 2500; awayCheer = now + 6000; }
         lastScore = [st.score[0], st.score[1]];
       }
       // Stadion: vorberechnete Ebenen (Bau + weiße Sitze, Fans in zwei Phasen, Choreografie)
@@ -122,9 +137,11 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
           fans = renderFanLayers(o);
           // eigene Choreografie des Heimvereins (gewählt oder Standard), sonst die automatische bei wichtigen Spielen
           choreo = fanView?.choreo ? renderChoreoDesign(o, fanView.choreo) : atmo?.choreo ? renderChoreoLayer(o) : null;
-          ultrasLayer = fanView?.ultras?.length ? renderUltrasLayer(o, fanView.ultras, important ? 1 : 0.6) : null;
+          ultrasLayer = homeUltras.length ? renderUltrasLayer(o, homeUltras, important ? 1 : 0.6) : null;
           // Schwenkfahnen: eigene Fahnen/Ultra-Fahnen, sonst Vereinsfahnen in den Heimfarben
-          spots = reduced ? [] : flagSpots(o, fanView?.flags?.length ? fanView.flags : [{ shape: 'rect', size: 'm', pattern: 'halves', colors: [teams.home.color, teams.home.colorAlt] }], fanView?.ultras ?? [], important ? 1 : 0.45);
+          spots = reduced ? [] : flagSpots(o, homeFlags, homeUltras, important ? 1 : 0.45);
+          awaySpots = reduced ? [] : awayFlagSpots(o, awayFlags, important ? 1 : 0.5);
+          awayBanner = renderAwayBanner(o, awayBannerText, [awayClub.colors[0] ?? awayColor, awayClub.colors[1] ?? '#ffffff']);
           layerKey = key;
           drops = [];
         }
@@ -133,6 +150,7 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
         const phase = reduced ? 0 : Math.floor(now / (fast ? 160 : 560)) % 2;
         if (fans) ctx.drawImage(fans[phase]!, 0, 0);
         if (ultrasLayer) ctx.drawImage(ultrasLayer, 0, 0);
+        if (awayBanner) ctx.drawImage(awayBanner, 0, 0);
         // Choreografie beim Einlauf, vor dem Anpfiff und zu Beginn beider Halbzeiten
         if (choreo && (inWalkout || minute < 8 || (minute >= 45 && minute < 48))) ctx.drawImage(choreo, 0, 0);
         // Schwenkfahnen (schneller bei Toren und beim Einlauf)
@@ -142,6 +160,8 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
           if (!fast && !inWalkout && !important && i % 2 === 1) continue;
           drawFlag(ctx, sp.x, sp.y, sp.scale * 0.85, sp.flag, waveT + sp.phase, sp.side);
         }
+        // Gästefans schwenken im Gästeblock (lebhafter nach Auswärtstoren)
+        for (let i = 0; i < awaySpots.length; i++) { const sp = awaySpots[i]!; drawFlag(ctx, sp.x, sp.y, sp.scale * 0.8, sp.flag, now / 1000 * (awayCheer > now ? 1.8 : 1) + sp.phase, sp.side); }
         ctx.fillStyle = weather === 'snow' ? '#dfe6ec' : '#1f4626';
         ctx.fillRect(X(-2.4), Y(-1.5), (L + 4.8) * s, (W + 3) * s);
       } else {
@@ -249,6 +269,7 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
         }
         ctx.beginPath(); ctx.arc(X(x), Y(y), r, 0, Math.PI * 2);
         ctx.fillStyle = fill[p.side]; ctx.fill();
+        kitPattern(p.side, X(x), Y(y), r);
         ctx.lineWidth = 0.32 * s;
         ctx.strokeStyle = id === highlight ? '#ffd24a' : ring[p.side]; ctx.stroke();
         ctx.fillStyle = txt[p.side];
@@ -330,6 +351,7 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
             const [x, y] = pos(side, i, [tx, ty]);
             ctx.beginPath(); ctx.ellipse(X(x) + 0.3 * s, Y(y) + 0.5 * s, rr, rr * 0.55, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
             ctx.beginPath(); ctx.arc(X(x), Y(y), rr, 0, Math.PI * 2); ctx.fillStyle = fill[side]; ctx.fill();
+            kitPattern(side, X(x), Y(y), rr);
             ctx.lineWidth = 0.32 * s; ctx.strokeStyle = ring[side]; ctx.stroke();
             ctx.fillStyle = txt[side]; ctx.fillText(String(info.get(id)?.n ?? ''), X(x), Y(y) + 0.08 * s);
           });
@@ -353,6 +375,21 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
         ctx.fillStyle = 'rgba(10,12,16,0.8)';
         ctx.beginPath(); ctx.roundRect(X(L / 2) - w / 2, Y(3.2) - 1.5 * s, w, 3 * s, 0.8 * s); ctx.fill();
         ctx.fillStyle = '#ffffff'; ctx.fillText(label.toUpperCase(), X(L / 2), Y(3.2) + 0.1 * s);
+      }
+
+      /** Trikotmuster (Streifen, Ringe, Hälften, Schärpe) im Spielerkreis – Farben aus dem gewählten Trikot */
+      function kitPattern(side: 'home' | 'away', cx: number, cy: number, rad: number) {
+        const kit = side === 'home' ? teams.home.kit : teams.away.kit;
+        if (!kit || kit.pattern === 'solid' || kit.primary.toLowerCase() !== fill[side].toLowerCase()) return;
+        ctx.save();
+        ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.clip();
+        ctx.fillStyle = kit.secondary;
+        const d = rad * 2;
+        if (kit.pattern === 'stripes') for (let k = -2; k <= 2; k += 2) ctx.fillRect(cx + (k * d) / 6 - d / 14, cy - rad, d / 7, d);
+        else if (kit.pattern === 'hoops') for (let k = -1; k <= 1; k++) ctx.fillRect(cx - rad, cy + (k * d) / 3.4 - d / 14, d, d / 7);
+        else if (kit.pattern === 'halves') ctx.fillRect(cx, cy - rad, rad, d);
+        else if (kit.pattern === 'sash') { ctx.beginPath(); ctx.moveTo(cx - rad, cy - rad * 0.6); ctx.lineTo(cx - rad * 0.6, cy - rad); ctx.lineTo(cx + rad, cy + rad * 0.6); ctx.lineTo(cx + rad * 0.6, cy + rad); ctx.closePath(); ctx.fill(); }
+        ctx.restore();
       }
 
       function drawWeather() {

@@ -5,8 +5,6 @@ import { toEngineSetup } from './setup.js';
 
 /** Nach so vielen Fehlversuchen erhält eine Partie ein Ersatzergebnis (admin_fallback_result) */
 export const MAX_ATTEMPTS = 3;
-/** Pause zwischen zwei Hintergrund-Häppchen derselben Welt */
-export const BATCH_PAUSE_MS = Number(process.env.SWEEP_BATCH_PAUSE_MS ?? 1_000);
 
 /**
  * C8.5 / Spieltagssteuerung: Spiele ohne (zuschauende) Menschen laufen in derselben Engine im
@@ -68,8 +66,7 @@ export function createWorldSimulator(backend: Backend, rooms: Map<string, Promis
       // Je Durchgang jede Partie höchstens zweimal; weitere Versuche beim nächsten Sweep (Backoff)
       const pending = sweep.pending.filter((id) => !rooms.has(id) && (tried.get(id) ?? 0) < 2);
       if (pending.length === 0) {
-        // Kurze Pause zwischen den Häppchen: verteilt die Schreiblast (Disk-IO-Budget der Datenbank)
-        if ((sweep.trainingLeft ?? 0) > 0) { await new Promise((r) => setTimeout(r, BATCH_PAUSE_MS)); continue; }
+        if ((sweep.trainingLeft ?? 0) > 0) { await new Promise((r) => setImmediate(r)); continue; }
         break;
       }
       for (const id of pending) {
@@ -110,7 +107,7 @@ export function createWorldSimulator(backend: Backend, rooms: Map<string, Promis
   return {
     trigger,
     sweepAll,
-    start(intervalMs = 30_000) {
+    start(intervalMs = 10_000) {
       if (timer) return;
       void sweepAll();
       timer = setInterval(() => void sweepAll(), intervalMs);

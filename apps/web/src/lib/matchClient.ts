@@ -65,12 +65,18 @@ export interface StadiumView {
   /** Fankultur und Stadionsound des Heimvereins */
   fans?: FanView | null;
 }
-export interface FlagDesign { shape: 'rect' | 'square' | 'triangle' | 'swallow' | 'banner'; size: 's' | 'm' | 'l'; pattern: 'solid' | 'stripes_h' | 'stripes_v' | 'diagonal' | 'halves' | 'cross' | 'checker' | 'star'; colors: string[]; text?: string }
+export interface FlagDesign { shape: 'rect' | 'square' | 'triangle' | 'swallow' | 'banner'; size: 's' | 'm' | 'l'; pattern: 'solid' | 'stripes_h' | 'stripes_v' | 'diagonal' | 'halves' | 'cross' | 'checker' | 'star'; colors: string[]; text?: string;
+  /** Anzahl dieser Fahne in der Heimkurve (1–12) und Verteilung entlang der Kurve (0 = oben, 1 = unten) */
+  count?: number; from?: number; to?: number }
+/** Bereich auf den Tribünen in Stadion-Metern (Spielfeld 105 × 68, Ursprung linke obere Ecke) */
+export interface StandArea { x: number; y: number; w: number; h: number }
 export type StandBlock = 'home_curve' | 'main_stand' | 'back_stand' | 'corner_left' | 'corner_right';
-export interface UltraGroup { id: string; name: string; colors: string[]; banner?: string; block: StandBlock; flag?: FlagDesign | null }
+export interface UltraGroup { id: string; name: string; colors: string[]; banner?: string; block?: StandBlock; area?: StandArea | null; flags?: number; flag?: FlagDesign | null }
 export interface ChoreoDesign { pattern: 'stripes' | 'blocks' | 'checker' | 'wave' | 'gradient' | 'rays' | 'mosaic'; colors: string[]; text?: string; motif?: 'none' | 'star' | 'heart' | 'crown' | 'crest' | 'lion' | 'eagle' | 'anchor' | 'castle'; block?: 'home_curve' | 'main_stand' | 'back_stand' | 'all'; name?: string }
-export interface AudioRef { id: string; name: string; source: 'synth' | 'upload'; recipe: Record<string, unknown> | null; path: string | null; lyrics: string | null; volume: number; situation?: string | null }
-export interface FanView { flags: FlagDesign[]; ultras: UltraGroup[]; choreo: ChoreoDesign | null; audio: { anthem: AudioRef | null; signature: AudioRef | null; chants: AudioRef[] }; walkout: boolean }
+export interface AudioRef { id: string; name: string; source: 'upload'; path: string | null; volume: number; situation?: string | null }
+export interface FanClub { id: string; name: string; short: string; control: 'human' | 'ai'; colors: [string | null, string | null] }
+export interface FanView { flags: FlagDesign[]; ultras: UltraGroup[]; choreo: ChoreoDesign | null; audio: { anthem: AudioRef | null; signature: AudioRef | null; chants: AudioRef[] }; walkout: boolean;
+  home_club?: FanClub; away?: FanClub & { flags: FlagDesign[]; ultra: UltraGroup | null } }
 export interface StadiumDesign { style?: 'classic' | 'modern' | 'arena' | 'traditional'; stand?: string; seat?: string; accent?: string; club_colors?: boolean; roof?: boolean }
 
 export class MatchClient {

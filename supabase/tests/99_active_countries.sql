@@ -156,8 +156,9 @@ select tests.assert(jsonb_array_length(public.fan_culture(:'world') -> 'flags') 
 select tests.assert((public.fan_culture(:'world') -> 'ultras' -> 0 ->> 'name') = 'Nordkurve 1990', 'Ultragruppe gespeichert');
 select (public.fan_culture(:'world') -> 'next_home' ->> 'fixture_id') as nexthome \gset
 select public.set_fixture_choreo(:'world', :'nexthome', :'choreo'::uuid);
-select public.save_club_audio(:'world', null, '{"kind":"anthem","source":"synth","name":"Unsere Hymne","style":"stadium","mood":"proud","voice":"choir","lyrics":"Wir sind da","recipe":{"seed":7,"style":"stadium","tempo":96}}') as anthem \gset
-select public.save_club_audio(:'world', null, '{"kind":"chant","source":"synth","name":"Torgesang","style":"chant","situation":"goal","recipe":{"seed":3,"style":"chant","tempo":120}}') as chant \gset
+insert into storage.objects(bucket_id, name) values ('club-audio', :'world' || '/' || :'host_club' || '/hymne.mp3'), ('club-audio', :'world' || '/' || :'host_club' || '/tor.mp3');
+select public.save_club_audio(:'world', null, jsonb_build_object('kind', 'anthem', 'name', 'Unsere Hymne', 'storage_path', :'world' || '/' || :'host_club' || '/hymne.mp3')) as anthem \gset
+select public.save_club_audio(:'world', null, jsonb_build_object('kind', 'chant', 'name', 'Torgesang', 'situation', 'goal', 'storage_path', :'world' || '/' || :'host_club' || '/tor.mp3')) as chant \gset
 select tests.expect_error(format($$ select public.save_club_audio(%L, null, '{"kind":"chant","source":"upload","name":"Fremd","storage_path":"x/y/z.mp3"}') $$, :'world'), 'invalid_file');
 select public.set_audio_role(:'world', :'anthem', 'official');
 select public.set_audio_role(:'world', :'chant', 'signature');

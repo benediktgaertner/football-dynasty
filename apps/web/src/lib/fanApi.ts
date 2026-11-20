@@ -1,6 +1,6 @@
+import type { KitConfig } from '@fd/shared';
 import { ApiError } from './api';
 import type { ChoreoDesign, FlagDesign, UltraGroup } from './matchClient';
-import type { Recipe } from './stadiumSound';
 import { requireSupabase } from './supabase';
 
 /** Fankultur (Fahnen, Choreografien, Ultras), Stadionsound und Europapokal */
@@ -11,12 +11,15 @@ async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
 }
 
 export interface ClubAudio {
-  id: string; club_id: string; kind: 'anthem' | 'chant'; ultra_id: string | null; name: string; style: string | null; mood: string | null; voice: string | null;
-  lyrics: string | null; source: 'synth' | 'upload'; recipe: Recipe | null; storage_path: string | null; situation: string | null;
+  id: string; club_id: string; kind: 'anthem' | 'chant'; ultra_id: string | null; name: string;
+  source: 'synth' | 'upload'; storage_path: string | null; situation: string | null;
   is_official: boolean; is_signature: boolean; volume: number; enabled: boolean; created_at: string;
 }
+export type Kit = KitConfig;
+export interface KitSet { home: Kit; away: Kit; special: Kit }
 export interface FanCulture {
   club_id: string;
+  kits: KitSet;
   club: { name: string; short: string; primary: string; secondary: string; capacity: number; design: import('./matchClient').StadiumDesign | null; attendance: number | null };
   flags: FlagDesign[];
   ultras: UltraGroup[];
@@ -55,15 +58,61 @@ export const fanApi = {
     const path = await rpc<string | null>('delete_club_audio', { p_world: worldId, p_id: id });
     if (path) await requireSupabase().storage.from(BUCKET).remove([path]).catch(() => undefined);
   },
-  /** MP3 hochladen (max. 10 MB) – Pfad: <welt>/<verein>/<zufall>.mp3 */
+  /** MP3 hochladen (max. 10 MB) – Pfad: <welt>/<verein>/<zufall>.mp3; verständliche Fehlermeldungen */
   async upload(worldId: string, clubId: string, file: File): Promise<string> {
-    if (!/\.mp3$/i.test(file.name) && file.type !== 'audio/mpeg') throw new ApiError('Bitte eine MP3-Datei wählen.', 'invalid_file');
-    if (file.size > 10 * 1024 * 1024) throw new ApiError('Die Datei ist größer als 10 MB.', 'invalid_file');
+    if (!/\.mp3$/i.test(file.name) && file.type !== 'audio/mpeg') throw new ApiError('Bitte eine MP3-Datei wählen (andere Formate werden nicht unterstützt).', 'invalid_file');
+    if (file.size > 10 * 1024 * 1024) throw new ApiError(`Die Datei ist ${(file.size / 1048576).toFixed(1)} MB groß – erlaubt sind höchstens 10 MB.`, 'invalid_file');
+    if (file.size < 1000) throw new ApiError('Die Datei ist leer oder beschädigt.', 'invalid_file');
+    const sb = requireSupabase();
+    const { data: sess } = await sb.auth.getSession();
+    if (!sess.session) throw new ApiError('Du bist nicht angemeldet – bitte Seite neu laden und erneut anmelden.', 'not_signed_in');
+    if (sess.session.expires_at && sess.session.expires_at * 1000 < Date.now() + 30_000) await sb.auth.refreshSession();
     const path = `${worldId}/${clubId}/${crypto.randomUUID()}.mp3`;
-    const { error } = await requireSupabase().storage.from(BUCKET).upload(path, file, { contentType: 'audio/mpeg', upsert: false });
-    if (error) throw new ApiError(`Upload fehlgeschlagen: ${error.message}`, 'upload_failed');
+    const { error } = await sb.storage.from(BUCKET).upload(path, file, { contentType: 'audio/mpeg', upsert: false, cacheControl: '31536000' });
+    if (error) {
+      const m = error.message || '';
+      const status = (error as { statusCode?: string | number }).statusCode;
+      if (/row-level security|unauthorized|403/i.test(m) || String(status) === '403')
+        throw new ApiError('Keine Berechtigung für den Upload: Nur der Manager darf Dateien für seinen eigenen Verein hochladen. Falls du Manager bist: Seite neu laden (Sitzung erneuern) und das Datenbank-Update 0031 prüfen.', 'upload_forbidden');
+      if (/bucket not found/i.test(m)) throw new ApiError('Der Speicher „club-audio“ fehlt – bitte das Datenbank-Update 0031 ausführen.', 'bucket_missing');
+      if (/payload too large|exceeded|413/i.test(m)) throw new ApiError('Die Datei ist zu groß (höchstens 10 MB).', 'invalid_file');
+      if (/mime|content type/i.test(m)) throw new ApiError('Nur MP3-Dateien (audio/mpeg) sind erlaubt.', 'invalid_file');
+      throw new ApiError(`Upload fehlgeschlagen: ${m || 'unbekannter Fehler'}`, 'upload_failed');
+    }
     return path;
   },
+  /** Hochladen und speichern; schlägt das Speichern fehl, wird die Datei wieder entfernt (keine Leichen) */
+  async uploadAndSave(worldId: string, clubId: string, file: File, payload: Record<string, unknown>): Promise<string> {
+    const path = await fanApi.upload(worldId, clubId, file);
+    try {
+      return await rpc<string>('save_club_audio', { p_world: worldId, p_id: null, p_payload: { ...payload, storage_path: path } });
+    } catch (e) {
+      await requireSupabase().storage.from(BUCKET).remove([path]).catch(() => undefined);
+      throw e;
+    }
+  },
   publicUrl: (path: string) => requireSupabase().storage.from(BUCKET).getPublicUrl(path).data.publicUrl,
+  saveKits: (worldId: string, kits: KitSet) => rpc<KitSet>('save_kits', { p_world: worldId, p_kits: kits }),
+  prep: (worldId: string) => rpc<PrepState>('prep_state', { p_world: worldId }),
+  prepChoice: (worldId: string, fixtureId: string, variant: 'home' | 'away' | 'special' | null, choreoId: string | null, setChoreo: boolean, confirm: boolean | null) =>
+    rpc<PrepState>('set_prep_choice', { p_world: worldId, p_fixture: fixtureId, p_variant: variant, p_choreo: choreoId, p_set_choreo: setChoreo, p_confirm: confirm }),
+  prepTick: (worldId: string) => rpc<unknown>('prep_tick', { p_world: worldId }),
   europe: (worldId: string) => rpc<{ season_id: string | null; competitions: EuropeCompetition[] }>('europe_overview', { p_world: worldId }),
 };
+
+export interface PrepTeam { id: string; name: string; short: string; control: 'human' | 'ai'; kits: KitSet; kit: Kit & { variant: 'home' | 'away' | 'special' }; confirmed: boolean }
+export interface PrepState {
+  active: boolean;
+  seconds_left?: number;
+  label?: string;
+  managers?: Array<{ club: string; username: string | null; confirmed: boolean }>;
+  fixture?: {
+    id: string; is_home: boolean; neutral: boolean;
+    competition: { kind: string; tier: number | null; association: string | null; name: string } | null;
+    home: PrepTeam; away: PrepTeam;
+    stadium: { capacity: number; design: import('./matchClient').StadiumDesign | null } | null;
+    choreo: (import('./matchClient').ChoreoDesign & { id: string; name: string }) | null;
+    choreos: Array<{ id: string; name: string; design: import('./matchClient').ChoreoDesign }> | null;
+    home_colors: [string, string];
+  } | null;
+}

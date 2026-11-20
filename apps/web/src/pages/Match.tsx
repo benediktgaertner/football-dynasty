@@ -5,7 +5,7 @@ import { Link, useParams } from 'react-router-dom';
 import { Button, Card, ErrorBanner, Pill, Shell, Spinner } from '../components/ui';
 import { MatchPitch, WALKOUT_MS, pitchAspect } from '../components/match/MatchPitch';
 import { fanApi } from '../lib/fanApi';
-import { prefs, stadiumSound, type PlayHandle, type Recipe } from '../lib/stadiumSound';
+import { prefs, stadiumSound, type PlayHandle } from '../lib/stadiumSound';
 import type { AudioRef, MatchState } from '../lib/matchClient';
 import { LiveBoard } from '../components/match/LiveBoard';
 import { matchServerUrl } from '../lib/matchApi';
@@ -142,6 +142,7 @@ export function Match() {
             </div>
           )}
           {msg && <div className="mt-2"><ErrorBanner error={msg} /></div>}
+          {awayColor.toLowerCase() !== teams.away.color.toLowerCase() && <p className="mt-2 text-xs text-amber-200">Farbkonflikt der Trikots – die Gäste werden zur besseren Unterscheidung in einer Ersatzfarbe gezeigt.</p>}
           {view?.autopilot && mySide && <p className="mt-2 text-sm text-cream-dim">Automatik aktiv (E4) – sobald du verbunden bist, übernimmst du wieder.</p>}
         </div>
         <Ticker events={events} teams={teams} homeColor={homeColor} awayColor={awayColor} />
@@ -385,8 +386,7 @@ function useStadiumAudio(state: MatchState | null, skipped: boolean) {
   const play = (ref: AudioRef | null | undefined, maxSec: number) => {
     if (!ref || !stadiumSound.enabled) return null;
     music.current?.stop();
-    const h = ref.source === 'upload' && ref.path ? stadiumSound.playUrl(fanApi.publicUrl(ref.path), ref.volume, maxSec)
-      : ref.recipe ? stadiumSound.playRecipe(ref.recipe as unknown as Recipe, { volume: ref.volume, maxSec, lyrics: ref.lyrics }) : null;
+    const h = ref.path ? stadiumSound.playUrl(fanApi.publicUrl(ref.path), ref.volume, maxSec) : null;
     music.current = h;
     return h;
   };
@@ -410,14 +410,13 @@ function useStadiumAudio(state: MatchState | null, skipped: boolean) {
     const left = (endsAt - Date.now()) / 1000;
     const anthemSec = Math.max(4, Math.min(12, left * 0.6));
     const h = play(audio?.anthem, anthemSec);
-    const lines = h?.lines ?? [];
-    const t0 = performance.now();
-    const lyr = setInterval(() => {
-      const t = (performance.now() - t0) / 1000;
-      setLine([...lines].reverse().find((l) => l.t <= t)?.text ?? null);
-    }, 250);
-    const sig = setTimeout(() => { clearInterval(lyr); setLine(null); play(audio?.signature, Math.max(3, (endsAt - Date.now()) / 1000)); stadiumSound.crowdLevel(0.8); }, (h ? anthemSec : 0) * 1000 + 300);
-    return () => { clearInterval(lyr); clearTimeout(sig); };
+    if (h && audio?.anthem) setLine(`♪ ${audio.anthem.name}`);
+    const sig = setTimeout(() => {
+      const s2 = play(audio?.signature, Math.max(3, (endsAt - Date.now()) / 1000));
+      setLine(s2 && audio?.signature ? `♪ ${audio.signature.name}` : null);
+      stadiumSound.crowdLevel(0.8);
+    }, (h ? anthemSec : 0) * 1000 + 300);
+    return () => { clearTimeout(sig); };
   }, [on, endsAt, skipped, state?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Spielsituationen

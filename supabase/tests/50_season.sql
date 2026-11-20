@@ -80,7 +80,23 @@ reset role;
 set role authenticated;
 select tests.login(:'guest');
 select public.set_matchday_ready(:'world', true);
-select tests.assert((public.matchday_state(:'world') -> 'slot' ->> 'state') = 'live', 'alle bereit ⇒ Termin läuft');
+select tests.assert((public.matchday_state(:'world') -> 'slot' ->> 'state') = 'prep', 'alle bereit ⇒ Spielvorbereitung');
+-- Spielvorbereitung: Trikot wählen und bestätigen (Gast zuerst), danach startet der Termin
+select (public.prep_state(:'world') -> 'fixture' ->> 'id') as gfx \gset
+select tests.assert((public.prep_state(:'world') ->> 'seconds_left')::int between 1 and 120, 'Vorbereitung mit Frist');
+select tests.expect_error(format($$ select public.set_prep_choice(%L, %L, 'purple', null, false, true) $$, :'world', :'gfx'), 'invalid_kit');
+select public.set_prep_choice(:'world', :'gfx', 'away', null, false, true);
+select tests.assert((public.matchday_state(:'world') -> 'slot' ->> 'state') = 'prep', 'wartet auf die Bestätigung des zweiten Managers');
+select tests.login(:'host');
+select (public.prep_state(:'world') -> 'fixture' ->> 'id') as hfx0 \gset
+select tests.expect_error(format($$ select public.set_prep_choice(%L, %L, 'home', null, false, true) $$, :'world', :'gfx'), 'forbidden');
+select public.set_prep_choice(:'world', :'hfx0', 'special', null, false, true);
+select tests.assert((public.matchday_state(:'world') -> 'slot' ->> 'state') = 'live', 'alle bestätigt ⇒ Termin läuft');
+reset role;
+select tests.assert((select variant from public.fixture_kits where fixture_id = :'hfx0' and club_id = :'host_club') = 'special', 'Trikotwahl gespeichert');
+select tests.assert((select variant from public.fixture_kits where fixture_id = :'gfx' and club_id = :'guest_club') = 'away', 'Trikotwahl des Gasts gespeichert');
+set role authenticated;
+select tests.login(:'guest');
 reset role;
 -- menschliche Spiele werden erst nach „Überspringen“ headless berechnet
 select tests.assert(not exists (select 1 from public.admin_pending_fixtures(:'world') p join public.fixtures f on f.id = p

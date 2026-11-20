@@ -13,7 +13,7 @@ import { createWorldSimulator } from './worldSim.js';
  *   GET /health  – Betriebsstatus für Fly.io-Healthchecks
  *   GET /whoami  – prüft das Supabase-Token
  *   WS  /match   – Live-Partien (siehe wsServer.ts / room.ts)
- *   POST /world/simulate?world=… – Spieltag sofort prüfen (zusätzlich läuft alle 30 s ein Sweep ohne Client)
+ *   POST /world/simulate?world=… – Spieltag sofort prüfen (zusätzlich läuft alle 10 s ein Sweep ohne Client)
  */
 const config = loadConfig();
 const admin = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
@@ -84,7 +84,7 @@ const match = attachMatchServer(server, backend, { allowedOrigins: config.allowe
 const sim = createWorldSimulator(backend, match.rooms, { worker: `${process.env.FLY_MACHINE_ID ?? hostname()}:${process.pid}` });
 // Spieltagssteuerung ohne Client: KI-Spiele werden direkt nach dem Start des Spieltags berechnet,
 // abgebrochene/fehlgeschlagene Partien automatisch erneut verarbeitet und die Freigabe nachgeholt.
-sim.start(Number(process.env.SWEEP_INTERVAL_MS ?? 30_000));
+sim.start(Number(process.env.SWEEP_INTERVAL_MS ?? 10_000));
 
 server.listen(config.port, () => {
   console.log(`Match-Server läuft auf Port ${config.port}`);

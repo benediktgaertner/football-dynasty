@@ -1,3 +1,4 @@
+import { PrepMask } from '../components/match/PrepMask';
 import { readableTextColor } from '@fd/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -124,6 +125,7 @@ export function Matchday() {
 
       {state.status === 'season' && slot && (
         <>
+          {slot.state === 'prep' && myFixtures.length > 0 && <PrepMask worldId={worldId} onDone={() => void reload()} />}
           <Card className="pitch-stripes mb-4">
             <div className="flex flex-wrap items-end gap-3">
               <div>
@@ -131,7 +133,7 @@ export function Matchday() {
                 <h1 className="display text-4xl font-extrabold uppercase leading-none">{slot.label}</h1>
               </div>
               <div className="ml-auto flex flex-wrap items-center gap-2">
-                <Pill tone={slot.state === 'live' ? 'good' : 'gold'}>{slot.state === 'live' ? `Läuft · ${done}/${state.fixtures.length} beendet` : 'Vorbereitung'}</Pill>
+                <Pill tone={slot.state === 'live' ? 'good' : 'gold'}>{slot.state === 'live' ? `Läuft · ${done}/${state.fixtures.length} beendet` : slot.state === 'prep' ? 'Spielvorbereitung' : 'Vorbereitung'}</Pill>
                 <Pill tone={state.window.open ? 'good' : 'neutral'}>{state.window.open ? `Transferfenster offen (bis ${state.window.until_matchday}. Spieltag)` : 'Transferfenster zu'}</Pill>
                 <Link to={`/w/${worldId}/kalender`} className="text-sm font-semibold text-gold underline">Alle Begegnungen</Link>
               </div>
@@ -186,6 +188,7 @@ export function Matchday() {
                     {state.is_host && <Button variant="ghost" className="w-full" busy={busy === 'force'} onClick={() => { if (confirm('Termin jetzt für alle starten? Nicht bereite Manager spielen mit ihrer gespeicherten Taktik.')) act('force', () => seasonApi.forceStart(worldId)); }}>Termin jetzt starten (Host)</Button>}
                   </>
                 )}
+                {slot.state === 'prep' && myFixtures.length === 0 && <p className="text-xs text-cream-dim">Die anderen Manager wählen Trikots und Choreografie (höchstens 2 Minuten), dann startet der Termin.</p>}
                 {slot.state === 'live' && <p className="text-xs text-cream-dim">KI-Spiele werden serverseitig berechnet; alle Ergebnisse werden gemeinsam freigegeben, sobald jeder Manager sein Spiel beendet oder übersprungen hat.</p>}
               </Card>
               <MonthCalendar worldId={worldId} />

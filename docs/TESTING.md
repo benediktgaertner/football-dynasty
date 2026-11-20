@@ -100,3 +100,4 @@ npm run build
   - Europapokal: Auswahl nach Stärke, höchstens 2 je Land, kompakte Berechnung (nur Tore, Karten, Verletzungen; 22 Einsatzspieler; nie doppelt), Freigabe und Torschützen-Cache.
   - Reine KI-Spiele ohne Ablaufereignisse.
   - Fankultur und Stadionsound (Prüfungen, Rechte, Anzeige beim Heimspiel).
+- `A0_kits_prep_audio.sql` (0031): Upload-Rechte im Storage (eigener/fremder Ordner, Löschen), Verknüpfung Datei ↔ Eintrag, Ultras-Bereiche (Gästeblock/Überlappung gesperrt), Fahnenlimits, drei Trikots mit automatischer Konfliktvermeidung, Spielvorbereitung (Bestätigung, Choreo nur Heimverein, Frist).

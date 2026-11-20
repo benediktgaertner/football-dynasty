@@ -82,3 +82,34 @@ Balancing nach den Änderungen (N = 400 je Unterschied): 0 OVR 34,5/34,3/31,3 ·
   - Dazu laufen Hymne und Signatur-Fangesang im Browser.
   - „Einlauf überspringen“ wirkt nur lokal, der Anpfiff bleibt gemeinsam. Optional „Einlauf immer überspringen“.
 - **Fünf Wechsel:** Das war bereits umgesetzt: 5 Wechsel in 3 Unterbrechungen, die Halbzeit zählt nicht. Ausgewechselte Spieler kommen nicht zurück, und die KI nutzt dieselben Regeln. Eine Verlängerung gibt es im Spiel nicht, bei Gleichstand in K.-o.-Spielen folgt direkt das Elfmeterschießen.
+
+## Update 0031: MP3-Upload, Ultras, Fahnen, KI-Fankultur, Trikots, Spielvorbereitung
+- **Fehlerursache beim Upload:** Die Storage-Policies aus 0030 lösten `name` in der Unterabfrage auf `clubs.name` (Vereinsname) auf statt auf den Dateipfad. Jeder Upload wurde deshalb von RLS abgelehnt.
+- **Neue Rechte (Bucket `club-audio`):**
+  - `fd_can_manage_audio(pfad)` prüft `<welt>/<verein>/<datei>.mp3` gegen den angemeldeten Manager des Vereins.
+  - Darauf bauen die Policies für INSERT, SELECT, UPDATE und DELETE auf.
+  - Lesen ist öffentlich, damit die Wiedergabe über den Bucket funktioniert. Es gibt keine öffentlichen Schreibrechte.
+  - Die Tabelle `club_audio` ist nur lesbar (für Mitglieder der Welt). Schreiben läuft ausschließlich über geprüfte RPCs.
+  - `save_club_audio` akzeptiert nur MP3s im Ordner des eigenen Vereins und prüft, dass die Datei existiert. Schlägt das Speichern fehl, entfernt die App die Datei wieder.
+- **Hymnen und Fangesänge:** nur noch als MP3 (Synthesizer und Textgenerator entfernt). Mehrere Gesänge pro Verein sind möglich. Die erste Hymne bzw. der erste Gesang wird automatisch offiziell bzw. zum Signatur-Gesang.
+- **Ultragruppen:**
+  - Frei platzierbarer Bereich (`area` in Stadion-Metern) per Drag-and-drop, Größe über einen Ziehpunkt oder Knöpfe.
+  - Gesperrt sind Gästeblock und Spielfeld, und Gruppen dürfen sich nicht überlappen. Beides wird in der Datenbank geprüft.
+  - Die Fahnenzahl ist je Gruppe einstellbar.
+- **Schwenkfahnen:**
+  - Je Fahne lassen sich Anzahl (1–12) und Verteilung (von–bis entlang der Heimkurve) einstellen, insgesamt höchstens 40 Fahnen.
+  - Eigene Fahnen erscheinen nur in der Heimkurve. Große Gruppenfahnen gibt es nur in der Kurve, sonst werden sie mittelgroß dargestellt.
+- **KI-Vereine und Gäste:**
+  - KI-Vereine bekommen eine automatisch erzeugte Fankultur (Gruppenname, Farben, Zaunfahne, Fahnen) aus Vereins-ID, Name und Farben. Das passiert ohne Datenbankzugriff im Spiel.
+  - Gästefans schwenken im Gästeblock ihre Fahnen: eigene Fahnen eines menschlichen Gastvereins, sonst automatisch erzeugte.
+  - Die Menge hängt von Auslastung, Gästeblock und Spielbedeutung ab.
+- **Trikots:**
+  - Jeder Verein hat ein Heim-, Auswärts- und Spezialtrikot (`club_branding.kits`), das bisherige Trikot wird zum Heimtrikot. Bearbeitet werden sie im Stadioneditor.
+  - Die Wahl je Partie liegt in `fixture_kits`. KI-Vereine wählen automatisch ein Trikot ohne Farbkonflikt (`fd_fixture_kit`, gleicher Farbabstand wie in TypeScript).
+  - Im 2D-Spiel tragen die Spieler die gewählten Farben und Muster.
+- **Spielvorbereitung:**
+  - Melden sich alle Manager bereit, wechselt der Termin in den Status `prep`.
+  - Jeder Manager wählt dort sein Trikot, der Heimverein zusätzlich die Choreografie (mit Schnellbearbeitung), dann bestätigen alle.
+  - Haben alle bestätigt, startet der Termin, danach folgt der bisherige Einlauf.
+  - Spätestens nach 2 Minuten startet der Termin automatisch. Auslöser ist der Match-Server-Sweep oder ein beliebiger Manager per `prep_tick`, der Spieltag blockiert also nie.
+  - Termine ohne eigenes Spiel eines Menschen überspringen die Vorbereitung. Der Host kann wie bisher sofort starten.

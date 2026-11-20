@@ -60,7 +60,7 @@ Danach in **Netlify** die Variable `VITE_MATCH_SERVER_URL=https://<app>.fly.dev`
 Die Partien leben im Speicher genau einer Maschine. Deshalb sind in `fly.toml` `min_machines_running = 1` und `auto_stop_machines = "off"` gesetzt. Für die geplante Größe (eine Freundesrunde, mehrere Welten) reicht `shared-cpu-1x` mit 512 MB.
 
 ### Spieltagssteuerung
-Der Match-Server prüft alle 30 s selbst alle Welten mit laufendem Spieltag (optional `SWEEP_INTERVAL_MS`).
+Der Match-Server prüft alle 10 s selbst alle Welten mit laufendem Spieltag (optional `SWEEP_INTERVAL_MS`).
 Dafür muss mindestens eine Maschine laufen (`min_machines_running = 1`, bereits gesetzt).
 
 ## Kosten
@@ -97,3 +97,8 @@ npm run dev:server          # http://localhost:2567/health
 4. **Kontrolle nach dem nächsten Spieltag (SQL-Editor):**
    `select * from public.admin_sim_report((select id from public.career_worlds where name = 'Das Clan Haus'));`
 Keine Schlüssel nötig, keine laufenden Kosten: Musik entsteht im Browser oder kommt als hochgeladene MP3.
+
+## Update 0031 (MP3-Upload-Fix, Ultras, Fahnen, Trikots, Spielvorbereitung)
+1. **Supabase:** SQL Editor → New query → `football_dynasty_update_0031.sql` → Run. Die Datei ist wiederholbar und repariert die Storage-Policies.
+2. **GitHub/Netlify:** Zip-Inhalt ins Repository kopieren und pushen.
+3. **Fly.io:** Ein Deploy ist nicht nötig, der Match-Server liest die Trikots aus der Datenbank.

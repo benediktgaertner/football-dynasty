@@ -1,17 +1,16 @@
+import { CLASH_THRESHOLD, KIT_PATTERNS, colorDistance, type KitConfig } from '@fd/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { KitPreview } from '../components/KitPreview';
 import { WorldNav } from '../components/WorldNav';
 import { Button, Card, ErrorBanner, Shell, Spinner, TextInput } from '../components/ui';
-import { BLOCK_LABEL, drawFlag, flagSpots, renderChoreoDesign, renderUltrasLayer } from '../lib/fanArt';
-import { fanApi, type ClubAudio, type FanCulture as FanData } from '../lib/fanApi';
-import type { ChoreoDesign, FlagDesign, StadiumDesign, StandBlock, UltraGroup } from '../lib/matchClient';
-import { L, W, renderFanLayers, renderStadiumLayer, stadiumMargin } from '../lib/stadiumArt';
-import {
-  ANTHEM_STYLES, CHANT_STYLES, MOODS, SITUATIONS, VOICES, generateLyrics, makeRecipe, stadiumSound,
-  type Mood, type PlayHandle, type Recipe, type Voice,
-} from '../lib/stadiumSound';
+import { AWAY_BLOCK, INFIELD, areaInCurve, blockArea, drawFlag, flagSpots, overlaps, renderChoreoDesign, renderUltrasLayer, ultraArea } from '../lib/fanArt';
+import { fanApi, type ClubAudio, type FanCulture as FanData, type KitSet } from '../lib/fanApi';
+import type { ChoreoDesign, FlagDesign, StadiumDesign, StandArea, UltraGroup } from '../lib/matchClient';
+import { L, W, renderFanLayers, renderStadiumLayer, stadiumMargin, type StadiumArtOptions } from '../lib/stadiumArt';
+import { SITUATIONS, stadiumSound, type PlayHandle } from '../lib/stadiumSound';
 
-type Club = { name: string; short: string; primary: string; secondary: string; capacity: number; design: StadiumDesign | null; attendance: number | null };
+type Club = FanData['club'];
 
 const SHAPES: Array<[FlagDesign['shape'], string]> = [['rect', 'Rechteck'], ['square', 'Quadrat'], ['triangle', 'Wimpel'], ['swallow', 'Schwalbenschwanz'], ['banner', 'Langfahne']];
 const SIZES: Array<[FlagDesign['size'], string]> = [['s', 'Klein'], ['m', 'Mittel'], ['l', 'Groß']];
@@ -19,17 +18,21 @@ const FLAG_PATTERNS: Array<[FlagDesign['pattern'], string]> = [['solid', 'Einfar
 const CHOREO_PATTERNS: Array<[ChoreoDesign['pattern'], string]> = [['stripes', 'Streifen'], ['blocks', 'Blöcke'], ['checker', 'Schachbrett'], ['wave', 'Welle'], ['gradient', 'Verlauf'], ['rays', 'Strahlen'], ['mosaic', 'Mosaik']];
 const MOTIFS: Array<[NonNullable<ChoreoDesign['motif']>, string]> = [['none', 'Kein Motiv'], ['star', 'Stern'], ['heart', 'Herz'], ['crown', 'Krone'], ['crest', 'Wappen'], ['lion', 'Löwe'], ['eagle', 'Adler'], ['anchor', 'Anker'], ['castle', 'Burg']];
 const CHOREO_BLOCKS: Array<[NonNullable<ChoreoDesign['block']>, string]> = [['home_curve', 'Heimkurve'], ['main_stand', 'Haupttribüne'], ['back_stand', 'Gegengerade'], ['all', 'Ganzes Stadion']];
+const KIT_LABEL: Record<string, string> = { solid: 'Uni', stripes: 'Streifen', hoops: 'Ringel', halves: 'Hälften', sash: 'Schärpe' };
+const KIT_NAMES: Array<[keyof KitSet, string]> = [['home', 'Heimtrikot'], ['away', 'Auswärtstrikot'], ['special', 'Spezialtrikot']];
 
-const sel = 'min-h-11 w-full rounded-lg border border-olive-600 bg-olive-900 px-2 text-cream';
+export const sel = 'min-h-11 w-full rounded-lg border border-olive-600 bg-olive-900 px-2 text-cream';
 
-/** Fankultur & Musik: Schwenkfahnen, Choreografien, Ultragruppen, Hymnen und Fangesänge (kostenlos, rein optisch/akustisch) */
+/** Stadioneditor „Fankultur & Musik“: Trikots, Choreografien, Fahnen, Ultragruppen, Hymnen und Fangesänge (MP3) */
 export function FanCulture() {
   const { worldId = '' } = useParams();
   const [data, setData] = useState<FanData | null>(null);
   const [flags, setFlags] = useState<FlagDesign[]>([]);
   const [ultras, setUltras] = useState<UltraGroup[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
   const [defChoreo, setDefChoreo] = useState<string | null>(null);
   const [auto, setAuto] = useState(true);
+  const [kits, setKits] = useState<KitSet | null>(null);
   const [draft, setDraft] = useState<{ id: string | null; name: string; design: ChoreoDesign }>({ id: null, name: '', design: { pattern: 'stripes', colors: ['#c8102e', '#ffffff'], text: '', motif: 'star', block: 'home_curve' } });
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -38,7 +41,7 @@ export function FanCulture() {
   const load = useCallback(async () => {
     try {
       const d = await fanApi.culture(worldId);
-      setData(d); setFlags(d.flags); setUltras(d.ultras); setDefChoreo(d.default_choreo_id); setAuto(d.auto_choreo);
+      setData(d); setFlags(d.flags); setUltras(d.ultras); setDefChoreo(d.default_choreo_id); setAuto(d.auto_choreo); setKits(d.kits);
       setDraft((x) => (x.design.colors[0] === '#c8102e' && d.club.primary ? { ...x, design: { ...x.design, colors: [d.club.primary, d.club.secondary], text: d.club.short } } : x));
     } catch (e) { setError((e as Error).message); }
   }, [worldId]);
@@ -50,9 +53,10 @@ export function FanCulture() {
     try { await fn(); await load(); setMsg(ok); } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
   };
 
-  if (!data) return <Shell><WorldNav worldId={worldId} />{error ? <ErrorBanner error={error} /> : <Spinner label="Fankultur wird geladen …" />}</Shell>;
+  if (!data || !kits) return <Shell><WorldNav worldId={worldId} />{error ? <ErrorBanner error={error} /> : <Spinner label="Fankultur wird geladen …" />}</Shell>;
   const club = data.club;
   const preview = draft.name || draft.id ? draft.design : (data.choreos.find((c) => c.id === defChoreo)?.design ?? draft.design);
+  const homeAwayClash = colorDistance(kits.home.primary, kits.away.primary) < CLASH_THRESHOLD;
 
   return (
     <Shell>
@@ -66,9 +70,11 @@ export function FanCulture() {
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <Card>
-          <h2 className="display mb-2 text-2xl font-bold uppercase">Vorschau</h2>
-          <FanPreview club={club} flags={flags} ultras={ultras} choreo={preview} />
-          <p className="mt-2 text-xs text-cream-dim">Die Zuschauerzahl im Spiel entspricht der echten Auslastung ({club.capacity.toLocaleString('de-DE')} Plätze{club.attendance ? `, zuletzt ${club.attendance.toLocaleString('de-DE')}` : ''}). Choreografien zeigen sich beim Einlauf und vor dem Anpfiff.</p>
+          <h2 className="display mb-1 text-2xl font-bold uppercase">Stadion & Ultragruppen</h2>
+          <p className="mb-2 text-xs text-cream-dim">Ultragruppen per Drag-and-drop auf den Heimtribünen platzieren, am Ziehpunkt (unten rechts) vergrößern oder verkleinern. Der schraffierte Gästeblock ist gesperrt, Gruppen überlappen nicht.</p>
+          <StadiumEditor club={club} flags={flags} ultras={ultras} choreo={preview} selected={selected} onSelect={setSelected}
+            onMove={(id, area) => setUltras((all) => all.map((u) => (u.id === id ? { ...u, area } : u)))} />
+          <p className="mt-2 text-xs text-cream-dim">Fans entsprechen der echten Auslastung ({club.capacity.toLocaleString('de-DE')} Plätze{club.attendance ? `, zuletzt ${club.attendance.toLocaleString('de-DE')}` : ''}). Mehr Zuschauer und wichtige Spiele ⇒ mehr Fahnen.</p>
         </Card>
 
         <Card>
@@ -96,40 +102,39 @@ export function FanCulture() {
           )}
           <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} className="h-5 w-5 accent-[var(--fd-accent)]" />
             Automatische Standardchoreografie, wenn für ein Heimspiel keine gewählt wurde</label>
-          {data.next_home && (
-            <div className="mt-3 rounded-xl border border-olive-600 p-3">
-              <p className="text-sm">Nächstes Heimspiel: <span className="font-semibold">{data.next_home.label}</span> gegen {data.next_home.opponent}</p>
-              <select className={`${sel} mt-2`} value={data.next_home.choreo_id ?? ''} onChange={(e) => void act('fx', () => fanApi.setFixtureChoreo(worldId, data.next_home!.fixture_id, e.target.value || null), 'Choreografie für das Heimspiel gewählt.')}>
-                <option value="">{auto ? 'Standard / automatisch' : 'Keine Choreografie'}</option>
-                {data.choreos.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-          )}
+          <p className="mt-2 text-xs text-cream-dim">Die Choreo für ein bestimmtes Heimspiel wählst du in der Spielvorbereitung direkt vor dem Anpfiff.</p>
         </Card>
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
         <Card>
           <div className="mb-2 flex items-center justify-between gap-2">
-            <h2 className="display text-2xl font-bold uppercase">Schwenkfahnen</h2>
-            <Button variant="secondary" disabled={flags.length >= 8} onClick={() => setFlags((f) => [...f, { shape: 'rect', size: 'm', pattern: 'stripes_h', colors: [club.primary, club.secondary], text: '' }])}>+ Fahne</Button>
+            <h2 className="display text-2xl font-bold uppercase">Schwenkfahnen (Heimkurve)</h2>
+            <Button variant="secondary" disabled={flags.length >= 8} onClick={() => setFlags((f) => [...f, { shape: 'rect', size: 'm', pattern: 'stripes_h', colors: [club.primary, club.secondary], text: '', count: 4, from: 0, to: 1 }])}>+ Fahne</Button>
           </div>
-          {flags.length === 0 && <p className="text-sm text-cream-dim">Noch keine Fahnen – ohne eigene Fahnen schwenken die Fans neutrale Vereinsfahnen.</p>}
+          <p className="mb-2 text-xs text-cream-dim">Eigene große Schwenkfahnen erscheinen ausschließlich in der Heimkurve. Ohne eigene Fahnen schwenken die Fans automatisch Fahnen in Vereinsfarben. Insgesamt höchstens 40 Fahnen.</p>
           <div className="space-y-3">
             {flags.map((f, i) => (
-              <FlagEditor key={i} flag={f} onChange={(nf) => setFlags((all) => all.map((x, k) => (k === i ? nf : x)))} onRemove={() => setFlags((all) => all.filter((_, k) => k !== i))} />
+              <FlagEditor key={i} flag={f} withCount onChange={(nf) => setFlags((all) => all.map((x, k) => (k === i ? nf : x)))} onRemove={() => setFlags((all) => all.filter((_, k) => k !== i))} />
             ))}
           </div>
+          <p className="mt-2 text-xs text-cream-dim">Fahnen gesamt: {flags.reduce((n, f) => n + (f.count ?? 3), 0)} / 40</p>
         </Card>
         <Card>
           <div className="mb-2 flex items-center justify-between gap-2">
             <h2 className="display text-2xl font-bold uppercase">Ultragruppen</h2>
-            <Button variant="secondary" disabled={ultras.length >= 4} onClick={() => setUltras((u) => [...u, { id: `u-${crypto.randomUUID().slice(0, 8)}`, name: '', colors: [club.primary, '#111111'], banner: '', block: 'home_curve', flag: null }])}>+ Gruppe</Button>
+            <Button variant="secondary" disabled={ultras.length >= 4} onClick={() => {
+              const id = `u-${crypto.randomUUID().slice(0, 8)}`;
+              const area = freeSpot(club.capacity, ultras);
+              setUltras((u) => [...u, { id, name: '', colors: [club.primary, '#111111'], banner: '', block: 'home_curve', area, flags: 6, flag: null }]);
+              setSelected(id);
+            }}>+ Gruppe</Button>
           </div>
-          {ultras.length === 0 && <p className="text-sm text-cream-dim">Fiktive Fangruppen mit eigenem Namen, Farben, Zaunfahne und Block.</p>}
+          {ultras.length === 0 && <p className="text-sm text-cream-dim">Fiktive Fangruppen mit Namen, Farben, Zaunfahne und frei wählbarem Bereich.</p>}
           <div className="space-y-3">
             {ultras.map((u, i) => (
-              <UltraEditor key={u.id} ultra={u} onChange={(nu) => setUltras((all) => all.map((x, k) => (k === i ? nu : x)))} onRemove={() => setUltras((all) => all.filter((_, k) => k !== i))} />
+              <UltraEditor key={u.id} ultra={u} capacity={club.capacity} others={ultras.filter((x) => x.id !== u.id)} selected={selected === u.id} onSelect={() => setSelected(u.id)}
+                onChange={(nu) => setUltras((all) => all.map((x, k) => (k === i ? nu : x)))} onRemove={() => setUltras((all) => all.filter((_, k) => k !== i))} />
             ))}
           </div>
         </Card>
@@ -140,12 +145,54 @@ export function FanCulture() {
         </Button>
       </div>
 
-      <AudioLibrary worldId={worldId} club={club} clubId={data.club_id} audio={data.audio} ultras={data.ultras} onChange={load} />
+      <Card className="mt-4">
+        <h2 className="display mb-1 text-2xl font-bold uppercase">Trikots</h2>
+        <p className="mb-3 text-xs text-cream-dim">Drei Trikots. Die Wahl für eine Partie triffst du in der Spielvorbereitung; KI-Vereine wählen automatisch ein Trikot ohne Farbkonflikt.</p>
+        <div className="grid gap-4 md:grid-cols-3">
+          {KIT_NAMES.map(([key, label]) => (
+            <div key={key} className="rounded-xl border border-olive-700 p-3">
+              <p className="display mb-2 text-lg font-bold uppercase">{label}</p>
+              <KitPreview kit={kits[key]} size={110} />
+              <label className="mt-2 block text-sm">Muster
+                <select className={sel} value={kits[key].pattern} onChange={(e) => setKits({ ...kits, [key]: { ...kits[key], pattern: e.target.value as KitConfig['pattern'] } })}>
+                  {KIT_PATTERNS.map((p) => <option key={p} value={p}>{KIT_LABEL[p] ?? p}</option>)}
+                </select>
+              </label>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                <label>Hauptfarbe<input type="color" value={kits[key].primary} onChange={(e) => setKits({ ...kits, [key]: { ...kits[key], primary: e.target.value.toUpperCase() } })} className="h-10 w-full cursor-pointer rounded-lg border border-olive-600 bg-transparent" /></label>
+                <label>Zweitfarbe<input type="color" value={kits[key].secondary} onChange={(e) => setKits({ ...kits, [key]: { ...kits[key], secondary: e.target.value.toUpperCase() } })} className="h-10 w-full cursor-pointer rounded-lg border border-olive-600 bg-transparent" /></label>
+              </div>
+            </div>
+          ))}
+        </div>
+        {homeAwayClash && <p className="mt-2 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm text-amber-200">Heim- und Auswärtstrikot sind sehr ähnlich – bei gleichfarbigen Gegnern kann es zu Farbkonflikten kommen.</p>}
+        <Button className="mt-3" busy={busy === 'kits'} onClick={() => void act('kits', () => fanApi.saveKits(worldId, kits), 'Trikots gespeichert.')}>Trikots speichern</Button>
+      </Card>
+
+      <AudioLibrary worldId={worldId} clubId={data.club_id} audio={data.audio} ultras={data.ultras} onChange={load} />
     </Shell>
   );
 }
 
-function ColorList({ colors, max, onChange }: { colors: string[]; max: number; onChange: (c: string[]) => void }) {
+/** Freien Platz für eine neue Gruppe suchen (Heimkurve zuerst, dann Haupttribüne/Gegengerade) */
+function freeSpot(capacity: number, ultras: UltraGroup[]): StandArea {
+  const m = stadiumMargin(capacity);
+  const cands: StandArea[] = [];
+  for (let y = 0; y <= W - 18; y += 6) cands.push({ x: -m + 1, y, w: Math.max(4, m - 3), h: 18 });
+  for (let x = 10; x <= L - 22; x += 8) { cands.push({ x, y: W + 2.6, w: 20, h: Math.max(4, m - 4) }); cands.push({ x, y: -m + 1.5, w: 20, h: Math.max(4, m - 4) }); }
+  const taken = ultras.map((u) => u.area).filter((a): a is StandArea => !!a);
+  return cands.find((c) => !taken.some((t) => overlaps(c, t))) ?? cands[0]!;
+}
+
+export function validArea(a: StandArea, others: StandArea[], capacity: number): boolean {
+  const m = stadiumMargin(capacity);
+  if (a.w < 2 || a.h < 2) return false;
+  if (a.x < -m || a.y < -m || a.x + a.w > L + m || a.y + a.h > W + m) return false;
+  if (overlaps(a, INFIELD) || overlaps(a, AWAY_BLOCK)) return false;
+  return !others.some((o) => overlaps(a, o));
+}
+
+export function ColorList({ colors, max, onChange }: { colors: string[]; max: number; onChange: (c: string[]) => void }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {colors.map((c, i) => (
@@ -159,28 +206,31 @@ function ColorList({ colors, max, onChange }: { colors: string[]; max: number; o
   );
 }
 
-function FlagCanvas({ flag, animate = true }: { flag: FlagDesign; animate?: boolean }) {
+function FlagCanvas({ flag }: { flag: FlagDesign }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const cv = ref.current!;
     const ctx = cv.getContext('2d')!;
-    let raf = 0;
+    let raf = 0, last = 0;
     const t0 = performance.now();
-    const draw = () => {
+    const draw = (now: number) => {
+      raf = requestAnimationFrame(draw);
+      if (now - last < 40) return;
+      last = now;
       const dpr = window.devicePixelRatio || 1;
-      cv.width = cv.clientWidth * dpr; cv.height = cv.clientHeight * dpr;
+      if (cv.width !== cv.clientWidth * dpr) { cv.width = cv.clientWidth * dpr; cv.height = cv.clientHeight * dpr; }
       ctx.clearRect(0, 0, cv.width, cv.height);
-      drawFlag(ctx, cv.width * 0.18, cv.height * 0.95, cv.height / 6.2, flag, animate ? (performance.now() - t0) / 1000 : 0);
-      if (animate) raf = requestAnimationFrame(draw);
+      drawFlag(ctx, cv.width * 0.18, cv.height * 0.95, cv.height / 6.2, flag, (now - t0) / 1000);
     };
-    draw();
+    raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [flag, animate]);
+  }, [flag]);
   return <canvas ref={ref} className="h-24 w-32 rounded-lg bg-olive-900" aria-label="Fahnenvorschau" />;
 }
 
-function FlagEditor({ flag, onChange, onRemove }: { flag: FlagDesign; onChange: (f: FlagDesign) => void; onRemove?: () => void }) {
+function FlagEditor({ flag, onChange, onRemove, withCount = false }: { flag: FlagDesign; onChange: (f: FlagDesign) => void; onRemove?: () => void; withCount?: boolean }) {
   const set = (p: Partial<FlagDesign>) => onChange({ ...flag, ...p });
+  const from = flag.from ?? 0, to = flag.to ?? 1;
   return (
     <div className="flex flex-wrap gap-3 rounded-xl border border-olive-700 p-2">
       <FlagCanvas flag={flag} />
@@ -190,13 +240,27 @@ function FlagEditor({ flag, onChange, onRemove }: { flag: FlagDesign; onChange: 
         <label>Muster<select className={sel} value={flag.pattern} onChange={(e) => set({ pattern: e.target.value as FlagDesign['pattern'] })}>{FLAG_PATTERNS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
         <div className="col-span-2"><span>Farben</span><ColorList colors={flag.colors} max={3} onChange={(colors) => set({ colors })} /></div>
         <label>Aufschrift<TextInput value={flag.text ?? ''} maxLength={16} onChange={(e) => set({ text: e.target.value })} /></label>
+        {withCount && (
+          <>
+            <label className="col-span-1">Anzahl: {flag.count ?? 3}
+              <input type="range" min={1} max={12} value={flag.count ?? 3} onChange={(e) => set({ count: Number(e.target.value) })} className="w-full accent-[var(--fd-accent)]" />
+            </label>
+            <div className="col-span-2">
+              <span>Verteilung in der Kurve: {Math.round(from * 100)}–{Math.round(to * 100)} %</span>
+              <div className="flex gap-2">
+                <input type="range" min={0} max={1} step={0.05} value={from} aria-label="Bereich von" onChange={(e) => set({ from: Math.min(Number(e.target.value), to) })} className="w-full accent-[var(--fd-accent)]" />
+                <input type="range" min={0} max={1} step={0.05} value={to} aria-label="Bereich bis" onChange={(e) => set({ to: Math.max(Number(e.target.value), from) })} className="w-full accent-[var(--fd-accent)]" />
+              </div>
+            </div>
+          </>
+        )}
       </div>
       {onRemove && <button type="button" onClick={onRemove} className="self-start text-sm text-red-300 underline">Entfernen</button>}
     </div>
   );
 }
 
-function ChoreoEditor({ draft, setDraft }: { draft: { id: string | null; name: string; design: ChoreoDesign }; setDraft: (f: (d: typeof draft) => typeof draft) => void }) {
+export function ChoreoEditor({ draft, setDraft }: { draft: { id: string | null; name: string; design: ChoreoDesign }; setDraft: (f: (d: { id: string | null; name: string; design: ChoreoDesign }) => { id: string | null; name: string; design: ChoreoDesign }) => void }) {
   const set = (p: Partial<ChoreoDesign>) => setDraft((d) => ({ ...d, design: { ...d.design, ...p } }));
   const d = draft.design;
   return (
@@ -211,18 +275,37 @@ function ChoreoEditor({ draft, setDraft }: { draft: { id: string | null; name: s
   );
 }
 
-function UltraEditor({ ultra, onChange, onRemove }: { ultra: UltraGroup; onChange: (u: UltraGroup) => void; onRemove: () => void }) {
+function UltraEditor({ ultra, capacity, others, selected, onSelect, onChange, onRemove }: {
+  ultra: UltraGroup; capacity: number; others: UltraGroup[]; selected: boolean; onSelect: () => void; onChange: (u: UltraGroup) => void; onRemove: () => void;
+}) {
   const set = (p: Partial<UltraGroup>) => onChange({ ...ultra, ...p });
+  const a = ultra.area;
+  const resize = (dw: number, dh: number) => {
+    if (!a) return;
+    const next = { ...a, w: Math.max(2, a.w + dw), h: Math.max(2, a.h + dh) };
+    if (validArea(next, others.map((o) => o.area).filter((x): x is StandArea => !!x), capacity)) set({ area: next });
+  };
   return (
-    <div className="rounded-xl border border-olive-700 p-2 text-sm">
+    <div className={`rounded-xl border p-2 text-sm ${selected ? 'border-gold' : 'border-olive-700'}`} onClick={onSelect}>
       <div className="grid grid-cols-2 gap-2">
         <label>Name<TextInput value={ultra.name} maxLength={32} placeholder="z. B. Nordkurve 1990" onChange={(e) => set({ name: e.target.value })} /></label>
-        <label>Block<select className={sel} value={ultra.block} onChange={(e) => set({ block: e.target.value as StandBlock })}>{(Object.keys(BLOCK_LABEL) as StandBlock[]).map((k) => <option key={k} value={k}>{BLOCK_LABEL[k]}</option>)}</select></label>
         <label>Zaunfahne (Text)<TextInput value={ultra.banner ?? ''} maxLength={28} placeholder={ultra.name.toUpperCase()} onChange={(e) => set({ banner: e.target.value })} /></label>
         <div><span>Farben</span><ColorList colors={ultra.colors} max={3} onChange={(colors) => set({ colors })} /></div>
+        <label>Fahnen der Gruppe: {ultra.flags ?? 'automatisch'}
+          <input type="range" min={0} max={16} value={ultra.flags ?? 6} onChange={(e) => set({ flags: Number(e.target.value) })} className="w-full accent-[var(--fd-accent)]" />
+        </label>
       </div>
+      {a && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-cream-dim">
+          <span>Bereich {Math.round(a.w)} × {Math.round(a.h)} m {areaInCurve(a) ? '· Heimkurve' : ''}</span>
+          <Button variant="ghost" className="min-h-9 !px-2 !text-xs" onClick={() => resize(-2, 0)}>Breite −</Button>
+          <Button variant="ghost" className="min-h-9 !px-2 !text-xs" onClick={() => resize(2, 0)}>Breite +</Button>
+          <Button variant="ghost" className="min-h-9 !px-2 !text-xs" onClick={() => resize(0, -2)}>Höhe −</Button>
+          <Button variant="ghost" className="min-h-9 !px-2 !text-xs" onClick={() => resize(0, 2)}>Höhe +</Button>
+        </div>
+      )}
       <label className="mt-2 flex items-center gap-2"><input type="checkbox" checked={!!ultra.flag} className="h-5 w-5 accent-[var(--fd-accent)]"
-        onChange={(e) => set({ flag: e.target.checked ? { shape: 'swallow', size: 'l', pattern: 'halves', colors: ultra.colors.slice(0, 2), text: '' } : null })} />Eigene Gruppenfahne</label>
+        onChange={(e) => set({ flag: e.target.checked ? { shape: 'swallow', size: 'm', pattern: 'halves', colors: ultra.colors.slice(0, 2), text: '' } : null })} />Eigene Gruppenfahne {a && !areaInCurve(a) ? '(groß nur in der Heimkurve)' : ''}</label>
       {ultra.flag && <div className="mt-2"><FlagEditor flag={ultra.flag} onChange={(flag) => set({ flag })} /></div>}
       {ultra.name.trim().length > 0 && ultra.name.trim().length < 3 && <p className="mt-1 text-xs text-red-300">Der Name braucht mindestens 3 Zeichen.</p>}
       <button type="button" onClick={onRemove} className="mt-2 text-red-300 underline">Gruppe entfernen</button>
@@ -230,9 +313,26 @@ function UltraEditor({ ultra, onChange, onRemove }: { ultra: UltraGroup; onChang
   );
 }
 
-/** Stadionvorschau mit Choreo, Ultras und animierten Fahnen (≈30 fps, nur solange sichtbar) */
-function FanPreview({ club, flags, ultras, choreo }: { club: Club; flags: FlagDesign[]; ultras: UltraGroup[]; choreo: ChoreoDesign | null }) {
+/**
+ * Interaktive Stadionvorschau: Ultragruppen verschieben (Ziehen) und skalieren (Ziehpunkt unten rechts).
+ * Ungültige Positionen (Spielfeld, Gästeblock, Überlappung) werden nicht übernommen.
+ */
+function StadiumEditor({ club, flags, ultras, choreo, selected, onSelect, onMove }: {
+  club: Club; flags: FlagDesign[]; ultras: UltraGroup[]; choreo: ChoreoDesign | null; selected: string | null;
+  onSelect: (id: string | null) => void; onMove: (id: string, area: StandArea) => void;
+}) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const geo = useRef<StadiumArtOptions | null>(null);
+  const drag = useRef<{ id: string; mode: 'move' | 'size'; start: [number, number]; area: StandArea } | null>(null);
+  const live = useRef<{ ultras: UltraGroup[]; selected: string | null }>({ ultras, selected });
+  live.current = { ultras, selected };
+  const toM = (e: React.PointerEvent): [number, number] => {
+    const o = geo.current!, cv = ref.current!;
+    const r = cv.getBoundingClientRect();
+    const px = ((e.clientX - r.left) / r.width) * cv.width, py = ((e.clientY - r.top) / r.height) * cv.height;
+    return [(px - o.ox) / o.s, (py - o.oy) / o.s];
+  };
+  // statische Ebenen nur bei Größen-/Designänderung neu berechnen
   useEffect(() => {
     const cv = ref.current!;
     const ctx = cv.getContext('2d')!;
@@ -241,87 +341,130 @@ function FanPreview({ club, flags, ultras, choreo }: { club: Club; flags: FlagDe
     const M = stadiumMargin(club.capacity);
     const s = Math.min(cv.width / (L + 2 * M), cv.height / (W + 2 * M));
     const ox = (cv.width - (L + 2 * M) * s) / 2 + M * s, oy = (cv.height - (W + 2 * M) * s) / 2 + M * s;
-    const o = { capacity: club.capacity, attendance: club.attendance ?? club.capacity * 0.8, design: club.design, homeColors: [club.primary, club.secondary] as [string, string], awayColor: '#e5e7eb', s, ox, oy, width: cv.width, height: cv.height, homeShort: club.short };
+    const o: StadiumArtOptions = { capacity: club.capacity, attendance: club.attendance ?? club.capacity * 0.8, design: club.design as StadiumDesign | null, homeColors: [club.primary, club.secondary], awayColor: '#e5e7eb', s, ox, oy, width: cv.width, height: cv.height, homeShort: club.short };
+    geo.current = o;
     const base = renderStadiumLayer(o);
     const fans = renderFanLayers(o)[0];
-    const ul = ultras.length ? renderUltrasLayer(o, ultras.filter((u) => u.name.trim().length >= 3), 1) : null;
     const ch = choreo && choreo.colors.length ? renderChoreoDesign(o, choreo) : null;
-    const spots = flagSpots(o, flags, ultras, 0.8);
+    let ul: HTMLCanvasElement | null = null, ulKey = '';
+    let spots = flagSpots(o, flags, ultras, 0.8), spotsKey = '';
     let raf = 0, last = 0;
     const t0 = performance.now();
+    const X = (x: number) => o.ox + x * o.s, Y = (y: number) => o.oy + y * o.s;
     const draw = (now: number) => {
       raf = requestAnimationFrame(draw);
       if (now - last < 33) return;
       last = now;
+      const { ultras: us, selected: sel } = live.current;
+      const key = JSON.stringify(us.map((u) => [u.area, u.colors, u.name, u.banner]));
+      if (key !== ulKey) { ul = us.length ? renderUltrasLayer(o, us.filter((u) => u.name.trim().length >= 3 || u.area), 1) : null; ulKey = key; }
+      const sk = key + JSON.stringify(flags) + JSON.stringify(us.map((u) => [u.flags, u.flag]));
+      if (sk !== spotsKey) { spots = flagSpots(o, flags, us, 0.8); spotsKey = sk; }
       ctx.fillStyle = '#15191a'; ctx.fillRect(0, 0, cv.width, cv.height);
       ctx.drawImage(base, 0, 0); ctx.drawImage(fans, 0, 0);
-      if (ul) ctx.drawImage(ul, 0, 0);
       if (ch) ctx.drawImage(ch, 0, 0);
-      for (let i = 0; i < 18; i++) { ctx.fillStyle = i % 2 ? '#2f6c3a' : '#2a6234'; ctx.fillRect(ox + (i * L / 18) * s, oy, (L / 18) * s + 1, W * s); }
+      if (ul) ctx.drawImage(ul, 0, 0);
+      for (let i = 0; i < 18; i++) { ctx.fillStyle = i % 2 ? '#2f6c3a' : '#2a6234'; ctx.fillRect(X((i * L) / 18), Y(0), (L / 18) * s + 1, W * s); }
+      // Gästeblock schraffiert (gesperrt)
+      ctx.save();
+      ctx.beginPath(); ctx.rect(X(AWAY_BLOCK.x), Y(Math.max(AWAY_BLOCK.y, -M)), (M + 1) * s, (AWAY_BLOCK.y + AWAY_BLOCK.h - Math.max(AWAY_BLOCK.y, -M)) * s); ctx.clip();
+      ctx.strokeStyle = 'rgba(255,90,90,0.55)'; ctx.lineWidth = Math.max(1, s * 0.25);
+      for (let k = -40; k < 80; k += 2.5) { ctx.beginPath(); ctx.moveTo(X(L + k * 0.5), Y(-M)); ctx.lineTo(X(L + k * 0.5 + M), Y(W * 0.42)); ctx.stroke(); }
+      ctx.restore();
+      ctx.font = `700 ${Math.round(s * 1.6)}px "Barlow Condensed", system-ui, sans-serif`; ctx.fillStyle = 'rgba(255,170,170,0.95)'; ctx.textAlign = 'center';
+      ctx.save(); ctx.translate(X(L + M * 0.55), Y(W * 0.2)); ctx.rotate(Math.PI / 2); ctx.fillText('GÄSTEBLOCK – GESPERRT', 0, 0); ctx.restore();
+      // Fahnen
       const t = (now - t0) / 1000;
       for (const sp of spots) drawFlag(ctx, sp.x, sp.y, sp.scale * 0.85, sp.flag, t + sp.phase, sp.side);
+      // Bereiche + Ziehpunkte
+      for (const u of us) {
+        const a = ultraArea(o, u);
+        const isSel = u.id === sel;
+        ctx.strokeStyle = isSel ? '#ffd24a' : 'rgba(255,255,255,0.7)'; ctx.lineWidth = Math.max(1.5, s * (isSel ? 0.35 : 0.2));
+        ctx.setLineDash(isSel ? [] : [s * 0.8, s * 0.6]);
+        ctx.strokeRect(X(a.x), Y(a.y), a.w * s, a.h * s);
+        ctx.setLineDash([]);
+        ctx.fillStyle = isSel ? '#ffd24a' : '#ffffff';
+        ctx.fillRect(X(a.x + a.w) - s * 1.6, Y(a.y + a.h) - s * 1.6, s * 2.2, s * 2.2);
+        ctx.font = `700 ${Math.round(s * 1.4)}px "Barlow Condensed", system-ui, sans-serif`; ctx.textAlign = 'left';
+        ctx.fillStyle = '#ffffff'; ctx.fillText(u.name || 'Neue Gruppe', X(a.x) + s * 0.4, Y(a.y) - s * 0.4);
+      }
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [club, flags, ultras, choreo]);
-  const m = stadiumMargin(club.capacity);
-  return <canvas ref={ref} className="block w-full rounded-xl" style={{ aspectRatio: `${L + 2 * m} / ${W + 2 * m}` }} aria-label="Vorschau der Fankultur" />;
+  }, [club, flags, choreo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const others = (id: string) => live.current.ultras.filter((u) => u.id !== id).map((u) => ultraArea(geo.current!, u));
+  return (
+    <canvas ref={ref} className="block w-full touch-none rounded-xl" style={{ aspectRatio: `${L + 2 * stadiumMargin(club.capacity)} / ${W + 2 * stadiumMargin(club.capacity)}`, cursor: 'grab' }}
+      aria-label="Stadion: Ultragruppen platzieren"
+      onPointerDown={(e) => {
+        if (!geo.current) return;
+        const [mx, my] = toM(e);
+        // Ziehpunkt hat Vorrang, danach Fläche (oberste zuerst)
+        for (const u of [...live.current.ultras].reverse()) {
+          const a = ultraArea(geo.current, u);
+          const onHandle = Math.abs(mx - (a.x + a.w)) < 2.2 && Math.abs(my - (a.y + a.h)) < 2.2;
+          if (onHandle || (mx >= a.x && mx <= a.x + a.w && my >= a.y && my <= a.y + a.h)) {
+            drag.current = { id: u.id, mode: onHandle ? 'size' : 'move', start: [mx, my], area: { ...a } };
+            onSelect(u.id);
+            (e.target as HTMLCanvasElement).setPointerCapture(e.pointerId);
+            return;
+          }
+        }
+        onSelect(null);
+      }}
+      onPointerMove={(e) => {
+        const d = drag.current;
+        if (!d || !geo.current) return;
+        const [mx, my] = toM(e);
+        const dx = mx - d.start[0], dy = my - d.start[1];
+        const next = d.mode === 'move' ? { ...d.area, x: Math.round((d.area.x + dx) * 2) / 2, y: Math.round((d.area.y + dy) * 2) / 2 }
+          : { ...d.area, w: Math.max(2, Math.round((d.area.w + dx) * 2) / 2), h: Math.max(2, Math.round((d.area.h + dy) * 2) / 2) };
+        if (validArea(next, others(d.id), club.capacity)) onMove(d.id, next);
+      }}
+      onPointerUp={() => { drag.current = null; }}
+      onPointerCancel={() => { drag.current = null; }}
+    />
+  );
 }
+void blockArea;
 
 // -------------------------------------------------------------------------------------------
-// Hymnen und Fangesänge
+// Hymnen und Fangesänge (ausschließlich MP3)
 // -------------------------------------------------------------------------------------------
-function AudioLibrary({ worldId, club, clubId, audio, ultras, onChange }: { worldId: string; club: Club; clubId: string; audio: ClubAudio[]; ultras: UltraGroup[]; onChange: () => Promise<void> }) {
+function AudioLibrary({ worldId, clubId, audio, ultras, onChange }: { worldId: string; clubId: string; audio: ClubAudio[]; ultras: UltraGroup[]; onChange: () => Promise<void> }) {
   const [kind, setKind] = useState<'anthem' | 'chant'>('anthem');
   const [name, setName] = useState('');
-  const [style, setStyle] = useState<string>('stadium');
-  const [mood, setMood] = useState<Mood>('proud');
-  const [voice, setVoice] = useState<Voice>('choir');
   const [situation, setSituation] = useState('');
   const [ultra, setUltra] = useState('');
-  const [lyrics, setLyrics] = useState('');
-  const [recipe, setRecipe] = useState<Recipe>(() => makeRecipe('stadium', 'proud', 'choir'));
   const [file, setFile] = useState<File | null>(null);
   const [playing, setPlaying] = useState<{ id: string; h: PlayHandle } | null>(null);
-  const [line, setLine] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-
-  useEffect(() => { setRecipe(makeRecipe(style as Recipe['style'], mood, voice)); }, [style, mood, voice]);
-  useEffect(() => { setStyle(kind === 'anthem' ? 'stadium' : 'chant'); }, [kind]);
-  // Mitsingtext synchron zur Melodie
-  useEffect(() => {
-    if (!playing) { setLine(null); return; }
-    const id = setInterval(() => {
-      const t = (performance.now() - playing.h.startedAt) / 1000;
-      const cur = [...playing.h.lines].reverse().find((l) => l.t <= t);
-      setLine(cur?.text ?? null);
-      if (t > playing.h.duration + 0.5) setPlaying(null);
-    }, 200);
-    return () => clearInterval(id);
-  }, [playing]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const uploads = audio.filter((a) => a.source === 'upload');
 
   const stop = () => { playing?.h.stop(); setPlaying(null); };
-  const play = async (id: string, a: { source: 'synth' | 'upload'; recipe: Recipe | null; storage_path: string | null; lyrics: string | null; volume: number }) => {
+  const play = async (a: ClubAudio) => {
     stop();
-    if (!(await stadiumSound.unlock())) { setError('Der Browser erlaubt gerade keine Wiedergabe.'); return; }
-    const h = a.source === 'upload' && a.storage_path ? stadiumSound.playUrl(fanApi.publicUrl(a.storage_path), a.volume, 60)
-      : a.recipe ? stadiumSound.playRecipe(a.recipe, { volume: a.volume, maxSec: 40, lyrics: a.lyrics }) : null;
-    if (h) setPlaying({ id, h });
+    if (!a.storage_path) return;
+    await stadiumSound.unlock();
+    setError(null);
+    const h = stadiumSound.playUrl(fanApi.publicUrl(a.storage_path), a.volume, 60, (m) => { setError(m); setPlaying(null); });
+    setPlaying({ id: a.id, h });
   };
   const run = async (key: string, fn: () => Promise<unknown>, ok: string) => {
     setBusy(key); setError(null); setMsg(null);
     try { await fn(); await onChange(); setMsg(ok); } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
   };
-  const styles = kind === 'anthem' ? ANTHEM_STYLES : CHANT_STYLES;
-  const anthems = audio.filter((a) => a.kind === 'anthem');
-  const chants = audio.filter((a) => a.kind === 'chant');
+  const label = kind === 'anthem' ? 'Hymne' : 'Fangesang';
 
   return (
     <Card className="mt-4">
       <h2 className="display text-2xl font-bold uppercase">Hymnen & Fangesänge</h2>
-      <p className="mb-3 text-sm text-cream-dim">Der Stadion-Synthesizer komponiert kostenlos im Browser (Chor, Instrumente, Trommeln, Sprechchor mit der deutschen Sprachausgabe deines Geräts). Für echten Gesang kannst du Songs z. B. auf der Suno-Website erstellen und hier als MP3 hochladen.</p>
+      <p className="mb-3 text-sm text-cream-dim">Lade MP3-Dateien hoch (höchstens 10 MB), z. B. selbst erstellte Songs. Die offizielle Hymne läuft beim Einlauf, danach der Signatur-Fangesang; weitere Gesänge erklingen je Spielsituation.</p>
       <ErrorBanner error={error} />
       {msg && <p className="mb-2 text-sm text-emerald-300">{msg}</p>}
       <div className="grid gap-4 lg:grid-cols-2">
@@ -331,44 +474,25 @@ function AudioLibrary({ worldId, club, clubId, audio, ultras, onChange }: { worl
               <button key={k} type="button" onClick={() => setKind(k)} className={`display min-h-11 flex-1 rounded-lg font-bold uppercase ${kind === k ? 'bg-gold text-ink' : 'bg-olive-800 text-cream-dim'}`}>{k === 'anthem' ? 'Hymne' : 'Fangesang'}</button>
             ))}
           </div>
-          <label className="block">Name<TextInput value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder={kind === 'anthem' ? `Hymne ${club.short}` : 'z. B. Torgesang'} /></label>
-          <div className="grid grid-cols-3 gap-2">
-            <label>Stil<select className={sel} value={style} onChange={(e) => setStyle(e.target.value)}>{styles.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}</select></label>
-            <label>Stimmung<select className={sel} value={mood} onChange={(e) => setMood(e.target.value as Mood)}>{MOODS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}</select></label>
-            <label>Gesang<select className={sel} value={voice} onChange={(e) => setVoice(e.target.value as Voice)}>{VOICES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}</select></label>
-          </div>
+          <label className="block">Name<TextInput value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder={kind === 'anthem' ? 'z. B. Für die Ewigkeit' : 'z. B. Torgesang'} /></label>
           {kind === 'chant' && (
             <div className="grid grid-cols-2 gap-2">
               <label>Spielsituation<select className={sel} value={situation} onChange={(e) => setSituation(e.target.value)}>{SITUATIONS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}</select></label>
               <label>Ultragruppe<select className={sel} value={ultra} onChange={(e) => setUltra(e.target.value)}><option value="">Verein</option>{ultras.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
             </div>
           )}
-          <label className="block">Text
-            <textarea value={lyrics} maxLength={1200} rows={6} onChange={(e) => setLyrics(e.target.value)} className="mt-1 w-full rounded-lg border border-olive-600 bg-olive-900 p-2 text-cream" placeholder="Eigenen Text schreiben oder generieren lassen" />
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={() => setLyrics(generateLyrics({ club: club.name, short: club.short, kind, style, mood, situation }))}>Text generieren</Button>
-            <Button variant="secondary" onClick={() => setRecipe(makeRecipe(style as Recipe['style'], mood, voice))}>Neu komponieren</Button>
-            {playing?.id === 'draft' ? <Button variant="ghost" onClick={stop}>■ Stopp</Button>
-              : <Button variant="ghost" onClick={() => void play('draft', { source: 'synth', recipe, storage_path: null, lyrics, volume: 0.85 })}>▶ Anhören</Button>}
-            <Button busy={busy === 'synth'} disabled={name.trim().length < 2} onClick={() => void run('synth', () => fanApi.saveAudio(worldId, null, {
-              kind, source: 'synth', name, style, mood, voice, lyrics, recipe, situation, ultra_id: kind === 'chant' && ultra ? ultra : null, volume: 0.85,
-            }), 'Gespeichert.')}>Speichern</Button>
-          </div>
-          {playing && line && <p className="display rounded-lg bg-ink/60 px-3 py-2 text-center text-xl font-bold uppercase text-gold">{line}</p>}
-          <div className="rounded-xl border border-dashed border-olive-600 p-2">
-            <p className="mb-1 font-semibold">MP3 hochladen (max. 10 MB)</p>
-            <input type="file" accept="audio/mpeg,.mp3" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="block w-full text-sm" />
-            <Button className="mt-2" variant="secondary" busy={busy === 'up'} disabled={!file || name.trim().length < 2} onClick={() => void run('up', async () => {
-              const path = await fanApi.upload(worldId, clubId, file!);
-              await fanApi.saveAudio(worldId, null, { kind, source: 'upload', name, style, mood, voice, lyrics, storage_path: path, situation, ultra_id: kind === 'chant' && ultra ? ultra : null, volume: 0.85 });
-              setFile(null);
-            }, 'Hochgeladen.')}>Als {kind === 'anthem' ? 'Hymne' : 'Fangesang'} hochladen</Button>
+          <div className="rounded-xl border border-dashed border-olive-600 p-3">
+            <input ref={fileRef} type="file" accept="audio/mpeg,.mp3" onChange={(e) => { const f = e.target.files?.[0] ?? null; setFile(f); if (f && !name) setName(f.name.replace(/\.mp3$/i, '').slice(0, 40)); }} className="block w-full text-sm" />
+            {file && <p className="mt-1 text-xs text-cream-dim">{file.name} · {(file.size / 1048576).toFixed(1)} MB</p>}
+            <Button className="mt-2" busy={busy === 'up'} disabled={!file || name.trim().length < 2} onClick={() => void run('up', async () => {
+              await fanApi.uploadAndSave(worldId, clubId, file!, { kind, name, situation, ultra_id: kind === 'chant' && ultra ? ultra : null, volume: 0.85 });
+              setFile(null); setName(''); if (fileRef.current) fileRef.current.value = '';
+            }, `${label} hochgeladen und gespeichert.`)}>Als {label} hochladen</Button>
           </div>
         </div>
         <div className="space-y-4">
-          <AudioList title="Hymnen" items={anthems} role="official" roleLabel="Offizielle Hymne" playing={playing?.id ?? null} onPlay={play} onStop={stop} worldId={worldId} run={run} ultras={ultras} />
-          <AudioList title="Fangesänge" items={chants} role="signature" roleLabel="Signatur-Fangesang" playing={playing?.id ?? null} onPlay={play} onStop={stop} worldId={worldId} run={run} ultras={ultras} />
+          <AudioList title="Hymnen" items={uploads.filter((a) => a.kind === 'anthem')} role="official" roleLabel="Offizielle Hymne" playing={playing?.id ?? null} onPlay={play} onStop={stop} worldId={worldId} run={run} ultras={ultras} />
+          <AudioList title="Fangesänge" items={uploads.filter((a) => a.kind === 'chant')} role="signature" roleLabel="Signatur-Fangesang" playing={playing?.id ?? null} onPlay={play} onStop={stop} worldId={worldId} run={run} ultras={ultras} />
         </div>
       </div>
     </Card>
@@ -377,12 +501,13 @@ function AudioLibrary({ worldId, club, clubId, audio, ultras, onChange }: { worl
 
 function AudioList({ title, items, role, roleLabel, playing, onPlay, onStop, worldId, run, ultras }: {
   title: string; items: ClubAudio[]; role: 'official' | 'signature'; roleLabel: string; playing: string | null; worldId: string; ultras: UltraGroup[];
-  onPlay: (id: string, a: ClubAudio) => Promise<void>; onStop: () => void; run: (key: string, fn: () => Promise<unknown>, ok: string) => Promise<void>;
+  onPlay: (a: ClubAudio) => Promise<void>; onStop: () => void; run: (key: string, fn: () => Promise<unknown>, ok: string) => Promise<void>;
 }) {
+  const save = (a: ClubAudio, p: Record<string, unknown>) => fanApi.saveAudio(worldId, a.id, { kind: a.kind, name: a.name, situation: a.situation ?? '', ultra_id: a.ultra_id, volume: a.volume, enabled: a.enabled, ...p });
   return (
     <div>
       <h3 className="display mb-1 text-xl font-bold uppercase">{title}</h3>
-      {items.length === 0 && <p className="text-sm text-cream-dim">Noch nichts gespeichert.</p>}
+      {items.length === 0 && <p className="text-sm text-cream-dim">Noch nichts hochgeladen.</p>}
       <ul className="divide-y divide-olive-700/50 text-sm">
         {items.map((a) => {
           const isRole = role === 'official' ? a.is_official : a.is_signature;
@@ -390,22 +515,26 @@ function AudioList({ title, items, role, roleLabel, playing, onPlay, onStop, wor
             <li key={a.id} className="py-2">
               <div className="flex flex-wrap items-center gap-2">
                 {playing === a.id ? <button type="button" onClick={onStop} className="h-9 w-9 rounded-full bg-gold text-ink" aria-label="Stopp">■</button>
-                  : <button type="button" onClick={() => void onPlay(a.id, a)} className="h-9 w-9 rounded-full bg-olive-700 text-cream" aria-label="Abspielen">▶</button>}
+                  : <button type="button" onClick={() => void onPlay(a)} className="h-9 w-9 rounded-full bg-olive-700 text-cream" aria-label="Abspielen">▶</button>}
                 <span className="flex-1 font-semibold">{a.name}
-                  <span className="ml-2 text-xs font-normal text-cream-dim">{a.source === 'upload' ? 'MP3' : 'Synthesizer'}{a.situation ? ` · ${SITUATIONS.find((s) => s.key === a.situation)?.label}` : ''}{a.ultra_id ? ` · ${ultras.find((u) => u.id === a.ultra_id)?.name ?? 'Ultras'}` : ''}</span>
+                  <span className="ml-2 text-xs font-normal text-cream-dim">MP3{a.situation ? ` · ${SITUATIONS.find((s) => s.key === a.situation)?.label}` : ''}{a.ultra_id ? ` · ${ultras.find((u) => u.id === a.ultra_id)?.name ?? 'Ultras'}` : ''}</span>
                   {isRole && <span className="ml-2 rounded bg-gold px-1.5 text-xs text-ink">{roleLabel}</span>}
                 </span>
                 {!isRole && <button type="button" className="text-gold underline" onClick={() => void run('r' + a.id, () => fanApi.setAudioRole(worldId, a.id, role), `${roleLabel} festgelegt.`)}>Als {roleLabel}</button>}
                 <button type="button" className="text-red-300 underline" onClick={() => { if (confirm(`„${a.name}“ löschen?`)) void run('d' + a.id, () => fanApi.deleteAudio(worldId, a.id), 'Gelöscht.'); }}>Löschen</button>
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-cream-dim">
+                {a.kind === 'chant' && (
+                  <select className="rounded border border-olive-600 bg-olive-900 px-1 py-1" value={a.situation ?? ''} onChange={(e) => void run('s' + a.id, () => save(a, { situation: e.target.value }), 'Spielsituation gespeichert.')}>
+                    {SITUATIONS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                  </select>
+                )}
                 <label className="flex items-center gap-2">Lautstärke
                   <input type="range" min={0} max={1} step={0.05} defaultValue={a.volume} className="accent-[var(--fd-accent)]"
-                    onMouseUp={(e) => void run('v' + a.id, () => fanApi.saveAudio(worldId, a.id, { ...a, kind: a.kind, source: a.source, volume: Number((e.target as HTMLInputElement).value) }), 'Lautstärke gespeichert.')}
-                    onTouchEnd={(e) => void run('v' + a.id, () => fanApi.saveAudio(worldId, a.id, { ...a, kind: a.kind, source: a.source, volume: Number((e.target as HTMLInputElement).value) }), 'Lautstärke gespeichert.')} />
+                    onPointerUp={(e) => void run('v' + a.id, () => save(a, { volume: Number((e.target as HTMLInputElement).value) }), 'Lautstärke gespeichert.')} />
                 </label>
                 <label className="flex items-center gap-1"><input type="checkbox" checked={a.enabled} className="h-4 w-4 accent-[var(--fd-accent)]"
-                  onChange={(e) => void run('e' + a.id, () => fanApi.saveAudio(worldId, a.id, { ...a, kind: a.kind, source: a.source, enabled: e.target.checked }), e.target.checked ? 'Aktiviert.' : 'Deaktiviert.')} />aktiv</label>
+                  onChange={(e) => void run('e' + a.id, () => save(a, { enabled: e.target.checked }), e.target.checked ? 'Aktiviert.' : 'Deaktiviert.')} />aktiv</label>
               </div>
             </li>
           );
