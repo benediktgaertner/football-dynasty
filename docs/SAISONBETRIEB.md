@@ -67,6 +67,25 @@ Balancing nach den Änderungen (N = 400 je Unterschied): 0 OVR 34,5/34,3/31,3 ·
 - **Termine ohne Menschen:** Termine ohne eigenes Spiel eines Menschen (Europapokal, Pokal nach dem Ausscheiden, Relegation) starten automatisch ohne Bereit-Meldung.
 - **Prämien:** Start, Sieg/Remis, Gruppenplatz, Rundeneinzug und Titel laut `prize_templates`. Der Ticketpreis ist der internationale Preis.
 
+> **Ab 0033 gilt das neue Format (unten).** Laufende Saisons mit 4 Gruppen werden nach dem alten Ablauf zu Ende gespielt.
+
+## Land, Startliga und Europapokal (0033)
+- **Welterstellung:** Land (alle 55 UEFA-Verbände) → Startliga (1./2./3. Liga) → Vereinsgründung → Stadion → Draft. Der Host kann Land/Liga in der Lobby noch ändern (`set_world_setup`), danach müssen alle erneut bestätigen. Gespeichert in `career_worlds.country_code` / `start_tier`.
+- **Spielland:** immer 3 Ligen à 18 Vereine, 34 Spieltage, 27 Ligaspiele je Spieltag, Auf-/Abstieg und Relegation, Pokal mit allen drei Ligen + 10 Amateurvereinen, landestypische Namen (`country_league_names`, Vereins- und Amateurnamen aus `packages/shared/src/world/country.ts`).
+- **Übrige Länder:** nur die Erstliga als Stammdaten (auch Deutschland, wenn ein anderes Land gewählt ist). Keine Spielpläne, keine Spieltage, keine Pokalsimulation – nur Transfermarkt und Europapokal-Auswahl.
+- **Skalierung (Referenz Deutschland, 2. Liga = Faktor 1, bestehende Welten unverändert):**
+  - Mannschaftsstärken: `fd_country_transform` / `countryTransform` (Landesstärke verschiebt und staucht die deutschen Zielwerte).
+  - Draft-Pool: Verschiebung `fd_country_shift(Land, Startliga)`, Obergrenze `fd_draft_pool_max` (83, Erstligen starker Länder bis 92).
+  - Startkapital und Stadionbau: `fd_capital_factor` (≈ e^(0,2·Verschiebung)).
+  - Prämien, Sponsoren, Pokalprämien, Zuschauereinnahmen und Stadionbetrieb: `career_worlds.economy_factor` (`fd_economy_factor_for`). Gehälter folgen automatisch den Marktwerten. Europapokal-Prämien und internationale Tickets bleiben unskaliert.
+- **Europapokal erst ab Saison 2.** Saison 1 hat keine Europapokal-Termine; niemand ist automatisch qualifiziert. Grundlage ist immer die abgeschlossene Vorsaison.
+- **Länderrangliste** (`fd_ec_assoc_ranking`): Startstärke + Bonus aus den Europapokal-Ergebnissen der Vorsaison (max. +6). Verlauf in `association_strength_history`.
+- **Champions League (32):** Rang 1–4 → 4 Plätze, 5–6 → 3, 7–9 → 2, 10–11 → 1, der beste Europapokal-Verband +1 (max. 5). Spielland mindestens 1 (Meister). Restliche Plätze: Meister kleinerer Nationen per gewichteter Länderauswahl. Deutschland (Rang 4): Platz 1–4.
+- **Europa League (32):** Rang 1–6 → 2 Ligaplätze, 7–9 → 1, dazu die Pokalsieger der Ränge 1–15 und des Spiellands; Rest: Pokalsieger kleinerer Nationen. Ist der Pokalsieger schon qualifiziert, rückt der nächstbeste Erstligist nach (Tabellenmarkierung „EL*“). Der Pokal ist der einzige Weg für Unterklassige.
+- **Ausland:** Rangfolge je Land aus Stärke (beste Elf) + Reputation + begrenztem Zufall (±2); Pokalsieger per gewichteter Zufallsauswahl. Kein Verein in beiden Wettbewerben, genau 32 je Wettbewerb (fehlende Vereine: Nachrücker nach Stärke). Gründe stehen in `ec_qualifications`.
+- **Format:** 8 Gruppen à 4, 6 Gruppenspiele, die ersten zwei ins Achtelfinale (A1–B2, B1–A2, …). Achtel-, Viertel- und Halbfinale mit Hin- und Rückspiel, Finale auf neutralem Platz. 13 Termine (dienstags): Gruppe nach Spieltag 2, 4, 6, 9, 11, 13; Achtelfinale 19/21; Viertelfinale 23/25; Halbfinale 28/30; Finale 10 Tage nach dem 34. Spieltag.
+- **Tabellenmarkierung:** `europe_places(world)` liefert CL-/EL-Plätze der nationalen 1. Liga und den Pokal-Nachrücker.
+
 ## Fankultur & Stadionsound (0030)
 - **Editor:** Seite „Fankultur“ (`/w/<welt>/fankultur`), verlinkt im Stadioneditor. Alles ist kostenlos und rein optisch bzw. akustisch, ohne Kosten oder sportliche Boni.
 - **Schwenkfahnen:** bis zu 8 Fahnen (Form, Größe, Muster, bis zu 3 Farben, Aufschrift).

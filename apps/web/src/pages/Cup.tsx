@@ -14,6 +14,7 @@ export function Cup() {
   const [rel, setRel] = useState<Array<{ name: string; fixtures: FixtureRow[] }>>([]);
   const [myClub, setMyClub] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cupName, setCupName] = useState('Pokal');
   useEffect(() => {
     void (async () => {
       try {
@@ -22,6 +23,7 @@ export function Cup() {
         if (!state.season) { setCup([]); return; }
         const comps = await seasonApi.competitions(state.season.id);
         const c = comps.find((x) => x.kind === 'domestic_cup');
+        if (c?.name) setCupName(c.name);
         setCup(c ? await seasonApi.fixtures(c.id) : []);
         setRel(await Promise.all(comps.filter((x) => x.kind === 'relegation').map(async (x) => ({ name: x.name, fixtures: await seasonApi.fixtures(x.id) }))));
       } catch (e) { setError((e as Error).message); }
@@ -33,7 +35,7 @@ export function Cup() {
     <Shell>
       <WorldNav worldId={worldId} />
       <ErrorBanner error={error} />
-      <h1 className="display mb-3 text-4xl font-extrabold uppercase">DFB-Pokal</h1>
+      <h1 className="display mb-3 text-4xl font-extrabold uppercase">{cupName}</h1>
       {stages.length === 0 && <Card><p className="text-cream-dim">Die Auslosung erfolgt zum Saisonstart.</p></Card>}
       <div className="grid gap-4 md:grid-cols-2">
         {rel.map((r) => r.fixtures.length > 0 && (

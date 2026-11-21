@@ -70,6 +70,24 @@ describe('POST /api/start-draft', () => {
     expect(payload.ai_clubs).toHaveLength(52);
     expect(payload.players.filter((p: { club_key: unknown }) => p.club_key === null)).toHaveLength(400);
   });
+  it('erzeugt Spielland und Startliga der Welt (Frankreich, 3. Liga)', async () => {
+    const base = await deps().loadContext(WORLD);
+    const d = deps({ loadContext: async () => ({ ...base!, country: 'FRA', start_tier: 3 }) });
+    expect((await handleStartDraft(req('good'), d)).status).toBe(200);
+    const payload = (d.startDraft as ReturnType<typeof vi.fn>).mock.calls[0]![2];
+    expect(payload.country).toBe('FRA');
+    expect(payload.start_tier).toBe(3);
+    expect(payload.ai_clubs.filter((c: { tier: number }) => c.tier === 3)).toHaveLength(16);
+    expect(payload.ai_clubs.filter((c: { tier: number }) => c.tier === 2)).toHaveLength(18);
+    expect(payload.league_names[1]).toBe('Ligue 1');
+    expect(payload.amateur_names).toHaveLength(30);
+  });
+  it('Deutschland/2. Liga: Payload ohne Zusatzfelder (wie bisher)', async () => {
+    const d = deps();
+    await handleStartDraft(req('good'), d);
+    const payload = (d.startDraft as ReturnType<typeof vi.fn>).mock.calls[0]![2];
+    expect(payload.country).toBeUndefined();
+  });
   it('gibt Datenbankfehler mit Code weiter', async () => {
     const d = deps({ startDraft: async () => ({ data: null, error: { message: 'Noch nicht alle bereit.', hint: 'not_all_ready' } }) });
     const r = await handleStartDraft(req('good'), d);

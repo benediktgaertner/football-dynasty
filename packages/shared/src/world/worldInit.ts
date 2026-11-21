@@ -7,6 +7,8 @@ import { CLUB_COLOR_SETS, GERMAN_NAMING, NameRegistry, generateClubName, generat
 import { ANCHOR_CLUBS, anchorColors } from './anchors.js';
 import { MANAGER_FIRST, MANAGER_LAST } from './names.js';
 import { generatePlayer, nationalityByCode, pickNationality, randomAge, type GeneratedPlayer } from './players.js';
+import { DEFAULT_COUNTRY, DEFAULT_START_TIER, associationByCode, countryTierShift, countryTransform, draftPoolMax, economyFactor, nationalLeagueNames, type NationalLeagueNames, type StartTier } from './country.js';
+import { europeStadiumName, nationalClubName } from './europe.js';
 
 /**
  * Phase 3: Erzeugt beim Draft-Start die deutsche Fußballwelt und den Draft-Pool.
@@ -50,6 +52,17 @@ export interface WorldInitPayload {
   version: 1;
   ai_clubs: GeneratedAiClub[];
   players: PayloadPlayer[];
+  /** Spielland und Startliga (fehlt bei älteren Payloads = Deutschland, 2. Liga) */
+  country?: string;
+  start_tier?: StartTier;
+  league_names?: NationalLeagueNames;
+  /** Landestypische Namen für die zehn Amateurvereine (Pokal / vierte Liga) */
+  amateur_names?: string[];
+}
+
+export interface WorldOptions {
+  country?: string;
+  startTier?: StartTier;
 }
 
 // ---------------------------------------------------------------------------
@@ -62,7 +75,7 @@ export const DRAFT_POOL_POSITIONS: ReadonlyArray<readonly [Position, number]> = 
   ['CAM', 30], ['LM', 16], ['RM', 16], ['LW', 26], ['RW', 26], ['CF', 10], ['ST', 26],
 ];
 
-export function generateDraftPool(rng: Rng, usedNames: Set<string>): GeneratedPlayer[] {
+export function generateDraftPool(rng: Rng, usedNames: Set<string>, shift = 0, maxOverall = 83): GeneratedPlayer[] {
   const overalls: number[] = [];
   for (const band of DRAFT_POOL_STRENGTH_BANDS) {
     for (let i = 0; i < band.count; i++) overalls.push(rng.int(band.min, band.max));
@@ -81,7 +94,8 @@ export function generateDraftPool(rng: Rng, usedNames: Set<string>): GeneratedPl
     generatePlayer(rng, {
       nat: pickNationality(rng, rg[i]!),
       position: ps[i]!,
-      overall,
+      // Startliga und Landesstärke verschieben den Pool (Referenz 2. Liga Deutschland: unverändert)
+      overall: shift === 0 ? overall : Math.min(maxOverall, Math.max(40, Math.round(overall + shift))),
       age: randomAge(rng, 26, 4.2, 18, 35),
       usedNames,
     }),
@@ -133,20 +147,20 @@ const SQUAD_TEMPLATE: ReadonlyArray<{ pos: Position; role: 'starter' | 'bench' |
   { pos: 'ST', role: 'starter' }, { pos: 'ST', role: 'bench' }, { pos: 'ST', role: 'youth' }, { pos: 'CF', role: 'bench' },
 ];
 
-function squadNationality(rng: Rng, tier: number) {
+function squadNationality(rng: Rng, tier: number, country = DEFAULT_COUNTRY) {
   const germanShare = tier === 1 ? 0.6 : tier === 2 ? 0.72 : 0.85;
-  if (rng.next() < germanShare) return nationalityByCode('GER');
+  if (rng.next() < germanShare) return nationalityByCode(country);
   const r = rng.next();
   const region: Region = r < 0.6 ? 'europe' : r < 0.75 ? 'africa' : r < 0.87 ? 'south_america' : r < 0.95 ? 'asia' : 'north_central_america';
   return pickNationality(rng, region);
 }
 
-export function generateAiSquad(rng: Rng, target: number, tier: 1 | 2 | 3, usedNames: Set<string>): Array<GeneratedPlayer & { shirt: number; contract_years: number }> {
+export function generateAiSquad(rng: Rng, target: number, tier: 1 | 2 | 3, usedNames: Set<string>, country = DEFAULT_COUNTRY): Array<GeneratedPlayer & { shirt: number; contract_years: number }> {
   const used = new Set<number>();
   return SQUAD_TEMPLATE.map(({ pos, role }) => {
     const base = role === 'starter' ? target + rng.normal(0, 2) : role === 'bench' ? target - 3.5 + rng.normal(0, 2) : role === 'third' ? target - 9 : target - 8 + rng.normal(0, 1.5);
     const age = role === 'youth' ? rng.int(18, 20) : role === 'starter' ? randomAge(rng, 26.5, 3.5, 19, 34) : randomAge(rng, 25.5, 4.5, 18, 36);
-    const p = generatePlayer(rng, { nat: squadNationality(rng, tier), position: pos, overall: Math.max(45, Math.min(92, Math.round(base))), age, usedNames });
+    const p = generatePlayer(rng, { nat: squadNationality(rng, tier, country), position: pos, overall: Math.max(country === DEFAULT_COUNTRY ? 45 : 40, Math.min(92, Math.round(base))), age, usedNames });
     let shirt = p.prefShirt;
     if (used.has(shirt)) {
       shirt = 1;
@@ -179,8 +193,15 @@ const BALANCE_RANGE: Record<1 | 2 | 3, [number, number]> = { 1: [60, 120], 2: [2
 const REPUTATION: Record<1 | 2 | 3, number> = { 1: 75, 2: 55, 3: 38 };
 const FORMATIONS_AI = ['4-4-2', '4-3-3', '4-2-3-1', '4-1-4-1', '3-5-2', '4-4-2-diamond', '5-3-2', '4-2-3-1-wide'];
 
-export function buildWorldInitialization(seed: string, humans: readonly HumanClubRef[]): WorldInitPayload {
+export function buildWorldInitialization(seed: string, humans: readonly HumanClubRef[], options: WorldOptions = {}): WorldInitPayload {
   if (humans.length < 1 || humans.length > LEAGUE_SIZE) throw new RangeError('1–18 menschliche Vereine erforderlich');
+  const country = options.country ?? DEFAULT_COUNTRY;
+  const startTier: StartTier = options.startTier ?? DEFAULT_START_TIER;
+  if (![1, 2, 3].includes(startTier)) throw new RangeError('Startliga 1–3');
+  const assoc = associationByCode(country);
+  const german = country === DEFAULT_COUNTRY;
+  const eco = economyFactor(country);
+  const usedPlaces = new Set<string>();
   const rng = createRng(`world-init:${seed}`);
   const registry = new NameRegistry();
   for (const h of humans) registry.reserve(h.name, h.short_name);
@@ -188,18 +209,21 @@ export function buildWorldInitialization(seed: string, humans: readonly HumanClu
 
   const aiClubs: GeneratedAiClub[] = [];
   const players: PayloadPlayer[] = [];
-  const tierCounts: Array<[1 | 2 | 3, number]> = [[1, LEAGUE_SIZE], [2, LEAGUE_SIZE - humans.length], [3, LEAGUE_SIZE]];
+  // Menschliche Vereine starten gemeinsam in der gewählten Liga
+  const tierCounts: Array<[1 | 2 | 3, number]> = ([1, 2, 3] as const).map((t) => [t, t === startTier ? LEAGUE_SIZE - humans.length : LEAGUE_SIZE]);
 
   let index = 0;
   for (const [tier, count] of tierCounts) {
-    const targets = tierTargets(rng, tier, count);
+    const targets = tierTargets(rng, tier, count).map((t) =>
+      german ? t : Math.round(Math.max(42, Math.min(90, countryTransform(assoc.strength, t))) * 10) / 10);
     let slot = 0;
     for (const target of targets) {
       const key = `ai${++index}`;
       // Zufallsfolge unverändert lassen (Namen werden immer erzeugt), dann ggf. durch den Orientierungsverein ersetzen
-      const gen = generateClubName(rng, GERMAN_NAMING, registry);
+      const gen = german ? generateClubName(rng, GERMAN_NAMING, registry) : { ...nationalClubName(rng, country, registry, usedPlaces), adjective: null, foundedYear: rng.int(1878, 1975) };
       const genShort = generateShortName(rng, gen.name, gen.place, registry);
-      const anchor = ANCHOR_CLUBS.GER![(tier - 1) * LEAGUE_SIZE + slot++];
+      // Orientierungsvereine: Deutschland für alle drei Ligen, andere Länder nur für die Spitze der 1. Liga
+      const anchor = german ? ANCHOR_CLUBS.GER![(tier - 1) * LEAGUE_SIZE + slot++] : tier === 1 ? ANCHOR_CLUBS[country]?.[slot++] : undefined;
       const useAnchor = !!anchor && !registry.hasName(anchor.name) && !registry.hasShort(anchor.short) && !isBlockedClubName(anchor.name);
       const name = useAnchor ? anchor!.name : gen.name;
       const place = useAnchor ? anchor!.place : gen.place;
@@ -217,7 +241,9 @@ export function buildWorldInitialization(seed: string, humans: readonly HumanClu
       const crest = { ...randomCrest(() => rng.next(), short), primary, secondary, accent, foundedYear: rng.next() < 0.7 ? foundedYear : null };
       const kit: KitConfig = { pattern: rng.pick(KIT_PATTERNS), primary, secondary };
       const [cmin, cmax] = CAPACITY_RANGE[tier];
-      const capacity = cmin + rng.int(0, (cmax - cmin) / 5000) * 5000;
+      let capacity = cmin + rng.int(0, (cmax - cmin) / 5000) * 5000;
+      // Kleinere Fußballländer: kleinere Stadien (10.000–50.000 in 5.000er-Schritten)
+      if (!german) capacity = Math.min(50000, Math.max(10000, Math.round((capacity * (0.45 + 0.55 * Math.min(1, assoc.strength / 92))) / 5000) * 5000));
       const [bmin, bmax] = BALANCE_RANGE[tier];
 
       aiClubs.push({
@@ -226,15 +252,17 @@ export function buildWorldInitialization(seed: string, humans: readonly HumanClu
         name,
         short_name: short,
         founded_year: foundedYear,
-        reputation: Math.round((REPUTATION[tier] + (target - (tier === 1 ? 79 : tier === 2 ? 74 : 68)) * 2) * 10) / 10,
+        reputation: german
+          ? Math.round((REPUTATION[tier] + (target - (tier === 1 ? 79 : tier === 2 ? 74 : 68)) * 2) * 10) / 10
+          : Math.round(Math.max(8, Math.min(96, 20 + (target - 55) * 2.2)) * 10) / 10,
         primary,
         secondary,
         accent,
         crest,
         kit,
-        stadium_name: generateStadiumName(rng, GERMAN_NAMING, place, adjective),
+        stadium_name: german ? generateStadiumName(rng, GERMAN_NAMING, place, adjective) : europeStadiumName(rng, country, place),
         capacity,
-        balance: Math.round((bmin + rng.next() * (bmax - bmin)) * 10) * (MILLION / 10),
+        balance: Math.round((bmin + rng.next() * (bmax - bmin)) * 10 * eco) * (MILLION / 10),
         manager_name: `${rng.pick(MANAGER_FIRST)} ${rng.pick(MANAGER_LAST)}`,
         ai_profile: {
           risk: Math.round(rng.next() * 100) / 100,
@@ -245,15 +273,33 @@ export function buildWorldInitialization(seed: string, humans: readonly HumanClu
         target_strength: target,
       });
 
-      for (const p of generateAiSquad(rng, target, tier, usedNames)) {
+      for (const p of generateAiSquad(rng, target, tier, usedNames, country)) {
         players.push({ ...p, club_key: key });
       }
     }
   }
 
-  for (const p of generateDraftPool(rng, usedNames)) {
+  const shift = german && startTier === DEFAULT_START_TIER ? 0 : countryTierShift(country, startTier);
+  for (const p of generateDraftPool(rng, usedNames, shift, draftPoolMax(country, startTier))) {
     players.push({ ...p, club_key: null, contract_years: null, shirt: null });
   }
 
-  return { version: 1, ai_clubs: aiClubs, players };
+  // Referenzwelt (Deutschland, 2. Liga): Payload exakt wie bisher
+  if (german && startTier === DEFAULT_START_TIER) return { version: 1, ai_clubs: aiClubs, players };
+
+  // Amateurvereine des Spiellands (Deutschland: weiterhin in SQL erzeugt)
+  const amateurNames: string[] = [];
+  if (!german) {
+    const arng = createRng(`amateurs:${seed}:${country}`);
+    for (let i = 0; i < 30; i++) {
+      const n = nationalClubName(arng, country, registry, usedPlaces).name;
+      registry.reserve(n, `AM${String(i).padStart(2, '0')}`);
+      amateurNames.push(n);
+    }
+  }
+  return {
+    version: 1, ai_clubs: aiClubs, players, country, start_tier: startTier,
+    league_names: nationalLeagueNames(country),
+    ...(german ? {} : { amateur_names: amateurNames }),
+  };
 }

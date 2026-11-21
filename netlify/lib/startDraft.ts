@@ -1,4 +1,4 @@
-import { buildWorldInitialization, type HumanClubRef, type WorldInitPayload } from '@fd/shared';
+import { buildWorldInitialization, type HumanClubRef, type StartTier, type WorldInitPayload } from '@fd/shared';
 
 /**
  * Serverseitiger Start des Drafts (Phase 3).
@@ -15,6 +15,9 @@ export interface DraftContext {
   status: string;
   host_user_id: string;
   humans: HumanClubRef[];
+  /** Spielland und Startliga (fehlen bei älteren Datenbankständen: Deutschland, 2. Liga) */
+  country?: string | null;
+  start_tier?: number | null;
 }
 
 export interface StartDraftDeps {
@@ -70,7 +73,12 @@ export async function handleStartDraft(req: Request, deps: StartDraftDeps): Prom
   if (ctx.status !== 'lobby') return json(200, { already_started: true, status: ctx.status });
   if (ctx.humans.length === 0) return json(400, { error: 'not_all_ready', message: 'Es gibt noch keine Vereine.' });
 
-  const payload = buildWorldInitialization(ctx.seed, ctx.humans);
+  const country = (ctx.country ?? 'GER').trim();
+  const startTier = (ctx.start_tier ?? 2) as StartTier;
+  // Deutschland/2. Liga: Payload exakt wie bisher (ohne Zusatzfelder)
+  const payload = country === 'GER' && startTier === 2
+    ? buildWorldInitialization(ctx.seed, ctx.humans)
+    : buildWorldInitialization(ctx.seed, ctx.humans, { country, startTier });
   const { data, error } = await deps.startDraft(worldId, userId, payload);
   if (error) {
     const code = error.hint ?? 'start_failed';

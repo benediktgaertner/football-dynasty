@@ -1,4 +1,4 @@
-import { EUROPE_ASSOCIATIONS, buildEuropeAssociation, registryFrom, type EuropePayload } from '@fd/shared';
+import { buildEuropeAssociation, europeAssociationsFor, registryFrom, type EuropePayload } from '@fd/shared';
 import { json } from './startDraft.js';
 
 /**
@@ -11,6 +11,8 @@ export interface EuropeStatus {
   status: string;
   clubs: Array<{ name: string; short_name: string }>;
   done: string[];
+  /** Spielland der Welt (dessen Erstliga ist national und wird hier nicht erzeugt) */
+  country?: string | null;
 }
 
 export interface EnsureEuropeDeps {
@@ -42,13 +44,14 @@ export async function handleEnsureEurope(req: Request, deps: EnsureEuropeDeps, b
 
   const st = await deps.status(worldId);
   if (!st) return json(404, { error: 'not_found', message: 'Welt nicht gefunden.' });
-  const total = EUROPE_ASSOCIATIONS.length;
+  const foreign = europeAssociationsFor((st.country ?? 'GER').trim());
+  const total = foreign.length;
   if (st.status === 'lobby') return json(409, { error: 'not_started', message: 'Der europäische Markt entsteht mit dem Draft-Start.', done: 0, total, finished: false });
 
   const done = new Set(st.done);
   const registry = registryFrom(st.clubs);
   const added: string[] = [];
-  for (const a of EUROPE_ASSOCIATIONS) {
+  for (const a of foreign) {
     if (done.has(a.code)) continue;
     if (added.length > 0 && now() - t0 > budgetMs) break;
     const payload = buildEuropeAssociation(st.seed, a.code, registry);

@@ -5,6 +5,7 @@ import { api, DIFFICULTY_LABEL, draftApi, formatEuro, type LobbyState } from '..
 import { requireSupabase } from '../lib/supabase';
 import { Crest } from '../components/Crest';
 import { Button, Card, ErrorBanner, Pill, Shell, Spinner } from '../components/ui';
+import { CountryPicker } from '../components/CountryPicker';
 
 /**
  * B2.9–B2.10: Lobby einer Karrierewelt. Der Zustand kommt ausschließlich vom Server
@@ -170,6 +171,19 @@ export function Lobby() {
           </Card>
 
           <Card>
+            <h2 className="display mb-3 text-2xl font-bold uppercase">Land &amp; Startliga</h2>
+            <CountryPicker
+              country={state.world.country_code ?? 'GER'}
+              tier={state.world.start_tier ?? 2}
+              disabled={!isHost || !inLobby || busy !== null}
+              onChange={(c, t) => void act('setup', () => api.setWorldSetup(worldId, c, t))}
+            />
+            <p className="mt-3 text-sm text-cream-dim">
+              {isHost ? 'Erst Land und Startliga wählen, dann gründen alle ihren Verein. Eine Änderung hebt die Bereitschaft aller auf.' : 'Der Host legt Land und Startliga fest.'}
+            </p>
+          </Card>
+
+          <Card>
             <h2 className="display mb-3 text-2xl font-bold uppercase">Schwierigkeit</h2>
             <div className="grid grid-cols-3 gap-2">
               {(Object.keys(DIFFICULTY_LABEL) as Difficulty[]).map((d) => (
@@ -183,12 +197,13 @@ export function Lobby() {
                   } ${isHost && inLobby ? 'hover:border-gold/70' : 'cursor-default'}`}
                 >
                   <div className="display text-lg font-bold uppercase">{DIFFICULTY_LABEL[d]}</div>
-                  <div className="text-sm">{formatEuro(STARTING_CAPITAL[d])}</div>
+                  <div className="text-sm">{formatEuro(Math.round(STARTING_CAPITAL[d] * (state.world.capital_factor ?? 1)))}</div>
                 </button>
               ))}
             </div>
             <p className="mt-3 text-sm text-cream-dim">
               {isHost ? 'Nur du als Host legst die Schwierigkeit fest. Sie ändert ausschließlich das Startkapital.' : 'Der Host legt die Schwierigkeit fest.'}
+              {(state.world.capital_factor ?? 1) !== 1 && ` Startkapital und Stadionbau sind an Startliga und Land angepasst (Faktor ${(state.world.capital_factor ?? 1).toLocaleString('de-DE', { maximumFractionDigits: 2 })}).`}
             </p>
             {myClub && (
               <dl className="mt-4 space-y-1 text-sm">
@@ -223,7 +238,7 @@ export function Lobby() {
               <p className="mt-3 text-sm text-cream-dim">
                 {state.all_ready
                   ? isHost
-                    ? 'Alle Manager sind bereit. Beim Start entstehen die 54 Vereine der drei Ligen und der Pool mit 400 Spielern. Das dauert einige Sekunden.'
+                    ? 'Alle Manager sind bereit. Beim Start entstehen die 54 Vereine der drei Ligen des gewählten Landes und der Pool mit 400 Spielern. Das dauert einige Sekunden.'
                     : 'Alle Manager sind bereit. Der Host kann jetzt den Draft starten.'
                   : 'Der Draft kann beginnen, sobald alle Manager ihren Verein gegründet und bestätigt haben.'}
               </p>

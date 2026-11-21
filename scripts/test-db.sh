@@ -152,6 +152,23 @@ check "97_development.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/97_develop
 check "98_transfers_training.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/98_transfers_training.sql"
 check "99_active_countries.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/99_active_countries.sql"
 check "A0_kits_prep_audio.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/A0_kits_prep_audio.sql"
+check "B0_europe32.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/B0_europe32.sql"
+
+# Welterstellung mit Land und Startliga: alle drei Startligen in unterschiedlichen Ländern
+TAG=1
+for CT in ITA:1 SMR:2 NED:3 GER:3; do
+  C="${CT%%:*}"; T="${CT##*:}"
+  run -v country="$C" -v tier="$T" -v tag="$TAG" -f "$ROOT/supabase/tests/B1_country_setup.sql" >"$PDIR/b1_$C.out" 2>&1 || { echo "✗ B1_country_setup $C"; grep -E 'ERROR|FEHLGESCHLAGEN' "$PDIR/b1_$C.out" | head; status=1; }
+  CW="$(run -tAc "select id from public.career_worlds where name = 'Länderwelt $C'")"
+  CSEED="$(run -tAc "select seed from public.career_worlds where id = '$CW'")"
+  CHUM="$(run -tAc "select json_agg(json_build_object('id', id, 'name', name, 'short_name', short_name)) from public.clubs where world_id = '$CW' and control = 'human'")"
+  CDIR="$PDIR/country_$C"; mkdir -p "$CDIR"; chmod 755 "$CDIR"
+  node "$ROOT/scripts/build-world-payload.mjs" "$CSEED" "$CHUM" --country="$C" --tier="$T" >"$CDIR/payload.json"
+  node "$ROOT/scripts/build-world-payload.mjs" "$CSEED" "$CHUM" --country=GER --tier=$([ "$C" = "GER" ] && echo 1 || echo 2) >"$CDIR/payload_ger.json"
+  chmod 644 "$CDIR"/*.json
+  check "B2_country_world.sql ($C, $T. Liga)" -v world="$CW" -v dir="$CDIR" -v country="$C" -v tier="$T" -f "$ROOT/supabase/tests/B2_country_world.sql"
+  TAG=$((TAG + 1))
+done
 
 # Optional (FULL_EUROPE=1): alle Verbände anlegen und Suchzeiten des Transfermarkts messen
 if [ "${FULL_EUROPE:-0}" = "1" ]; then

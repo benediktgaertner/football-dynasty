@@ -101,3 +101,6 @@ npm run build
   - Reine KI-Spiele ohne Ablaufereignisse.
   - Fankultur und Stadionsound (Prüfungen, Rechte, Anzeige beim Heimspiel).
 - `A0_kits_prep_audio.sql` (0031): Upload-Rechte im Storage (eigener/fremder Ordner, Löschen), Verknüpfung Datei ↔ Eintrag, Ultras-Bereiche (Gästeblock/Überlappung gesperrt), Fahnenlimits, drei Trikots mit automatischer Konfliktvermeidung, Spielvorbereitung (Bestätigung, Choreo nur Heimverein, Frist).
+- `B0_europe32.sql` (0033): Europapokal in Saison 2 – je 32 Teilnehmer, keiner doppelt, 8 Gruppen à 4, Startplätze nach Länderrangliste (Deutschland 4 CL + 2 EL + Pokalsieger bzw. Nachrücker), kleinere Nationen, Tabellenmarkierung, kompletter K.-o.-Ablauf bis zum Finale (neutraler Platz).
+- `B1_country_setup.sql` + `B2_country_world.sql` (0033): Welterstellung für Italien (1. Liga), San Marino (2. Liga), Niederlande (3. Liga) und Deutschland (3. Liga): Host-Rechte, Ligen/Namen, Menschen in der Startliga, Skalierung von Pool und Startkapital, Draft, Saisonstart ohne Europapokal, 27 Ligaspiele je Spieltag, Amateurvereine des Landes.
+- `50_season.sql` prüft zusätzlich den Übergang Saison 1 → 2: Saison 1 ohne Europapokal, Saison 2 mit 13 Europapokal-Terminen und Qualifikation aus der Abschlusstabelle.

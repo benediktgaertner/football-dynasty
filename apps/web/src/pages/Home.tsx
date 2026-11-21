@@ -1,9 +1,10 @@
-import { canonicalInviteCode, isValidInviteCode } from '@fd/shared';
+import { canonicalInviteCode, isValidInviteCode, type StartTier } from '@fd/shared';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, type WorldSummary } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Button, Card, ErrorBanner, Field, Pill, Shell, Spinner, TextInput } from '../components/ui';
+import { CountryPicker } from '../components/CountryPicker';
 
 const STATUS_LABEL: Record<string, string> = {
   lobby: 'Lobby',
@@ -21,6 +22,8 @@ export function Home() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [worldName, setWorldName] = useState('');
   const [code, setCode] = useState('');
+  const [country, setCountry] = useState('GER');
+  const [tier, setTier] = useState<StartTier>(2);
   const [busy, setBusy] = useState<'create' | 'join' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +36,7 @@ export function Home() {
     setError(null);
     setBusy('create');
     try {
-      const r = await api.createWorld(worldName.trim());
+      const r = await api.createWorld(worldName.trim(), country, tier);
       navigate(`/w/${r.world_id}`);
     } catch (err) {
       setError((err as Error).message);
@@ -69,6 +72,7 @@ export function Home() {
             <Field label="Name der Welt" hint="Du wirst Host und legst später die Schwierigkeit fest.">
               <TextInput value={worldName} onChange={(e) => setWorldName(e.target.value)} minLength={3} maxLength={40} required placeholder="z. B. Donnerstagsrunde" />
             </Field>
+            <CountryPicker country={country} tier={tier} onChange={(c, t) => { setCountry(c); setTier(t); }} />
             <Button type="submit" busy={busy === 'create'}>
               Welt erstellen
             </Button>

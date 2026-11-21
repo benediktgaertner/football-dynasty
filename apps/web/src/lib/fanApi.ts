@@ -29,7 +29,7 @@ export interface FanCulture {
   audio: ClubAudio[];
   next_home: { fixture_id: string; date: string; label: string; opponent: string; kind: string; choreo_id: string | null } | null;
 }
-export interface EuropeTableRow { club_id: string; name: string; short: string; association: string; pos: number; points: number; gd: number; gf: number; played: number; won: number; drawn: number; lost: number }
+export interface EuropeTableRow { club_id: string; name: string; short: string; association: string; pos: number; reason?: string | null; points: number; gd: number; gf: number; played: number; won: number; drawn: number; lost: number }
 export interface EuropeFixture {
   id: string; stage: string; group: string | null; leg: number | null; slot_key: string; date: string; status: string;
   home: { id: string; name: string; short: string; association: string }; away: { id: string; name: string; short: string; association: string };
@@ -37,6 +37,8 @@ export interface EuropeFixture {
 }
 export interface EuropeCompetition {
   id: string; kind: 'champions_league' | 'europa_league'; name: string;
+  /** 8 Gruppen (ab Saison 2 mit 32 Teams); ältere Saisons: 4 */
+  group_count?: number;
   groups: Array<{ label: string; table: EuropeTableRow[] }>;
   fixtures: EuropeFixture[];
   winner: { id: string; name: string } | null;
@@ -97,7 +99,7 @@ export const fanApi = {
   prepChoice: (worldId: string, fixtureId: string, variant: 'home' | 'away' | 'special' | null, choreoId: string | null, setChoreo: boolean, confirm: boolean | null) =>
     rpc<PrepState>('set_prep_choice', { p_world: worldId, p_fixture: fixtureId, p_variant: variant, p_choreo: choreoId, p_set_choreo: setChoreo, p_confirm: confirm }),
   prepTick: (worldId: string) => rpc<unknown>('prep_tick', { p_world: worldId }),
-  europe: (worldId: string) => rpc<{ season_id: string | null; competitions: EuropeCompetition[] }>('europe_overview', { p_world: worldId }),
+  europe: (worldId: string) => rpc<{ season_id: string | null; first_season?: boolean; competitions: EuropeCompetition[] }>('europe_overview', { p_world: worldId }),
 };
 
 export interface PrepTeam { id: string; name: string; short: string; control: 'human' | 'ai'; kits: KitSet; kit: Kit & { variant: 'home' | 'away' | 'special' }; confirmed: boolean }

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { WorldNav } from '../components/WorldNav';
 import { Card, ErrorBanner, Pill, Shell, Spinner } from '../components/ui';
-import { seasonApi, type Competition, type FixtureRow, type TableRow } from '../lib/seasonApi';
+import { seasonApi, type Competition, type EuropePlaces, type FixtureRow, type TableRow } from '../lib/seasonApi';
 import { requireSupabase } from '../lib/supabase';
 
 /** C1: Ligen – Tabelle (gesamt/heim/auswärts), Spieltage, Torschützen, Vorlagen, Noten */
@@ -19,12 +19,14 @@ export function League() {
   const [leaders, setLeaders] = useState<Awaited<ReturnType<typeof seasonApi.leaders>> | null>(null);
   const [myClub, setMyClub] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [places, setPlaces] = useState<EuropePlaces | null>(null);
 
   useEffect(() => {
     void (async () => {
       try {
         const state = await seasonApi.matchday(worldId);
         setMyClub(state.my_club);
+        seasonApi.europePlaces(worldId).then(setPlaces, () => setPlaces(null));
         if (!state.season) return;
         const all = (await seasonApi.competitions(state.season.id)).filter((c) => c.kind === 'league');
         setComps(all);
@@ -56,9 +58,21 @@ export function League() {
       return { ...r, played: s.p, won: s.w, drawn: s.d, lost: s.l, goals_for: s.gf, goals_against: s.ga, points: s.w * 3 + s.d };
     }).sort((a, b) => b.points - a.points || (b.goals_for - b.goals_against) - (a.goals_for - a.goals_against) || b.goals_for - a.goals_for);
   }, [table, view]);
-  const zone = (pos: number) => {
+  // Europapokal-Plätze nur in der nationalen 1. Liga: CL (violett), EL (orange), EL* = Nachrücker für den Pokalsieger
+  const ec = places && comp?.tier === 1 && places.competition_id === comp.id ? places : null;
+  const ecZone = (pos: number, clubId: string): { cls: string; label: string | null } => {
+    if (!ec || view !== 'all') return { cls: '', label: null };
+    if (pos <= ec.cl) return { cls: 'border-l-4 border-l-[#b8a6ff]', label: 'CL' };
+    if (pos <= ec.cl + ec.el) return { cls: 'border-l-4 border-l-[#ff8a1f]', label: 'EL' };
+    if (ec.extra_el_pos === pos) return { cls: 'border-l-4 border-l-[#ffbf80]', label: 'EL*' };
+    if (ec.cup_winner === clubId) return { cls: 'border-l-4 border-l-[#ff8a1f]', label: 'EL (Pokal)' };
+    return { cls: '', label: null };
+  };
+  const zone = (pos: number, clubId = '') => {
     const t = comp?.tier ?? 2;
     if (view !== 'all') return '';
+    const e = ecZone(pos, clubId);
+    if (e.cls && pos < 16) return e.cls;
     if (t > 1 && pos <= 2) return 'border-l-4 border-l-emerald-400';
     if (t > 1 && pos === 3) return 'border-l-4 border-l-emerald-700';
     if (t === 1 && pos === 1) return 'border-l-4 border-l-gold';
@@ -95,13 +109,16 @@ export function League() {
                 </thead>
                 <tbody>
                   {rows.map((r, i) => (
-                    <tr key={r.club_id} className={`border-t border-olive-700/50 ${zone(i + 1)} ${r.club_id === myClub ? 'bg-gold/10 font-semibold' : ''}`}>
+                    <tr key={r.club_id} className={`border-t border-olive-700/50 ${zone(i + 1, r.club_id)} ${r.club_id === myClub ? 'bg-gold/10 font-semibold' : ''}`}>
                       <td className="py-1.5 pl-2 tabular-nums">{i + 1}</td>
                       <td className="py-1.5">
                         <span className="flex items-center gap-2">
                           <span className="display grid h-6 min-w-9 place-items-center rounded px-1 text-[11px] font-bold" style={{ background: r.color ?? '#3a4a3a', color: readableTextColor(r.color ?? '#3a4a3a') }}>{r.short_name}</span>
                           <ClubLink club={{ id: r.club_id, name: r.name }} className="truncate" />
                           {r.control === 'human' && <Pill tone="gold">Manager</Pill>}
+                          {ecZone(i + 1, r.club_id).label && (
+                            <span className={`rounded px-1.5 text-[10px] font-bold ${ecZone(i + 1, r.club_id).label === 'CL' ? 'bg-[#b8a6ff]/20 text-[#d9d0ff]' : 'bg-[#ff8a1f]/20 text-[#ffd2a6]'}`}>{ecZone(i + 1, r.club_id).label}</span>
+                          )}
                         </span>
                       </td>
                       <td className="text-right tabular-nums">{r.played}</td><td className="text-right tabular-nums">{r.won}</td><td className="text-right tabular-nums">{r.drawn}</td><td className="text-right tabular-nums">{r.lost}</td>
@@ -111,7 +128,17 @@ export function League() {
                   ))}
                 </tbody>
               </table>
-              <p className="mt-3 text-xs text-cream-dim">Grün: Aufstieg (Platz 3: Relegation) · Orange: Relegation · Rot: Abstieg{comp?.tier === 3 ? ' in die abstrakte 4. Liga' : ''}</p>
+              <p className="mt-3 text-xs text-cream-dim">
+                {ec ? (
+                  <>
+                    <span className="text-[#d9d0ff]">Violett: Champions League (Platz 1–{ec.cl})</span> · <span className="text-[#ffd2a6]">Orange: Europa League (Platz {ec.cl + 1}–{ec.cl + ec.el} + Pokalsieger)</span>
+                    {ec.extra_el_pos ? ` · EL*: Platz ${ec.extra_el_pos} rückt nach, weil der Pokalsieger bereits qualifiziert ist` : !ec.cup_decided ? ' · Pokalsieger noch offen (ist er schon qualifiziert, rückt der Nächstplatzierte nach)' : ''}
+                    {' · Länderrang '}{ec.association_rank ?? '–'} · gilt für die nächste Saison · Rot: Abstieg, Orange am Rand: Relegation
+                  </>
+                ) : (
+                  <>Grün: Aufstieg (Platz 3: Relegation) · Orange: Relegation · Rot: Abstieg{comp?.tier === 3 ? ' in die abstrakte 4. Liga' : ''}</>
+                )}
+              </p>
             </Card>
             <div className="space-y-4">
               <Card>

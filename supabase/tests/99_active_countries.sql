@@ -45,16 +45,19 @@ select tests.assert((select count(*) from public.competition_entries e join publ
 select tests.assert(not exists (
   select 1 from (
     select c.association_code, public.fd_club_strength(c.id) st,
-           exists (select 1 from public.competition_entries e join public.competitions co on co.id = e.competition_id
-                   where e.club_id = c.id and co.season_id = :'season' and co.kind::text in ('champions_league', 'europa_league')) sel
-    from public.clubs c where c.world_id = :'world' and c.association_code <> 'GER' and not c.amateur) x
+           -- über Ligaplätze qualifiziert (Pokalsieger: gewichtete Auslosung; Nachrücker füllen kleine Testwelten auf)
+           exists (select 1 from public.ec_qualifications q where q.club_id = c.id and q.season_id = :'season'
+                   and (q.reason like 'Meister%' or q.reason like 'Platz%')) sel
+    from public.clubs c where c.world_id = :'world' and c.association_code <> 'GER' and not c.amateur
+      and not exists (select 1 from public.ec_qualifications q where q.club_id = c.id and q.season_id = :'season' and (q.reason like 'Pokal%' or q.reason like 'Nachrücker%'))) x
   group by x.association_code
   having count(*) filter (where sel) > 0 and count(*) filter (where not sel) > 0
      and avg(st) filter (where sel) <= avg(st) filter (where not sel) + 2),
   'je Land: Teilnehmer deutlich stärker als Nicht-Teilnehmer');
-select tests.assert(not exists (select 1 from public.competition_entries e join public.competitions co on co.id = e.competition_id join public.clubs c on c.id = e.club_id
-  where co.season_id = :'season' and co.kind::text in ('champions_league', 'europa_league') and c.association_code <> 'GER'
-  group by co.id, c.association_code having count(*) > 2), 'höchstens 2 Vereine je Land und Wettbewerb');
+-- Startplätze nach Länderrangliste: kein Land mit mehr als 5 Champions-League-Plätzen (Nachrücker füllen nur Lücken kleiner Testwelten)
+select tests.assert(not exists (select 1 from public.ec_qualifications q
+  where q.season_id = :'season' and q.competition = 'cl' and q.reason not like 'Nachrücker%'
+  group by q.association_code having count(*) > 5), 'höchstens 5 CL-Plätze je Land');
 
 -- Hintergrundarbeit nur für aktive Vereine (keine Markierungszeilen für inaktive mehr)
 delete from public.ai_training_log where world_id = :'world';

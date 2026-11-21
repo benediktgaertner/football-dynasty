@@ -35,12 +35,10 @@ reset role;
 
 select tests.assert((select status from public.career_worlds where id = :'world') = 'season', 'Saison läuft');
 select current_season_id as season from public.career_worlds where id = :'world' \gset
-select tests.assert((select count(*) from public.season_slots where season_id = :'season') = 54, '54 Termine (34 Liga, 6 Pokal, 11 Europapokal, 2 Relegation, Abschluss)');
-select tests.assert((select count(*) from public.season_slots where season_id = :'season' and kind = 'europe') = 11, '11 Europapokal-Termine (dienstags)');
-select tests.assert((select count(*) from public.competition_entries e join public.competitions c on c.id = e.competition_id where c.season_id = :'season' and c.kind::text = 'champions_league') = 16, 'Champions League: 16 Teilnehmer');
-select tests.assert((select count(*) from public.competition_entries e join public.competitions c on c.id = e.competition_id where c.season_id = :'season' and c.kind::text = 'europa_league') = 16, 'Europa League: 16 Teilnehmer');
-select tests.assert(not exists (select e.club_id from public.competition_entries e join public.competitions c on c.id = e.competition_id where c.season_id = :'season' and c.kind::text in ('champions_league', 'europa_league') group by e.club_id having count(*) > 1), 'kein Verein in beiden Wettbewerben');
-select tests.assert((select count(*) from public.fixtures f join public.competitions c on c.id = f.competition_id where c.season_id = :'season' and c.kind::text in ('champions_league', 'europa_league')) = 96, 'je Wettbewerb 48 Gruppenspiele');
+select tests.assert((select count(*) from public.season_slots where season_id = :'season') = 43, '43 Termine in Saison 1 (34 Liga, 6 Pokal, 2 Relegation, Abschluss)');
+select tests.assert(not exists (select 1 from public.season_slots where season_id = :'season' and kind = 'europe'), 'Saison 1: keine Europapokal-Termine');
+select tests.assert(not exists (select 1 from public.competitions c where c.season_id = :'season' and c.kind::text in ('champions_league', 'europa_league')), 'Saison 1: kein Europapokal, niemand automatisch qualifiziert');
+select tests.assert(not exists (select 1 from public.ec_qualifications where season_id = :'season'), 'Saison 1: keine Qualifikationseinträge');
 select tests.assert(not exists (select 1 from public.season_slots s1 join public.season_slots s2 on s2.season_id = s1.season_id and s2.slot_date = s1.slot_date and s2.id <> s1.id where s1.season_id = :'season'), 'kein Termin doppelt an einem Tag');
 select tests.assert((select count(*) from public.fixtures f join public.competitions c on c.id = f.competition_id where c.season_id = :'season' and c.kind = 'league') = 918, '918 Ligaspiele');
 select tests.assert(not exists (
@@ -223,11 +221,8 @@ end $$;
 select tests.assert((select status from public.career_worlds where id = :'world') = 'preseason', 'Saison beendet ⇒ neue Vorbereitung');
 select current_season_id as season2 from public.career_worlds where id = :'world' \gset
 select tests.assert(:'season2' <> :'season', 'neue Saison angelegt');
-select tests.assert((select count(*) from public.season_slots where season_id = :'season' and state = 'released') = 54, 'alle 54 Termine abgeschlossen');
-select tests.assert((select count(*) from public.season_awards where season_id = :'season' and kind in ('cl_winner', 'el_winner')) = 2, 'Champions-League- und Europa-League-Sieger ermittelt');
-select tests.assert(not exists (select 1 from public.standings s join public.competitions c on c.id = s.competition_id where c.season_id = :'season' and s.group_id is not null and s.played <> 6), 'jeder Gruppenteilnehmer 6 Spiele');
-select tests.assert((select count(*) from public.fixtures f join public.competition_stages st on st.id = f.stage_id join public.competitions c on c.id = f.competition_id where c.season_id = :'season' and c.kind::text in ('champions_league', 'europa_league') and st.kind <> 'group') = 2 * (8 + 4 + 1), 'K.-o.: Viertel- und Halbfinale mit Hin-/Rückspiel, Finale');
-select tests.assert(exists (select 1 from public.financial_transactions t where t.kind = 'competition_prize' and t.description like 'Champions League%'), 'Europapokal-Prämien gebucht');
+select tests.assert((select count(*) from public.season_slots where season_id = :'season' and state = 'released') = 43, 'alle 43 Termine abgeschlossen');
+select tests.assert(not exists (select 1 from public.season_awards where season_id = :'season' and kind in ('cl_winner', 'el_winner')), 'Saison 1: keine Europapokalsieger');
 select tests.assert((select count(*) from public.fixtures where season_id = :'season' and status not in ('released', 'cancelled')
   and competition_id in (select id from public.competitions where season_id = :'season' and kind::text <> 'friendly')) = 0, 'alle Pflichtspiele freigegeben');
 select tests.assert(not exists (select 1 from public.competitions c where c.season_id = :'season2' and c.kind = 'league'
@@ -255,4 +250,12 @@ select public.force_start_season(:'world');
 reset role;
 select tests.assert((select status from public.career_worlds where id = :'world') = 'season', 'Saison 2 läuft');
 select tests.assert((select count(*) from public.fixtures f join public.competitions c on c.id = f.competition_id where c.season_id = :'season2' and c.kind = 'league') = 918, 'Saison 2: 918 Ligaspiele');
+select tests.assert((select count(*) from public.season_slots where season_id = :'season2' and kind = 'europe') = 13, 'Saison 2: 13 Europapokal-Termine (6 Gruppe, AF/VF/HF je 2, Finale)');
+select tests.assert(exists (select 1 from public.competitions c where c.season_id = :'season2' and c.kind::text = 'champions_league'), 'Saison 2: Europapokal angelegt');
+-- Qualifikation aus der abgeschlossenen Saison 1: Platz 1–4 CL, 5–6 EL, Pokalsieger EL (bzw. Nachrücker)
+select tests.assert((select count(*) from public.ec_qualifications q join public.fd_table(:'bl') t on t.club_id = q.club_id
+  where q.season_id = :'season2' and q.competition = 'cl' and t.pos <= 4) = 4, 'Saison 2: Bundesliga-Platz 1–4 in der Champions League');
+select tests.assert((select count(*) from public.ec_qualifications q join public.fd_table(:'bl') t on t.club_id = q.club_id
+  where q.season_id = :'season2' and q.competition = 'el' and t.pos in (5, 6)) = 2, 'Saison 2: Bundesliga-Platz 5 und 6 in der Europa League');
+\echo 'OK 50_season Saison 2 Europapokal'
 \echo 'OK 50_season'

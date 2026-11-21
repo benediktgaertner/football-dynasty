@@ -45,7 +45,11 @@ export function competitionTheme(c: CompetitionRef | null | undefined): Competit
   if (/europa|continental/.test(kind)) return THEMES.el!;
   if (kind !== 'league') return THEMES.cup!;
   const assoc = c?.association ?? 'GER';
-  if (assoc === 'GER' || !assoc) return THEMES[`ger${Math.min(3, Math.max(1, c?.tier ?? 1))}`] ?? THEMES.ger1!;
+  // Nationale Ligen des Spiellands (haben eine Spielklasse): rot / Koralle / Petrol
+  if (assoc === 'GER' || !assoc || c?.tier != null) {
+    const base = THEMES[`ger${Math.min(3, Math.max(1, c?.tier ?? 1))}`] ?? THEMES.ger1!;
+    return c?.name ? { ...base, label: c.name } : base;
+  }
   const accent = COUNTRY[assoc] ?? '#9fb3c8';
   const rgb = [1, 3, 5].map((i) => parseInt(accent.slice(i, i + 2), 16)).join(' ');
   return T(assoc, c?.name ?? assoc, accent, accent, rgb, { from: '#0f1216', to: '#1f2630', edge: accent, label: accent, text: '#ffffff' });

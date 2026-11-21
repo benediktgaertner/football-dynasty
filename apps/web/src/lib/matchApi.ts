@@ -26,7 +26,11 @@ export const matchApi = {
   createFriendly: (worldId: string, opponent: string) => rpc<string>('create_friendly', { p_world: worldId, p_opponent: opponent }),
   cancelFriendly: (fixtureId: string) => rpc<void>('cancel_friendly', { p_fixture: fixtureId }),
   async opponents(worldId: string): Promise<OpponentClub[]> {
-    const { data, error } = await requireSupabase().from('clubs').select('id, name, short_name, control, association_code').eq('world_id', worldId).eq('association_code', 'GER').order('control').order('name');
+    // Testspielgegner: Vereine des Spiellands der Welt
+    const sb = requireSupabase();
+    const { data: w } = await sb.from('career_worlds').select('country_code').eq('id', worldId).maybeSingle();
+    const country = ((w as { country_code?: string } | null)?.country_code ?? 'GER').trim();
+    const { data, error } = await sb.from('clubs').select('id, name, short_name, control, association_code').eq('world_id', worldId).eq('association_code', country).order('control').order('name');
     if (error) throw new ApiError(error.message, error.code ?? null);
     return (data ?? []) as OpponentClub[];
   },

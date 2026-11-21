@@ -107,3 +107,8 @@ Keine Schlüssel nötig, keine laufenden Kosten: Musik entsteht im Browser oder 
 1. **Supabase:** SQL Editor → New query → `football_dynasty_update_0032.sql` → Run (wiederholbar).
 2. **GitHub/Netlify:** Zip-Inhalt ins Repository kopieren und pushen.
 3. **Fly.io:** kein Deploy nötig.
+
+## Update 0033 (Land & Startliga, Europapokal mit 32 Teams)
+1. **Supabase:** SQL Editor → New query → `football_dynasty_update_0033.sql` → Run (wiederholbar). Bestehende Welten bleiben Deutschland/2. Liga mit Faktor 1.
+2. **GitHub/Netlify:** Zip-Inhalt ins Repository kopieren und pushen (Lobby, Tabellenmarkierung, Europapokal-Seite, Netlify-Functions für Land/Startliga).
+3. **Fly.io:** kein Deploy nötig.

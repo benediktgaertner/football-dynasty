@@ -44,6 +44,17 @@ describe('POST /api/ensure-europe', () => {
     expect(body.added.length).toBeLessThan(EUROPE_ASSOCIATIONS.length);
   });
 
+  it('anderes Spielland: Deutschland wird ausländische Erstliga, das Spielland nicht', async () => {
+    const d = deps({ status: async () => ({ seed: 'abc', status: 'season', clubs: [], done: [], country: 'ITA' }) });
+    const body = await (await handleEnsureEurope(req('good'), d, 60_000)).json() as { total: number; added: string[] };
+    expect(body.total).toBe(54);
+    expect(body.added).toContain('GER');
+    expect(body.added).not.toContain('ITA');
+    const ger = (d.add as ReturnType<typeof vi.fn>).mock.calls.find((c) => c[1].association_code === 'GER')![1];
+    expect(ger.clubs).toHaveLength(18);
+    expect(ger.clubs[0].league_name).toBe('Bundesliga (Deutschland)');
+  });
+
   it('nicht vor dem Draft-Start', async () => {
     expect((await handleEnsureEurope(req('good'), deps({ status: async () => ({ seed: 'a', status: 'lobby', clubs: [], done: [] }) }))).status).toBe(409);
   });

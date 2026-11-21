@@ -6,7 +6,7 @@ import { normalizeName } from '../naming.js';
 import { createRng, type Rng } from '../rng.js';
 import { KIT_PATTERNS, type KitConfig } from '../schemas.js';
 import { ANCHOR_CLUBS, anchorColors } from './anchors.js';
-import { CLUB_COLOR_SETS, NameRegistry, generateShortName, isBlockedClubName } from './clubNames.js';
+import { CLUB_COLOR_SETS, GERMAN_NAMING, NameRegistry, generateClubName, generateShortName, generateStadiumName, isBlockedClubName } from './clubNames.js';
 import { EUROPE_BLOCKLIST, EUROPE_PLACES, EUROPE_STYLES } from './europeData.js';
 import { generatePlayer, nationalityByCode, pickNationality, randomAge, type GeneratedPlayer } from './players.js';
 import type { GeneratedAiClub } from './worldInit.js';
@@ -38,8 +38,13 @@ export interface EuropePayload {
 
 const BLOCKED = new Set(EUROPE_BLOCKLIST.map(normalizeName));
 
-/** Alle Verbände, die als ausländische Ligen erzeugt werden */
+/** Alle Verbände, die als ausländische Ligen erzeugt werden (Welten mit Deutschland als Spielland) */
 export const EUROPE_ASSOCIATIONS: readonly Association[] = ASSOCIATIONS.filter((a) => a.code !== 'GER');
+
+/** Ausländische Erstligen einer Welt: alle Verbände außer dem gewählten Spielland */
+export function europeAssociationsFor(country: string): readonly Association[] {
+  return ASSOCIATIONS.filter((a) => a.code !== country);
+}
 
 /** Mannschaftsstärken einer Erstliga aus der Verbandsstärke (England ≈ 76–87, San Marino ≈ 50–59) */
 export function europeTargets(rng: Rng, strength: number, count: number): number[] {
@@ -107,6 +112,30 @@ export function generateEuropeClubName(rng: Rng, code: string, registry: NameReg
   throw new Error(`Kein freier Vereinsname für ${code}`);
 }
 
+/**
+ * Vereinsname für die drei nationalen Ligen des Spiellands. Kleine Länder haben wenige Orte:
+ * reicht der Vorrat nicht, entstehen Namen mit Gründungsjahr („FC Vaduz 1932“).
+ */
+export function nationalClubName(rng: Rng, code: string, registry: NameRegistry, usedPlaces: Set<string>): { name: string; place: string } {
+  try {
+    return generateEuropeClubName(rng, code, registry, usedPlaces);
+  } catch {
+    const { places, styles } = stylesFor(code);
+    for (let attempt = 0; attempt < 2000; attempt++) {
+      const place = rng.pick(places);
+      const base = rng.pick(rng.pick(styles).patterns).replace('{p}', place).replace(/\s+/g, ' ').trim();
+      const name = `${base.slice(0, 27)} ${rng.int(1885, 1995)}`;
+      if (isBlocked(name) || registry.hasName(name)) continue;
+      return { name, place };
+    }
+    throw new Error(`Kein freier Vereinsname für ${code}`);
+  }
+}
+
+export function europeStadiumName(rng: Rng, code: string, place: string): string {
+  return stadiumName(rng, code, place);
+}
+
 function stadiumName(rng: Rng, code: string, place: string): string {
   const { styles } = stylesFor(code);
   const s = rng.pick(rng.pick(styles).stadiums).replace('{p}', place);
@@ -114,6 +143,7 @@ function stadiumName(rng: Rng, code: string, place: string): string {
 }
 
 export function leagueName(a: Association): string {
+  if (a.code === 'GER') return `Bundesliga (${a.name})`;
   const { styles } = stylesFor(a.code);
   return `${styles[0]!.league} (${a.name})`;
 }
@@ -124,7 +154,9 @@ export function leagueName(a: Association): string {
  */
 export function buildEuropeAssociation(worldSeed: string, code: string, registry: NameRegistry, usedNames = new Set<string>()): EuropePayload {
   const a = ASSOCIATIONS.find((x) => x.code === code);
-  if (!a || code === 'GER') throw new Error(`Ungültiger Verband ${code}`);
+  if (!a) throw new Error(`Ungültiger Verband ${code}`);
+  // Deutschland als ausländische Erstliga (Welten mit anderem Spielland): deutsches Namensprofil
+  const german = code === 'GER';
   const rng = createRng(`europe:${worldSeed}:${code}`);
   const targets = europeTargets(rng, a.strength, a.leagueSize);
   const usedPlaces = new Set<string>();
@@ -134,7 +166,8 @@ export function buildEuropeAssociation(worldSeed: string, code: string, registry
 
   targets.forEach((target, i) => {
     const key = `${code}${i + 1}`;
-    const gen = generateEuropeClubName(rng, code, registry, usedPlaces);
+    const genDe = german ? generateClubName(rng, GERMAN_NAMING, registry) : null;
+    const gen = genDe ?? generateEuropeClubName(rng, code, registry, usedPlaces);
     const genShort = generateShortName(rng, gen.name, gen.place, registry);
     // Orientierungsvereine an den großen Standorten (fiktiv), sonst landestypischer Name
     const anchor = ANCHOR_CLUBS[code]?.[i];
@@ -168,7 +201,7 @@ export function buildEuropeAssociation(worldSeed: string, code: string, registry
       accent,
       crest,
       kit,
-      stadium_name: stadiumName(rng, code, place),
+      stadium_name: german ? generateStadiumName(rng, GERMAN_NAMING, place, useAnchor ? null : genDe!.adjective) : stadiumName(rng, code, place),
       capacity,
       // Budget nach Stärke: Spitzenclubs der großen Ligen sind sehr finanzstark
       balance: Math.round((Math.max(2, (target - 50) ** 2 * 0.12) * (0.7 + rng.next() * 0.6)) * 10) * (MILLION / 10),

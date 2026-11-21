@@ -66,6 +66,13 @@ export interface LobbyState {
     difficulty: Difficulty;
     host_user_id: string;
     starting_capital: number;
+    /** Spielland und Startliga (ältere Welten: Deutschland, 2. Liga) */
+    country_code?: string;
+    country_name?: string;
+    start_tier?: 1 | 2 | 3;
+    league_names?: { '1': string; '2': string; '3': string; cup: string } | null;
+    capital_factor?: number;
+    economy_factor?: number;
   };
   me: { user_id: string; role: 'host' | 'manager' };
   members: LobbyMember[];
@@ -80,7 +87,10 @@ export async function fetchMyProfile(userId: string): Promise<Profile | null> {
 
 export const api = {
   setUsername: (username: string) => rpc<Profile>('set_username', { p_username: username }),
-  createWorld: (name: string) => rpc<{ world_id: string; invite_code: string }>('create_world', { p_name: name }),
+  createWorld: (name: string, country = 'GER', startTier: 1 | 2 | 3 = 2) =>
+    rpc<{ world_id: string; invite_code: string }>('create_world', { p_name: name, p_country: country, p_start_tier: startTier }),
+  setWorldSetup: (worldId: string, country: string, startTier: 1 | 2 | 3) =>
+    rpc<void>('set_world_setup', { p_world: worldId, p_country: country, p_start_tier: startTier }),
   async joinWorld(code: string): Promise<string> {
     const r = await rpc<{ world_id?: string; error?: string; message?: string }>('join_world', { p_code: code });
     if (!r.world_id) throw new ApiError(r.message ?? 'Beitritt fehlgeschlagen.', r.error ?? null);

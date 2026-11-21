@@ -7,7 +7,7 @@ import { fanApi, type EuropeCompetition, type EuropeFixture } from '../lib/fanAp
 import { STAGE_LABEL, seasonApi } from '../lib/seasonApi';
 import { competitionTheme } from '../lib/theme';
 
-const KO = ['quarter_final', 'semi_final', 'final'];
+const KO = ['round_of_16', 'quarter_final', 'semi_final', 'final'];
 
 /** Champions League und Europa League: Gruppen, K.-o.-Runden, Torschützen */
 export function Europe() {
@@ -16,11 +16,12 @@ export function Europe() {
   const [myClub, setMyClub] = useState<string | null>(null);
   const [tab, setTab] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [firstSeason, setFirstSeason] = useState(false);
   useEffect(() => {
     void (async () => {
       try {
         const [e, st] = await Promise.all([fanApi.europe(worldId), seasonApi.matchday(worldId)]);
-        setComps(e.competitions); setMyClub(st.my_club);
+        setComps(e.competitions); setMyClub(st.my_club); setFirstSeason(!!e.first_season);
       } catch (err) { setError((err as Error).message); }
     })();
   }, [worldId]);
@@ -31,7 +32,18 @@ export function Europe() {
       <WorldNav worldId={worldId} />
       <h1 className="display mb-3 text-4xl font-extrabold uppercase">Europapokal</h1>
       {comps.length === 0 && (
-        <Card><p className="text-cream-dim">Die europäischen Wettbewerbe starten mit der nächsten Saison. Teilnehmer: die ersten sechs der Bundesliga und der Pokalsieger; aus den übrigen Ländern die stärksten Vereine (mit etwas Losglück).</p></Card>
+        <Card>
+          <p className="text-cream-dim">
+            {firstSeason ? 'In Saison 1 gibt es keinen Europapokal – die Abschlusstabelle der 1. Liga und der Pokalsieger entscheiden über die Teilnahme in Saison 2.' : 'Die europäischen Wettbewerbe starten mit der nächsten Saison.'}
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-cream-dim">
+            <li>Champions League: 32 Vereine – je nach Länderrangliste die besten 1 bis 5 Vereine der 1. Liga (Deutschland: 4).</li>
+            <li>Europa League: 32 Vereine – die nächstbesten Erstligisten und die Pokalsieger. Ist der Pokalsieger schon qualifiziert, rückt der nächste Erstligist nach.</li>
+            <li>Kein Verein spielt in beiden Wettbewerben. Unterklassige Vereine kommen nur über den Pokal hinein.</li>
+            <li>Ausland: die stärksten Vereine nach Stärke, Landesniveau und Ruf (mit etwas Losglück), Pokalsieger per gewichteter Auslosung.</li>
+            <li>Ablauf: 8 Gruppen à 4, die ersten zwei erreichen das Achtelfinale; K.-o.-Runden mit Hin- und Rückspiel, Finale auf neutralem Platz.</li>
+          </ul>
+        </Card>
       )}
       {comps.length > 0 && (
         <div className="mb-3 flex gap-1">
@@ -49,7 +61,7 @@ export function Europe() {
       {c && (
         <div className="space-y-4">
           {c.winner && <Card><p className="display text-2xl font-bold uppercase text-gold">Sieger: <ClubLink club={c.winner} /></p></Card>}
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
             {c.groups.map((g) => (
               <Card key={g.label}>
                 <h2 className="display mb-2 text-2xl font-bold uppercase">Gruppe {g.label}</h2>
@@ -59,7 +71,7 @@ export function Europe() {
                     {g.table.map((r) => (
                       <tr key={r.club_id} className={`${r.club_id === myClub ? 'text-gold' : ''} ${r.pos <= 2 ? 'font-semibold' : 'text-cream-dim'}`}>
                         <td>{r.pos}</td>
-                        <td className="truncate"><ClubLink club={{ id: r.club_id, name: r.name }} /> <span className="text-xs text-cream-dim">{r.association}</span></td>
+                        <td className="truncate" title={r.reason ?? undefined}><ClubLink club={{ id: r.club_id, name: r.name }} /> <span className="text-xs text-cream-dim">{r.association}{r.reason ? ` · ${r.reason}` : ''}</span></td>
                         <td className="text-right">{r.played}</td>
                         <td className="text-right">{r.gf}:{r.gf - r.gd}</td>
                         <td className="text-right">{r.points}</td>
@@ -72,7 +84,7 @@ export function Europe() {
             ))}
           </div>
           {KO.some((k) => c.fixtures.some((f) => f.stage === k)) && (
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {KO.filter((k) => c.fixtures.some((f) => f.stage === k)).map((k) => (
                 <Card key={k}>
                   <h2 className="display mb-2 text-2xl font-bold uppercase">{STAGE_LABEL[k] ?? k}</h2>

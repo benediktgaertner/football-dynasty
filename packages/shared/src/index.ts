@@ -20,5 +20,6 @@ export * from './world/worldInit.js';
 export * from './world/anchors.js';
 export * from './world/europeData.js';
 export * from './world/europe.js';
+export * from './world/country.js';
 export * from './avatar.js';
 export * from './tactics.js';

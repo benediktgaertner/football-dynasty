@@ -61,7 +61,7 @@ export function Welcome() {
     <Shell>
       <div className="mx-auto grid max-w-5xl items-center gap-8 md:grid-cols-[1.1fr_1fr]">
         <section className="animate-rise">
-          <p className="display mb-2 text-lg font-semibold uppercase tracking-[0.2em] text-gold">Saison 1 · 2. Bundesliga</p>
+          <p className="display mb-2 text-lg font-semibold uppercase tracking-[0.2em] text-gold">Saison 1 · 55 Länder · 3 Ligen</p>
           <h1 className="display text-6xl font-extrabold uppercase leading-[0.95] sm:text-7xl">
             Gründe deinen Verein.
             <br />

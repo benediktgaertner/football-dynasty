@@ -114,7 +114,22 @@ const toRef = (c: { id: string; name: string; short_name: string; control: 'huma
   color: Array.isArray(c.club_branding) ? (c.club_branding[0]?.primary_color ?? null) : (c.club_branding?.primary_color ?? null),
 });
 
+/** Europapokal-Plätze der nationalen 1. Liga (Farbmarkierung der Tabelle) */
+export interface EuropePlaces {
+  competition_id: string | null;
+  country: string;
+  association_rank: number | null;
+  cl: number;
+  el: number;
+  cup_winner: string | null;
+  cup_winner_pos: number | null;
+  extra_el_pos: number | null;
+  cup_decided: boolean;
+  first_season: boolean;
+}
+
 export const seasonApi = {
+  europePlaces: (worldId: string) => rpc<EuropePlaces | null>('europe_places', { p_world: worldId }),
   matchday: (worldId: string) => rpc<MatchdayState>('matchday_state', { p_world: worldId }),
   setReady: (worldId: string, ready: boolean) => rpc<MatchdayState>('set_matchday_ready', { p_world: worldId, p_ready: ready }),
   forceStart: (worldId: string) => rpc<MatchdayState>('force_start_slot', { p_world: worldId }),
