@@ -89,6 +89,12 @@ export class CrowdEnvelope {
     if (kind === 'away_goal') this.away = Math.max(this.away, 0.5);
   }
 
+  /** Wiederanstoß: Torjubel/Verstummen sofort beenden, die Kulisse folgt wieder der Spielsituation */
+  release() { this.override = null; }
+
+  /** läuft gerade ein Ereignis (Tor, Chance)? */
+  get busy(): boolean { return !!this.override && this.t < this.override.until; }
+
   /** dt in Sekunden; target aus targetsOf(); liefert aktuelle Intensitäten */
   update(dt: number, target: readonly [number, number]): { home: number; away: number } {
     this.t += dt;

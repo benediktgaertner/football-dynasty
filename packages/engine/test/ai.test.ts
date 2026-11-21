@@ -94,5 +94,5 @@ describe('Entscheidungs-KI', () => {
       hi += r.score[0]; lo += r.score[1];
     }
     expect(hi).toBeGreaterThan(lo);
-  });
+  }, 60_000); // 40 volle Partien: auf langsamen Rechnern mehr Zeit
 });

@@ -101,17 +101,22 @@ export class MatchClient {
   private stopped = false;
   private fatal = false;
 
-  constructor(private url: string, private fixtureId: string) {}
+  /** opts.token: eigene Token-Quelle (E2E-Tests ohne Supabase) */
+  constructor(private url: string, private fixtureId: string, private opts: { token?: () => Promise<string | null> } = {}) {}
 
   subscribe(fn: () => void): () => void { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   private emit(patch: Partial<MatchState>) { this.state = { ...this.state, ...patch }; for (const l of this.listeners) l(); }
 
   async connect(): Promise<void> {
     if (this.stopped) return;
-    const { data } = await requireSupabase().auth.getSession();
-    let token = data.session?.access_token;
-    if (data.session && (data.session.expires_at ?? 0) * 1000 < Date.now() + 60_000) {
-      token = (await requireSupabase().auth.refreshSession()).data.session?.access_token ?? token;
+    let token: string | null | undefined;
+    if (this.opts.token) token = await this.opts.token();
+    else {
+      const { data } = await requireSupabase().auth.getSession();
+      token = data.session?.access_token;
+      if (data.session && (data.session.expires_at ?? 0) * 1000 < Date.now() + 60_000) {
+        token = (await requireSupabase().auth.refreshSession()).data.session?.access_token ?? token;
+      }
     }
     if (!token) { this.emit({ connection: 'error', error: 'Nicht angemeldet.' }); return; }
     // Seite wurde während des Verbindungsaufbaus verlassen: keinen verwaisten Socket öffnen

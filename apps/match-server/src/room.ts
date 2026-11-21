@@ -15,7 +15,8 @@ const LOOP_MS = 25;
 const CHECKPOINT_EVERY = 400; // alle 20 s Echtzeit (Seed + Befehlsprotokoll)
 const START_COUNTDOWN_MS = 90_000; // spätestens 90 s nach Öffnen startet das Spiel automatisch
 /** Einlaufzeremonie vor Pflichtspielen: für alle Teilnehmer gleich lang, der Anpfiff folgt serverseitig */
-export const WALKOUT_MS = 20_000;
+/** Ohne Hymne nur eine kurze Einlaufsequenz */
+export const WALKOUT_MS = 12_000;
 /** Mit hochgeladener Heimhymne: Einlauf = volle Hymnenlänge + kurzer Ausklang (höchstens 6 Minuten) */
 export const ANTHEM_TAIL_MS = 2_500;
 export const WALKOUT_MAX_MS = 360_000;

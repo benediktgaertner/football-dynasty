@@ -234,3 +234,18 @@ Speicher geben Postgres-Tabellen erst nach `VACUUM FULL` an das Dateisystem zur�
   - Nach dem Ende der Hymne steigt die normale Kulisse über 3 s wieder an; beim Anpfiff wird die Hymne weich ausgeblendet.
   - Beim Verlassen der Partie stoppt alles.
   - Dynamische Kulisse, Fanreaktionen und Gesänge sind unverändert.
+
+## Update (ohne SQL): kurzer Torjubel, KI-Fankurve, Einlauf überspringen
+- **Torjubel:** Nach einem Tor hält die Übertragung 1,5 s an (`GOAL_HOLD_MS`, Presenter). Zusammen mit der Unterbrechung der Engine bis zum Wiederanstoß (3 s) ergibt das ≈ 4,5 s.
+  - Die Engine protokolliert den Wiederanstoß als Ereignis `kickoff` mit Seite. Zufall, Spieluhr und Physik sind unverändert.
+  - Der Client zeigt den Jubel: Torschütze zur Eckfahne, Mitspieler springen. Heimtor: Pegel 100 %. Auswärtstor: Heimfans verstummen, Gästeblock jubelt.
+  - Der Wiederanstoß beendet Jubelsound (`endCelebration`), Torhymne und Ereignis-Hüllkurve sofort. Es gibt keine überlappenden Jubel.
+  - Die Partie dauert ≈ 1,5 s länger je Tor; die Simulation selbst bleibt 3 Minuten.
+- **KI-Fankurve (`synthChant.ts`):** keine Musik mehr, stattdessen Sprechchöre, Rufe und synchrones Klatschen.
+  - Jeder Rufer hat eine eigene Sprechstimme, also keine gemeinsame Melodie. Dazu viel Stimmrauschen, Klatscher aus vielen einzelnen Impulsen, höchstens eine leise Trommel und Stadionhall.
+  - Prüfmaß „Harmonizität“: Kurve ≈ 0,2, gesungener Chor ≈ 0,95.
+- **Einlauf & Hymne überspringen:** beendet Hymne, Einlauf und Aufstellung vollständig.
+  - Die Spieler stehen sofort auf den Startpositionen, die Einlaufmusik stoppt in 80 ms.
+  - KI-Partie sofort; Multiplayer erst, wenn alle Manager zugestimmt haben (serverseitig).
+  - Ohne Hymne nur eine kurze Einlaufsequenz (12 s). Mit Hymne läuft sie in voller Länge, wenn niemand überspringt.
+- **Ablauf:** Spielvorbereitung → Einlauf/Hymne (`waiting` + Einlaufzeit) → Anpfiff (`running`) → laufendes Spiel.

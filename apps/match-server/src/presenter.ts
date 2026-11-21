@@ -25,6 +25,12 @@ export type PresenterMessage =
 
 const FRAME_EVERY = 2; // jeder 2. Tick ⇒ 10 Bilder je Sekunde
 const HALFTIME_MS = 3000;
+/**
+ * Torjubel: nach einem Tor hält die Übertragung kurz an (Jubelbild beim Client). Zusammen mit der
+ * Unterbrechung der Engine bis zum Wiederanstoß (60 Ticks ⇒ 3 s) dauert die Sequenz ≈ 4,5 s Echtzeit.
+ * Die Simulation selbst (Ticks, Zufall, Spieluhr) bleibt unverändert.
+ */
+export const GOAL_HOLD_MS = 1500;
 
 export interface PresenterOptions {
   /** bereits verstrichene Echtzeit (bei Wiederaufnahme) – nur für die Anzeige */
@@ -40,6 +46,7 @@ export class Presenter {
   lastFrame: Snapshot;
   readonly released: MatchEvent[] = [];
   private pauseMs = 0;
+  private goalHold = 0;
   private acc = 0;
   private halftimeShown: boolean;
 
@@ -65,6 +72,11 @@ export class Presenter {
     const out: PresenterMessage[] = [];
     if (this.state === 'done') return out;
     this.realMs += dtMs;
+    if (this.goalHold > 0) {
+      this.goalHold -= dtMs;
+      if (this.goalHold > 0) return out;
+      this.acc = 0;
+    }
     if (this.state === 'pause') {
       this.pauseMs -= dtMs;
       if (this.pauseMs > 0) return out;
@@ -83,7 +95,14 @@ export class Presenter {
         this.lastFrame = this.engine.snapshot();
         out.push({ t: 'frame', s: this.lastFrame, scene: this.scene });
       }
+      const before = this.released.length;
       this.release(out);
+      if (this.released.slice(before).some((e) => e.type === 'goal')) {
+        this.goalHold = GOAL_HOLD_MS;
+        this.lastFrame = this.engine.snapshot();
+        out.push({ t: 'frame', s: this.lastFrame, scene: this.scene });
+        return out;
+      }
       if (this.engine.isFinished) {
         this.state = 'done';
         out.push({ t: 'done' });

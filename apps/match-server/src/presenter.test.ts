@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CLOCK_SECONDS_PER_TICK, MatchEngine, PLAYBACK_SPEED, TICK_SECONDS, TICKS_PER_HALF, buildTestTeam, type Snapshot } from '@fd/engine';
-import { Presenter, type PresenterMessage } from './presenter.js';
+import { GOAL_HOLD_MS, Presenter, type PresenterMessage } from './presenter.js';
 
 function run(seed: string, onTick?: (p: Presenter, e: MatchEngine, realMs: number) => void) {
   const e = new MatchEngine({ seed, home: buildTestTeam(`h${seed}`, 70, { control: 'human' }), away: buildTestTeam(`a${seed}`, 70), homeAdvantage: 0 });
@@ -13,17 +13,36 @@ function run(seed: string, onTick?: (p: Presenter, e: MatchEngine, realMs: numbe
   return { e, p, msgs };
 }
 
+describe('Torjubel', () => {
+  it('Tor → Wiederanstoß ≈ 4–5 s Echtzeit, danach ohne Verzögerung weiter', () => {
+    const r = run('p1');
+    const evs = r.msgs.filter((m) => m.t === 'ev').flatMap((m) => (m as { events: Array<{ type: string; tick: number }>; at: number }).events.map((e) => ({ ...e, at: m.at })));
+    const goals = evs.filter((e) => e.type === 'goal');
+    expect(goals.length).toBeGreaterThan(0);
+    for (const g of goals) {
+      const k = evs.find((e) => e.type === 'kickoff' && e.tick > g.tick);
+      if (!k) continue; // Tor kurz vor Schluss
+      const sec = (k.at - g.at) / 1000;
+      expect(sec).toBeGreaterThanOrEqual(4);
+      expect(sec).toBeLessThanOrEqual(5);
+    }
+  });
+});
+
 describe('Wiedergabe (komplette Partie, 2-fache Bewegung, schnelle Uhr)', () => {
   const a = run('p1');
   const frames = a.msgs.filter((m) => m.t === 'frame') as Array<{ s: Snapshot; scene: number; at: number }>;
 
-  it('ganze Partie in ca. 3 Minuten, ca. 90 s je Halbzeit, ohne Sprünge', () => {
-    expect(a.p.realMs / 1000).toBeGreaterThan(178);
-    expect(a.p.realMs / 1000).toBeLessThan(186);
+  it('ganze Partie in ca. 3 Minuten (plus kurzer Torjubel je Tor), ca. 90 s je Halbzeit, ohne Sprünge', () => {
+    const goals = a.e.events.filter((e) => e.type === 'goal');
+    const holdSec = (n: number) => (n * GOAL_HOLD_MS) / 1000;
+    expect(a.p.realMs / 1000 - holdSec(goals.length)).toBeGreaterThan(178);
+    expect(a.p.realMs / 1000 - holdSec(goals.length)).toBeLessThan(186);
     expect(a.msgs.some((m) => m.t === 'skip')).toBe(false);
     const half = frames.find((f) => f.s.tick >= TICKS_PER_HALF)!;
-    expect(half.at / 1000).toBeGreaterThan(88);
-    expect(half.at / 1000).toBeLessThan(92);
+    const firstHalfGoals = goals.filter((g) => g.tick < TICKS_PER_HALF).length;
+    expect(half.at / 1000 - holdSec(firstHalfGoals)).toBeGreaterThan(88);
+    expect(half.at / 1000 - holdSec(firstHalfGoals)).toBeLessThan(92);
     // lückenlos: aufeinanderfolgende Bilder liegen 2 Ticks auseinander
     for (let i = 1; i < frames.length; i++) expect(frames[i]!.s.tick - frames[i - 1]!.s.tick).toBeLessThanOrEqual(2);
   });

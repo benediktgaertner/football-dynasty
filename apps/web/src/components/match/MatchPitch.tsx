@@ -57,9 +57,9 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
   useEffect(() => {
     const canvas = ref.current!;
     const ctx = canvas.getContext('2d')!;
-    const info = new Map<string, { n: number; side: 'home' | 'away'; name: string }>();
-    for (const p of teams.home.players) info.set(p.id, { n: p.shirt, side: 'home', name: p.name });
-    for (const p of teams.away.players) info.set(p.id, { n: p.shirt, side: 'away', name: p.name });
+    const info = new Map<string, { n: number; side: 'home' | 'away'; name: string; pos: string }>();
+    for (const p of teams.home.players) info.set(p.id, { n: p.shirt, side: 'home', name: p.name, pos: p.position });
+    for (const p of teams.away.players) info.set(p.id, { n: p.shirt, side: 'away', name: p.name, pos: p.position });
     const fill = { home: homeColor, away: awayColor };
     const txt = { home: readableTextColor(homeColor), away: readableTextColor(awayColor) };
     const ring = {
@@ -99,6 +99,9 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
     const overlays: Array<{ kind: string; id: string | null; name: string; until: number; start: number }> = [];
     const homeGkId = teams.home.players.find((p) => p.position === 'GK')?.id ?? null;
     const OVERLAY = new Set(['yellow', 'second_yellow', 'red', 'injury', 'offside', 'goal']);
+    let celebration: { side: 'home' | 'away'; scorer: string | null; start: number; end: number | null; cx: number; cy: number } | null = null;
+    // Diagnose für E2E-Tests (nur wenn die Testumgebung window.__fdDebug setzt)
+    const debugPitch = (d: Record<string, unknown>) => { const w = window as unknown as { __fdDebug?: boolean; __fdPitch?: Record<string, unknown> }; if (w.__fdDebug) w.__fdPitch = d; };
     let drops: Drop[] = [];
     const smoke: Puff[] = [];
     let lastT = performance.now();
@@ -235,12 +238,17 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
         // in den letzten 5,6 s zur Anfangsformation. Lange Hymnen verlängern nur das Stehen, nichts wiederholt sich.
         const nowMs = Date.now();
         const remaining = walkoutEndsAt! - nowMs;
-        const elapsed = walkoutStartedAt ? nowMs - walkoutStartedAt : WALKOUT_MS - remaining;
-        const p = remaining < WALKOUT_MS * 0.28 ? Math.max(Math.min(0.72, elapsed / WALKOUT_MS), 1 - remaining / WALKOUT_MS) : Math.min(0.72, elapsed / WALKOUT_MS);
+        const total = walkoutStartedAt ? walkoutEndsAt! - walkoutStartedAt : WALKOUT_MS;
+        // Bezugsdauer: kurzer Einlauf (ohne Hymne) läuft komplett in seiner Zeit, lange Hymnen verlängern nur das Stehen
+        const base = Math.min(total, 20_000);
+        const elapsed = total - remaining;
+        const p = remaining < base * 0.28 ? Math.max(Math.min(0.72, elapsed / base), 1 - remaining / base) : Math.min(0.72, elapsed / base);
+        debugPitch({ mode: 'walkout', walkoutP: p });
         drawWalkout([...st.players].map(([id, [x, y]]) => [id, x, y] as [string, number, number]), p, nowMs / 1000);
         drawWeather(); drawPyro(); return;
       }
       const sp = st.setPiece;
+      debugPitch({ mode: celebration ? 'celebration' : 'play', score: st.score, tick: st.tick, ball: st.ball });
       {
         const evs = client.state.events as MatchEvent[];
         const nowMs = performance.now();
@@ -250,6 +258,13 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
         while (evState.idx < evs.length && evs[evState.idx]!.tick <= st.tick) {
           const e = evs[evState.idx++]!;
           if (st.minute - e.minute > 1) continue; // übersprungene Passage: nicht nachholen
+          // Torjubel: Torschütze läuft zur Eckfahne, Mitspieler springen um ihn herum – bis zum Wiederanstoß
+          if (e.type === 'goal' && e.side && (e.side === 'home' || e.side === 'away')) {
+            const sc = e.playerId ? st.players.get(e.playerId) : undefined;
+            const sx = sc?.[0] ?? (bx0 > L / 2 ? L - 8 : 8), sy = sc?.[1] ?? W / 2;
+            celebration = { side: e.side, scorer: e.playerId ?? null, start: nowMs, end: null, cx: sx > L / 2 ? L - 5 : 5, cy: sy < W / 2 ? 6 : W - 6 };
+          }
+          if (e.type === 'kickoff' && e.side && celebration && celebration.end === null) celebration.end = nowMs;
           if (OVERLAY.has(e.type)) overlays.push({ kind: e.type, id: e.playerId ?? null, name: e.playerId ? (info.get(e.playerId)?.name ?? '') : '', start: nowMs, until: nowMs + (e.type === 'goal' ? 2200 : 1700) });
           const sideNet = (bx0 < 1.6 || bx0 > L - 1.6) && Math.abs(by0 - W / 2) > 3.7 && Math.abs(by0 - W / 2) < 6.5 && bz0 < 2.5;
           sound?.event(e as { tick: number; type: string; side: 'home' | 'away' | null; xg?: number }, { homeScore: st.score[0], awayScore: st.score[1], minute: st.minute, ballOutsideNet: sideNet });
@@ -302,16 +317,21 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
       let carrierPos: [number, number, string] | null = null;
       // Schatten (Richtung nach Wetter: Sonne lang, bewölkt kurz)
       const shx = weather === 'sunny' ? 0.6 : 0.25, shy = weather === 'sunny' ? 0.75 : 0.5, sha = weather === 'sunny' ? 0.32 : weather === 'fog' ? 0.12 : 0.22;
-      for (const [, [x, y]] of st.players) {
+      const nowP = performance.now();
+      if (celebration && (nowP - celebration.start > 6000 || (celebration.end !== null && nowP - celebration.end > 700))) celebration = null;
+      const shown = (id: string, x: number, y: number): [number, number, number] => celebrate(id, x, y, nowP);
+      for (const [cid, [x0, y0]] of st.players) {
+        const [x, y] = shown(cid, x0, y0);
         ctx.beginPath(); ctx.ellipse(X(x) + shx * s, Y(y) + shy * s, r * 1.05, r * 0.55, 0, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(0,0,0,${sha})`; ctx.fill();
       }
       // Standard: Elfmeterpunkt/Mauer hervorheben
       const wall = new Set(sp?.wall ?? []);
       ctx.font = `700 ${Math.round(1.5 * s)}px "Barlow Condensed", system-ui, sans-serif`;
-      for (const [id, [x, y]] of st.players) {
+      for (const [id, [x0, y0]] of st.players) {
         const p = info.get(id);
         if (!p) continue;
+        const [x, y, jump] = shown(id, x0, y0);
         const isCarrier = id === st.carrier;
         if (isCarrier) {
           ctx.beginPath(); ctx.arc(X(x), Y(y), r * 1.75, 0, Math.PI * 2);
@@ -322,9 +342,9 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
           ctx.beginPath(); ctx.arc(X(x), Y(y), r * 1.35, 0, Math.PI * 2);
           ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 0.18 * s; ctx.stroke();
         }
-        ctx.beginPath(); ctx.arc(X(x), Y(y), r, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(X(x), Y(y), r * jump, 0, Math.PI * 2);
         ctx.fillStyle = fill[p.side]; ctx.fill();
-        kitPattern(p.side, X(x), Y(y), r);
+        kitPattern(p.side, X(x), Y(y), r * jump);
         ctx.lineWidth = 0.32 * s;
         ctx.strokeStyle = id === highlight ? '#ffd24a' : ring[p.side]; ctx.stroke();
         ctx.fillStyle = txt[p.side];
@@ -387,6 +407,25 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
        * gehen in zwei Reihen zur Mitte, stellen sich vor der Haupttribüne auf und laufen dann auf
        * ihre Startpositionen (= Positionen des ersten Snapshots, für alle gleich).
        */
+      /** Torjubel-Position eines Spielers (Gewicht weich ein- und mit dem Wiederanstoß wieder ausgeblendet) */
+      function celebrate(id: string, x: number, y: number, now: number): [number, number, number] {
+        const c = celebration;
+        const pi = info.get(id);
+        if (!c || !pi || pi.side !== c.side || pi.pos === 'GK') return [x, y, 1];
+        const t = (now - c.start) / 1000;
+        const ease = (v: number) => (v <= 0 ? 0 : v >= 1 ? 1 : v * v * (3 - 2 * v));
+        const w = ease(t / 0.9) * (c.end === null ? 1 : 1 - ease((now - c.end) / 600));
+        if (w <= 0) return [x, y, 1];
+        const mates = [...st!.players.keys()].filter((k) => { const q = info.get(k); return q && q.side === c.side && q.pos !== 'GK'; });
+        const i = mates.indexOf(id);
+        const scorer = id === c.scorer;
+        const ang = (i / Math.max(1, mates.length)) * Math.PI * 2;
+        const rad = scorer ? 0 : 1.6 + (i % 3) * 0.9;
+        const tx = c.cx + Math.cos(ang) * rad, ty = c.cy + Math.sin(ang) * rad;
+        const jump = 1 + w * 0.16 * Math.abs(Math.sin(t * 8 + i * 1.3));
+        return [x + (tx - x) * w, y + (ty - y) * w, jump];
+      }
+
       function drawWalkout(players: Array<[string, number, number]>, p: number, t: number) {
         const home = players.filter(([id]) => info.get(id)?.side === 'home');
         const away = players.filter(([id]) => info.get(id)?.side === 'away');

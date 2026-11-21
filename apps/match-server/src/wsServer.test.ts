@@ -90,15 +90,15 @@ describe('Match-Server (echte WebSocket-Clients)', () => {
     const iff = await fan.wait((m) => m.t === 'init');
     expect(iff.walkoutMs).toBeLessThanOrEqual(ih.walkoutMs);
     await Promise.all([home.wait((m) => m.t === 'status' && m.status === 'running'), fan.wait((m) => m.t === 'status' && m.status === 'running')]);
-    // 20 s Einlauf bei 40-facher Testgeschwindigkeit = 500 ms; der Start-Befehl darf nicht vorziehen
-    expect(Date.now() - t0).toBeGreaterThanOrEqual(400);
+    // 12 s Einlauf (ohne Hymne) bei 40-facher Testgeschwindigkeit = 300 ms; der Start-Befehl darf nicht vorziehen
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(240);
     home.ws.close(); fan.ws.close();
   });
 
   it('Hymne: Einlauf dauert die volle Hymnenlänge (+ Ausklang)', async () => {
     const home = await connect('token-home-xxxx', 'league-anthem-1');
     const ih = await home.wait((m) => m.t === 'init');
-    // 30 s Hymne + 2,5 s bei 40-facher Testgeschwindigkeit ≈ 812 ms (statt 500 ms Standard)
+    // 30 s Hymne + 2,5 s bei 40-facher Testgeschwindigkeit ≈ 812 ms (statt 300 ms ohne Hymne)
     expect(ih.walkoutTotalMs).toBeGreaterThan(780);
     home.ws.close();
   });
@@ -106,7 +106,7 @@ describe('Match-Server (echte WebSocket-Clients)', () => {
   it('Hymne ohne gespeicherte Länge: Heim-Manager meldet sie, Einlauf wird verlängert', async () => {
     const home = await connect('token-home-xxxx', 'league-measure-1');
     const ih = await home.wait((m) => m.t === 'init');
-    expect(ih.walkoutTotalMs).toBe(500);
+    expect(ih.walkoutTotalMs).toBe(300);
     home.send({ t: 'anthem', durationMs: 90_000 });
     const w = await home.wait((m) => m.t === 'walkout' && (m.totalMs as number) > 1000);
     expect(w.totalMs).toBeGreaterThan(2300); // (90 s + 2,5 s) / 40

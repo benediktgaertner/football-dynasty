@@ -107,3 +107,10 @@ npm run build
 - `apps/web/src/lib/crowdAudio.test.ts` (0034): Hörbarkeit per Offline-Rendering (benötigt lokal `npm i --no-save node-web-audio-api`, sonst übersprungen).
 - `B1_country_setup.sql` + `B2_country_world.sql` (0033): Welterstellung für Italien (1. Liga), San Marino (2. Liga), Niederlande (3. Liga) und Deutschland (3. Liga): Host-Rechte, Ligen/Namen, Menschen in der Startliga, Skalierung von Pool und Startkapital, Draft, Saisonstart ohne Europapokal, 27 Ligaspiele je Spieltag, Amateurvereine des Landes.
 - `50_season.sql` prüft zusätzlich den Übergang Saison 1 → 2: Saison 1 ohne Europapokal, Saison 2 mit 13 Europapokal-Terminen und Qualifikation aus der Abschlusstabelle.
+
+## E2E (Playwright): Matchansicht
+`npm run e2e -w @fd/web`. Das startet Vite (Port 5199) und einen echten Match-Server mit Test-Backend (`apps/match-server/e2e/server.ts`, Port 8791, Echtzeit).
+- **Browser:** lokales Chrome (`PW_CHROME`, Standard `/usr/bin/google-chrome`) oder Playwright-Chromium.
+- **Testseite:** `apps/web/e2e/harness.html`. Sie nutzt die echten Komponenten (MatchClient, MatchPitch, Einlauf-Overlay, Stadionton) und ist nur im Dev-Server verfügbar, nicht im Produktions-Build.
+- **Fälle:** Überspringen (Heimspiel mit Hymne, Auswärtsspiel gegen KI ohne Hymne, Heimspiel ohne Hymne, Pokal, Champions League), kurzer Einlauf ohne Hymne, volle Hymne, Multiplayer-Abstimmung, Verlassen stoppt alles, Heim- und Auswärtstor (Jubeldauer, Ende mit Wiederanstoß, keine Überlappung), KI-Fankurve klingt nicht musikalisch.
+- **Seeds mit frühem Tor:** `npx tsx e2e/findGoalSeed.ts [home|away]` (im Match-Server-Ordner).

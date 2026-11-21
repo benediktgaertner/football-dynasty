@@ -288,16 +288,40 @@ export class StadiumMixer {
     const at = ctx.currentTime + 0.02;
     // Auswärtstor: Gästeblock kurzzeitig besonders laut (nach Größe des Gästeblocks)
     const peak = (home ? 0.55 : 0.3 * this.awayScale) * this.base * 1.6 * strength;
-    const dur = home ? 6.5 : 3.5;
+    // kurz und intensiv: der Wiederanstoß beendet den Jubel ohnehin (endCelebration)
+    const dur = home ? 4.6 : 3.5;
+    const cel = ctx.createGain(); cel.connect(dest); this.celebration.push(cel); this.roars++;
     const s = ctx.createBufferSource(); s.buffer = this.noise; s.loop = true;
     const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 0.7;
     f.frequency.setValueAtTime(600, at); f.frequency.linearRampToValueAtTime(1500, at + 0.4); f.frequency.linearRampToValueAtTime(900, at + dur);
     const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(peak, at + 0.25);
     g.gain.setTargetAtTime(peak * 0.55, at + 1.5, 1.2); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
-    s.connect(f).connect(g).connect(dest); this.node(s, at, dur + 0.1);
+    s.connect(f).connect(g).connect(cel); this.node(s, at, dur + 0.1);
     // Stimmen: viele leicht verstimmte Sägezähne durch „ah“-Formanten
-    this.voices(at, dur * 0.7, home ? 14 : 9, peak * 0.22, 'ah', dest, 1.0);
+    this.voices(at, dur * 0.7, home ? 14 : 9, peak * 0.22, 'ah', cel, 1.0);
+    setTimeout(() => { this.celebration = this.celebration.filter((x) => x !== cel); }, (dur + 0.5) * 1000);
     if (!this.crowdMode) this.push(1, home ? 7 : 2);
+  }
+
+  private celebration: GainNode[] = [];
+  /** laufende Dateien/Gesänge (für Diagnose: Hymne läuft? Torhymne beendet?) */
+  private playing = new Set<{ url: string; channel: Channel }>();
+  /** Anzahl ausgelöster Torjubel (Diagnose/Tests) */
+  roars = 0;
+
+  /** Wiederanstoß: laufenden Torjubel sofort weich beenden (keine überlappenden Jubelschleifen) */
+  endCelebration(fade = 0.4) {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    for (const g of this.celebration) { g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(g.gain.value, now); g.gain.linearRampToValueAtTime(0, now + fade); }
+    this.celebration = [];
+  }
+
+  /** Diagnose für Tests (keine Wirkung auf den Klang) */
+  debug() {
+    const by = (c: Channel) => [...this.playing].filter((p) => p.channel === c).map((p) => p.url);
+    return { sources: this.sources.size, celebrating: this.celebration.length, roars: this.roars, active: this.active,
+      crowd: this.lastCrowd.slice() as [number, number], anthem: by('anthem'), chants: by('chants') };
   }
 
   /** Kollektives „Ooooh“ nach vergebener Großchance / Aluminium */
@@ -391,16 +415,19 @@ export class StadiumMixer {
     if (offset >= data.buffer.duration - 0.2) return null;
     src.start(at, offset);
     this.sources.add(src);
+    const entry = { url, channel: o.channel };
+    this.playing.add(entry);
     let done = false;
     let resolve!: () => void;
     const ended = new Promise<void>((r) => { resolve = r; });
     const stop = (fade = 1) => {
       if (done) return; done = true;
+      this.playing.delete(entry);
       const t = ctx.currentTime;
       g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), t); g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.05, fade));
       try { src.stop(t + Math.max(0.05, fade) + 0.05); } catch { /* bereits beendet */ }
     };
-    src.onended = () => { this.sources.delete(src); done = true; resolve(); };
+    src.onended = () => { this.sources.delete(src); this.playing.delete(entry); done = true; resolve(); };
     const rest = data.buffer.duration - offset;
     const len = Math.min(rest, o.maxSec ?? rest);
     if (len < rest) setTimeout(() => stop(1.5), Math.max(0, (len - 1.5) * 1000));
@@ -416,6 +443,8 @@ export class StadiumMixer {
     out.gain.cancelScheduledValues(t); out.gain.setValueAtTime(Math.max(0.0001, out.gain.value), t); out.gain.exponentialRampToValueAtTime(0.0001, t + fade);
     const srcs = [...this.sources];
     this.sources.clear();
+    this.playing.clear();
+    this.celebration = [];
     this.running = false;
     this.bedHome = this.bedAway = null;
     setTimeout(() => {

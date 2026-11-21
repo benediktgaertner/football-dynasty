@@ -133,7 +133,11 @@ export class MatchSound {
     const home = e.side === 'home';
     const big = (e.xg ?? 0) > 0.12;
     switch (e.type) {
-      case 'kickoff': mixer.whistle('long'); break;
+      case 'kickoff':
+        mixer.whistle('long');
+        // Wiederanstoß nach einem Tor: intensiver Jubel endet vollständig, normale Kulisse kehrt zurück
+        if (e.side) this.endGoal();
+        break;
       case 'halftime': mixer.whistle('half'); break;
       case 'fulltime': this.finish(); break;
       case 'goal': this.goal(e.side ?? 'home'); break;
@@ -151,27 +155,41 @@ export class MatchSound {
   }
 
   /** Tor: laufenden Gesang ausblenden, Netz, Jubel, Torhymne des Vereins; danach zurück zur Playlist */
+  private goalHymn: Track | null = null;
+
+  /**
+   * Tor: sofort intensiver Jubel (Heimtor) bzw. Verstummen der Heimfans und Jubel im Gästeblock (Auswärtstor).
+   * Die Torhymne des Vereins setzt direkt ein. Alles endet mit dem Wiederanstoß (≈ 4–5 s später).
+   */
   private goal(side: 'home' | 'away') {
     mixer.net(false);
-    this.current?.stop(0.8);
+    this.current?.stop(0.5);
     this.current = null;
     this.currentSide = null;
-    this.goalUntil = performance.now() + 9000;
-    // Heimtor: explosiver Jubel · Gegentor: Heimfans verstummen, Gästeblock jubelt
-    this.envelope.event(side === 'home' ? 'home_goal' : 'away_goal');
+    this.goalHymn?.stop(0.3);
+    this.goalHymn = null;
+    this.goalUntil = performance.now() + 7000; // Sicherung, falls kein Wiederanstoß kommt (Schlusspfiff)
+    this.envelope.event(side === 'home' ? 'home_goal' : 'away_goal', 7);
     if (side === 'home') { mixer.roar('home'); } else { mixer.roar('away'); mixer.groan(); }
     const hymn = pickNext(side === 'home' ? this.homeGoal : this.awayGoal, null);
-    if (hymn) {
-      setTimeout(() => {
-        if (this.finished) return;
-        mixer.ducking(0.55, 1);
-        void mixer.play(this.url(hymn.path!), { channel: 'anthem', volume: hymn.volume * (side === 'home' ? 1 : 0.4 * mixer.awayLevel), pan: side === 'home' ? -0.2 : 0.75, maxSec: 25, fadeIn: 0.6 }).then((t) => {
-          if (!t) { mixer.ducking(1); return; }
-          this.goalUntil = performance.now() + 25000;
-          void t.ended.then(() => { mixer.ducking(1); this.goalUntil = performance.now() + 2500; this.wait = nextPause(0.3); });
-        });
-      }, 1800);
-    } else this.wait = 6;
+    if (!hymn) return;
+    const gen = mixer.generation;
+    void mixer.play(this.url(hymn.path!), { channel: 'anthem', volume: hymn.volume * (side === 'home' ? 1 : 0.4 * mixer.awayLevel), pan: side === 'home' ? -0.2 : 0.75, maxSec: 7, fadeIn: 0.3 }).then((t) => {
+      if (!t) return;
+      // Wiederanstoß bereits erfolgt oder Seite verlassen: nicht nachträglich starten
+      if (this.finished || gen !== mixer.generation || performance.now() > this.goalUntil) { t.stop(0.2); return; }
+      this.goalHymn = t;
+    });
+  }
+
+  /** Wiederanstoß: Jubel, Torhymne und Ereignis-Hüllkurve sofort weich beenden */
+  private endGoal() {
+    mixer.endCelebration(0.5);
+    this.goalHymn?.stop(0.6);
+    this.goalHymn = null;
+    this.envelope.release();
+    this.goalUntil = performance.now() + 1500;
+    this.wait = 2 + Math.random() * 2;
   }
 
   private lastWhistleEvent = 0;

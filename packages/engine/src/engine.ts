@@ -1738,7 +1738,8 @@ export class MatchEngine {
         if (assist) { const a = t.players.find((p) => p.input.id === assist); if (a) a.stats.assists++; }
         const how = setPiece === 'penalty' ? ' (Elfmeter)' : setPiece === 'free_kick' ? ' (Freistoß)' : header ? ' (Kopfball)' : '';
         this.log({ type: 'goal', side: t.side, playerId: c.input.id, otherId: assist ?? undefined, xg: round2(xg), text: `TOR für ${t.input.shortName}! ${name}${how} – ${this.score[0]}:${this.score[1]}` });
-        this.stoppage(sec(6), () => this.kickoff(dt.side));
+        // Wiederanstoß wird protokolliert (Client beendet damit den Torjubel); Ablauf und Zufall unverändert
+        this.stoppage(sec(6), () => { this.kickoff(dt.side); this.log({ type: 'kickoff', side: dt.side, text: 'Wiederanstoß' }); });
         return;
       }
       if (onTarget) {
