@@ -4,14 +4,17 @@
  *   (gleicher Tick wie die Darstellung) – kein Ereignis löst zweimal aus.
  * - Kulisse: Heim- und Gästefans als getrennte Spuren; Intensität aus der Spielsituation (crowdModel),
  *   30-dB-Bereich mit weichen Übergängen (Angriff, Strafraum, Chance vergeben, Tor, Gegentor, Schlussphase).
- * - Fangesänge: zufällige Playlist aller regulären Gesänge (ohne Signatur-Gesang und Torhymne);
- *   ohne Uploads (KI-Vereine) generische Gesänge. Ballbesitz/Angriff machen einen Einsatz wahrscheinlicher,
- *   höchstens ein Gesang gleichzeitig; Gästefans seltener und leiser (rechts), nach Größe des Gästeblocks.
+ * - Fangesänge: je Seite eigene Spur. Hochgeladene Gesänge der Vereine (auch auswärts) und echte
+ *   Stadionaufnahmen (Klatschen, Sprechchöre, Kurvengesang) – zufällig, ohne direkte Wiederholung,
+ *   mit natürlichen Pausen. KEINE synthetischen Chöre/Melodien: fehlen Aufnahmen, bleibt es beim Rauschen.
+ *   Ballbesitz/Angriff machen einen Einsatz wahrscheinlicher; Gästefans seltener und leiser (rechts).
+ * - Ereignisse (Aufnahmen): Anfeuerung bei Angriffen, Aufschrei bei Großchancen, Pfiffe gegen den Gegner,
+ *   Torjubel bzw. Enttäuschung – geschichtet über Gesang und Rauschen.
  * - Hymne und Signatur-Fangesang nur beim Einlauf; Torhymne nur beim Tor des eigenen Vereins.
  */
 import { mixer, type Track } from './audioMixer';
 import { CrowdEnvelope, chantRate, situationOf, targetsOf, type PlayState, type Situation } from './crowdModel';
-import { chantSetFor } from './synthChant';
+import { loadCrowdLibrary, type CrowdCategory, type CrowdFile } from './crowdLibrary';
 import type { AudioRef } from './matchClient';
 
 export interface ChantRef extends AudioRef { signature?: boolean }
@@ -36,45 +39,69 @@ export function nextPause(pressure: number, rnd: () => number = Math.random): nu
 }
 
 type Ev = { tick: number; type: string; side: 'home' | 'away' | null; xg?: number };
+type Side = 'home' | 'away';
 
-/** Gesang einer Seite: hochgeladene MP3 oder generischer Gesang (Muster-Index) */
-type Song = { id: string; kind: 'mp3'; ref: ChantRef } | { id: string; kind: 'synth'; pattern: number };
+/** Gesang einer Seite: hochgeladene MP3 des Vereins oder echte Stadionaufnahme aus der Bibliothek */
+type Song = { id: string; kind: 'mp3'; ref: ChantRef } | { id: string; kind: 'rec'; file: CrowdFile };
+
+/** Welche Aufnahmen die Kurve in welcher Situation bevorzugt (Gewichte) */
+export function chantWeights(sit: Situation, own: boolean): Array<[CrowdCategory, number]> {
+  const attack = own && (sit.endsWith('attack') || sit.endsWith('box'));
+  if (attack) return [['chant_short', 3], ['clap', 2], ['chant_sung', 0.5]];
+  if (sit === 'finale') return [['clap', 3], ['chant_short', 2], ['chant_sung', 1]];
+  if (own) return [['chant_sung', 3], ['clap', 1.5], ['chant_short', 1]];
+  return [['chant_sung', 2], ['clap', 1], ['chant_short', 0.5]];
+}
+
+const DEFAULT_MANIFEST = '/audio/crowd/manifest.json';
 
 export class MatchSound {
-  private home: Song[] = [];
-  private away: Song[] = [];
+  private uploads: Record<Side, ChantRef[]> = { home: [], away: [] };
   private homeGoal: ChantRef[] = [];
   private awayGoal: ChantRef[] = [];
-  private current: Track | null = null;
-  private lastId: string | null = null;
-  private wait = 4;
+  private cur: Record<Side, Track | null> = { home: null, away: null };
+  private curId: Record<Side, string | null> = { home: null, away: null };
+  private lastUpload: Record<Side, string | null> = { home: null, away: null };
+  private wait: Record<Side, number> = { home: 4, away: 9 };
   private goalUntil = 0;
   private finished = false;
   private started = false;
   private sit: Situation = 'calm';
+  private lastAttack: Record<Side, number> = { home: 0, away: 0 };
+  private t = 0;
   readonly envelope = new CrowdEnvelope();
   private url: (path: string) => string;
+  private manifest: string;
+  /** Bibliothek geladen (Promise für Tests) */
+  ready: Promise<void> = Promise.resolve();
 
-  constructor(url: (path: string) => string) { this.url = url; }
+  constructor(url: (path: string) => string, manifest = DEFAULT_MANIFEST) { this.url = url; this.manifest = manifest; }
 
   /**
    * Gesänge des Spiels setzen (aus dem Match-Setup – keine weiteren Datenbankabfragen).
-   * Ohne eigene Uploads (z. B. KI-Vereine) singen die Fans generische, vereinsneutrale Gesänge.
+   * Hochgeladene Gesänge der Vereine werden weiter verwendet (Heim- und Auswärtsspiel);
+   * dazu – bzw. für KI-Vereine ausschließlich – echte Stadionaufnahmen aus der Bibliothek.
    */
-  setChants(home: ChantRef[], away: ChantRef[], clubs: { home?: string | null; away?: string | null } = {}) {
-    const songs = (list: ChantRef[], club: string | null | undefined): Song[] => {
-      const up = regularChants(list).map((ref) => ({ id: ref.id, kind: 'mp3' as const, ref }));
-      if (up.length) return up;
-      return chantSetFor(club ?? 'neutral').map((pattern) => ({ id: `synth${pattern}`, kind: 'synth' as const, pattern }));
-    };
-    this.home = songs(home, clubs.home); this.homeGoal = goalHymns(home);
-    this.away = songs(away, clubs.away); this.awayGoal = goalHymns(away);
+  setChants(home: ChantRef[], away: ChantRef[], _clubs: { home?: string | null; away?: string | null } = {}) {
+    this.uploads = { home: regularChants(home), away: regularChants(away) };
+    this.homeGoal = goalHymns(home); this.awayGoal = goalHymns(away);
     // Dateien vorab zwischenspeichern (einmal laden/dekodieren)
-    for (const c of [...this.home, ...this.away]) if (c.kind === 'mp3') void mixer.load(this.url(c.ref.path!));
-    for (const c of [...this.homeGoal, ...this.awayGoal]) void mixer.load(this.url(c.path!));
+    for (const c of [...this.uploads.home, ...this.uploads.away, ...this.homeGoal, ...this.awayGoal]) void mixer.load(this.url(c.path!));
+    this.ready = loadCrowdLibrary(this.manifest).then((lib) => { mixer.setLibrary(lib); });
   }
 
-  begin() { this.started = true; this.finished = false; this.wait = 2 + Math.random() * 3; }
+  private warm: ReturnType<typeof setInterval> | null = null;
+  /** vor dem Anpfiff (Einlauf): Stadionrauschen läuft bereits, Vorfreude-Pegel */
+  warmup() {
+    if (this.warm || this.started) return;
+    mixer.setCrowd(0.55, 0.2);
+    this.warm = setInterval(() => {
+      if (this.started || this.finished || !mixer.active) { if (this.warm) clearInterval(this.warm); this.warm = null; return; }
+      mixer.setCrowd(0.55, 0.2);
+    }, 1000);
+  }
+
+  begin() { if (this.warm) { clearInterval(this.warm); this.warm = null; } this.started = true; this.finished = false; this.wait = { home: 1.5 + Math.random() * 2.5, away: 5 + Math.random() * 6 }; }
 
   /** aktuelle Spielsituation (für Anzeige/Tests) */
   get situation(): Situation { return this.sit; }
@@ -85,45 +112,89 @@ export class MatchSound {
    */
   frame(dt: number, play: PlayState | number) {
     if (!this.started || this.finished || !mixer.active) return;
+    this.t += dt;
     const ps: PlayState = typeof play === 'number'
       ? { possession: play > 0.1 ? 'home' : play < 0.1 ? 'away' : null, toGoal: (1 - play) * 65, inBox: play >= 1, forward: 0, minute: 0, homeScore: 0, awayScore: 0 }
       : play;
+    const prev = this.sit;
     this.sit = situationOf(ps);
     const lv = this.envelope.update(dt, targetsOf(this.sit, ps));
-    mixer.setCrowd(lv.home * (this.current && this.currentSide === 'home' ? 0.85 : 1), lv.away);
-    if (this.current || performance.now() < this.goalUntil) return;
-    this.wait -= dt;
-    if (this.wait > 0) return;
-    // Gesangswahrscheinlichkeit steigt bei Ballbesitz und Angriffen der eigenen Mannschaft; Heimfans dominieren
-    const rh = chantRate('home', this.sit), ra = chantRate('away', this.sit);
-    const roll = Math.random() * (1 + rh + ra);
-    this.wait = 1;
-    if (roll > rh + ra) return;
-    const side: 'home' | 'away' = roll < rh ? 'home' : 'away';
-    this.sing(side);
+    // Spielstand: führende Fans etwas lauter, zurückliegende etwas gedämpfter
+    const diff = Math.max(-3, Math.min(3, ps.homeScore - ps.awayScore));
+    mixer.setCrowd(Math.min(1, lv.home * (1 + 0.04 * diff)), Math.min(1, lv.away * (1 - 0.04 * diff)));
+    if (performance.now() < this.goalUntil || this.envelope.busy) return;
+    // Anfeuerung beim Übergang in einen Angriff (geschichtet über den laufenden Gesang)
+    for (const side of ['home', 'away'] as const) {
+      const now = this.sit.startsWith(side) && (this.sit.endsWith('attack') || this.sit.endsWith('box'));
+      const before = prev.startsWith(side) && (prev.endsWith('attack') || prev.endsWith('box'));
+      if (now && !before && this.t - this.lastAttack[side] > 9 && Math.random() < (side === 'home' ? 0.6 : 0.35)) {
+        this.lastAttack[side] = this.t;
+        void mixer.reaction('attack', side, { maxSec: 6, cooldownMs: 6000, volume: side === 'home' ? 0.9 : 0.8 });
+      }
+    }
+    for (const side of ['home', 'away'] as const) {
+      if (this.cur[side]) continue;
+      this.wait[side] -= dt;
+      if (this.wait[side] > 0) continue;
+      this.wait[side] = 1;
+      // Gesangswahrscheinlichkeit steigt bei Ballbesitz und Angriffen der eigenen Mannschaft; Heimfans dominieren
+      if (Math.random() < chantRate(side, this.sit)) this.sing(side);
+    }
   }
 
-  private currentSide: 'home' | 'away' | null = null;
+  private choose(side: Side): Song | null {
+    const ups = this.uploads[side];
+    const own = this.sit.startsWith(side) || this.sit === 'finale';
+    const libOk = ['chant_short', 'chant_sung', 'clap'].some((c) => mixer.has(c as CrowdCategory));
+    // eigene Uploads bevorzugt (75 %), dazwischen echte Kurvenaufnahmen für Abwechslung
+    if (ups.length && (!libOk || Math.random() < 0.75)) {
+      const ref = pickNext(ups, this.lastUpload[side]);
+      if (ref) { this.lastUpload[side] = ref.id; return { id: ref.id, kind: 'mp3', ref }; }
+    }
+    const other = side === 'home' ? this.curId.away : this.curId.home;
+    const f = mixer.pick(chantWeights(this.sit, own), `chant:${side}`, other ? [other] : []);
+    return f ? { id: f.id, kind: 'rec', file: f } : null;
+  }
 
-  private sing(side: 'home' | 'away') {
-    const list = side === 'home' ? this.home : this.away;
-    const next = pickNext(list, this.lastId);
-    if (!next) { this.wait = nextPause(0.3); return; }
-    this.lastId = next.id;
-    this.current = { stop: () => undefined, ended: Promise.resolve(), url: '' }; // Platzhalter während des Ladens
-    this.currentSide = side;
-    // Gäste: deutlich leiser (nach Größe des Gästeblocks), rechts; Heim: volle Kurve
-    const vol = side === 'home' ? 1 : 0.38 * mixer.awayLevel;
-    const opts = { volume: vol * (next.kind === 'mp3' ? next.ref.volume : 0.85), pan: side === 'home' ? -0.3 : 0.75, maxSec: 40, fadeIn: 1.4 };
-    const p = next.kind === 'mp3'
-      ? mixer.play(this.url(next.ref.path!), { channel: 'chants', ...opts })
-      : mixer.chant(next.pattern, { ...opts, side });
+  private sing(side: Side) {
+    const next = this.choose(side);
+    if (!next) { this.wait[side] = nextPause(0.3); return; }
+    const placeholder: Track = { stop: () => undefined, ended: Promise.resolve(), url: '' }; // Platzhalter während des Ladens
+    this.cur[side] = placeholder;
+    this.curId[side] = next.id;
+    let p: Promise<Track | null>;
+    if (next.kind === 'mp3') {
+      p = mixer.play(this.url(next.ref.path!), { channel: side, volume: next.ref.volume, maxSec: 40, fadeIn: 1.4, fadeOut: 2, id: next.id, category: 'upload' });
+    } else {
+      const f = next.file;
+      const sung = f.category === 'chant_sung';
+      // langer Gesang: Ausschnitt mit Einstieg an zufälliger Stelle; kurze Rufe vollständig
+      const len = sung ? 18 + Math.random() * 20 : f.duration;
+      const offset = sung && f.duration > len + 2 ? Math.random() * (f.duration - len) : 0;
+      p = mixer.play(mixer.urlOf(f), {
+        channel: side, id: f.id, category: f.category, offset, maxSec: len,
+        volume: (f.gain ?? 1) * (f.category === 'clap' ? 0.75 : 0.85), fadeIn: sung ? 1.5 : f.category === 'clap' ? 0.4 : 0.12,
+        fadeOut: sung ? 2.5 : 0.6, rate: 0.97 + Math.random() * 0.06,
+      });
+    }
     void p.then((t) => {
-      if (!t) { this.current = null; this.currentSide = null; this.wait = nextPause(0.3); return; }
-      if (this.finished || performance.now() < this.goalUntil) { t.stop(0.5); this.current = null; this.currentSide = null; return; }
-      this.current = t;
-      void t.ended.then(() => { if (this.current === t) { this.current = null; this.currentSide = null; this.wait = nextPause(0.3); } });
+      if (this.cur[side] !== placeholder) { t?.stop(0.3); return; }
+      if (!t) { this.cur[side] = null; this.curId[side] = null; this.wait[side] = nextPause(0.3); return; }
+      if (this.finished || performance.now() < this.goalUntil) { t.stop(0.5); this.cur[side] = null; this.curId[side] = null; return; }
+      this.cur[side] = t;
+      void t.ended.then(() => {
+        if (this.cur[side] !== t) return;
+        this.cur[side] = null; this.curId[side] = null;
+        // natürliche Pause; in ruhigen Phasen länger, Gäste seltener
+        const own = this.sit.startsWith(side);
+        this.wait[side] = nextPause(own ? 0.6 : 0.1) * (side === 'away' ? 1.8 : 1) * (this.sit === 'calm' || this.sit === 'harmless' ? 1.5 : 1);
+      });
     });
+  }
+
+  private silence(side: Side, fade: number) {
+    this.cur[side]?.stop(fade);
+    this.cur[side] = null; this.curId[side] = null;
   }
 
   /** sichtbares Spielereignis */
@@ -141,17 +212,28 @@ export class MatchSound {
       case 'halftime': mixer.whistle('half'); break;
       case 'fulltime': this.finish(); break;
       case 'goal': this.goal(e.side ?? 'home'); break;
-      case 'woodwork': mixer.woodwork(); if (home) { mixer.ooh(); this.envelope.event('home_miss'); } else this.envelope.event('away_miss'); break;
-      case 'chance': if (home) { mixer.ooh(); this.envelope.event('home_miss', 2); } break;
-      case 'save': if (home && big) { mixer.ooh(); this.envelope.event('home_miss'); } else if (!home && big) this.envelope.event('away_miss'); break;
-      case 'miss': if (ctx.ballOutsideNet) mixer.net(true); if (home && big) { mixer.ooh(); this.envelope.event('home_miss'); } else if (!home && big) this.envelope.event('away_miss'); mixer.whistle('soft'); break;
-      case 'foul': mixer.whistle('short'); if (e.side === 'away') mixer.jeer(); break;
+      case 'woodwork': mixer.woodwork(); this.chance(e.side, true); break;
+      case 'chance': this.chance(e.side, true); break;
+      case 'save': if (big) this.chance(e.side, false); break;
+      case 'miss': if (ctx.ballOutsideNet) mixer.net(true); if (big) this.chance(e.side, false); mixer.whistle('soft'); break;
+      case 'foul':
+        mixer.whistle('short');
+        // Pfiffe der Heimfans gegen den Gegner; Gästeblock pfeift seltener und leiser
+        if (e.side === 'away') void mixer.reaction('whistle', 'home', { maxSec: 5, cooldownMs: 8000 });
+        else if (Math.random() < 0.4) void mixer.reaction('whistle', 'away', { maxSec: 4, cooldownMs: 10000, volume: 0.7 });
+        break;
       case 'offside': mixer.whistle('short'); break;
       case 'corner': mixer.whistle('soft'); break;
       case 'penalty': mixer.whistle('short'); this.envelope.event(home ? 'home_miss' : 'away_miss', 0.01); break;
-      case 'yellow': case 'second_yellow': case 'red': if (e.side !== 'away') mixer.jeer(); break;
+      case 'yellow': case 'second_yellow': case 'red': if (e.side !== 'away') void mixer.reaction('whistle', 'home', { maxSec: 5, cooldownMs: 8000 }); break;
       default: break;
     }
+  }
+
+  /** Großchance vergeben: Aufschrei der Fans des angreifenden Teams (Gäste leiser) */
+  private chance(side: Side | null, envelope: boolean) {
+    if (side === 'home') { void mixer.reaction('chance', 'home', { maxSec: 4, cooldownMs: 2500 }); this.envelope.event('home_miss', envelope ? undefined : 2); }
+    else if (side === 'away') { void mixer.reaction('chance', 'away', { maxSec: 3.5, cooldownMs: 2500, volume: 0.8 }); this.envelope.event('away_miss'); }
   }
 
   /** Tor: laufenden Gesang ausblenden, Netz, Jubel, Torhymne des Vereins; danach zurück zur Playlist */
@@ -163,14 +245,14 @@ export class MatchSound {
    */
   private goal(side: 'home' | 'away') {
     mixer.net(false);
-    this.current?.stop(0.5);
-    this.current = null;
-    this.currentSide = null;
+    this.silence('home', 0.4);
+    this.silence('away', 0.4);
     this.goalHymn?.stop(0.3);
     this.goalHymn = null;
     this.goalUntil = performance.now() + 7000; // Sicherung, falls kein Wiederanstoß kommt (Schlusspfiff)
     this.envelope.event(side === 'home' ? 'home_goal' : 'away_goal', 7);
-    if (side === 'home') { mixer.roar('home'); } else { mixer.roar('away'); mixer.groan(); }
+    // Aufnahmen: Heimtor = Kurve explodiert; Auswärtstor = Gästeblock kurz sehr laut, Heimfans enttäuscht
+    mixer.goal(side);
     const hymn = pickNext(side === 'home' ? this.homeGoal : this.awayGoal, null);
     if (!hymn) return;
     const gen = mixer.generation;
@@ -184,12 +266,12 @@ export class MatchSound {
 
   /** Wiederanstoß: Jubel, Torhymne und Ereignis-Hüllkurve sofort weich beenden */
   private endGoal() {
-    mixer.endCelebration(0.5);
+    mixer.endCelebration(0.6);
     this.goalHymn?.stop(0.6);
     this.goalHymn = null;
     this.envelope.release();
     this.goalUntil = performance.now() + 1500;
-    this.wait = 2 + Math.random() * 2;
+    this.wait = { home: 1.5 + Math.random() * 2, away: 4 + Math.random() * 4 };
   }
 
   private lastWhistleEvent = 0;
@@ -209,12 +291,12 @@ export class MatchSound {
     if (this.finished) return;
     this.finished = true;
     mixer.whistle('final');
-    this.current?.stop(1.5);
-    this.current = null;
+    this.silence('home', 1.5);
+    this.silence('away', 1.5);
     this.envelope.event('home_miss', 3);
     const gen = mixer.generation;
     setTimeout(() => mixer.shutdown(2.5, gen), 4500);
   }
 
-  stop(fade = 0.6) { this.finished = true; this.current?.stop(fade); this.current = null; mixer.shutdown(fade); }
+  stop(fade = 0.6) { this.finished = true; this.silence('home', fade); this.silence('away', fade); mixer.shutdown(fade); }
 }

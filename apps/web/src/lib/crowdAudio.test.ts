@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { CrowdEnvelope, LEVELS, situationOf, targetsOf, type PlayState } from './crowdModel';
+import { Picker, buildLibrary, type CrowdCategory, type CrowdFile } from './crowdLibrary';
 
 const wa = await import('node-web-audio-api' as string).catch(() => null) as { OfflineAudioContext: typeof OfflineAudioContext } | null;
 const SR = 22050;
@@ -94,15 +95,131 @@ describe.skipIf(!wa)('Stadionatmosphäre – hörbare Pegelunterschiede (Offline
     expect(maxJump).toBeLessThan(6);
   }, 120_000);
 
-  it('generische Fangesänge: hörbarer Gesang mit Trommel', async () => {
-    (globalThis as { OfflineAudioContext?: unknown }).OfflineAudioContext = wa!.OfflineAudioContext;
-    const { renderChant, CHANT_PATTERNS } = await import('./synthChant');
-    for (let i = 0; i < CHANT_PATTERNS.length; i++) {
-      const b = await renderChant(i, SR);
-      expect(b).not.toBeNull();
-      expect(b!.duration).toBeGreaterThan(5);
-      const db = rmsDb(b!, 0, 0.3, b!.duration - 2);
-      expect(db).toBeGreaterThan(-35);
-    }
+  it('Stadionrauschen aus Aufnahmen: Überblendung ohne Loch, Ersatzrauschen aus', async () => {
+    const { StadiumMixer } = await import('./audioMixer');
+    const sec = 44;
+    const ctx = new wa!.OfflineAudioContext(2, SR * sec, SR);
+    const m = new StadiumMixer();
+    m.attach(ctx as unknown as BaseAudioContext, { attendance: 30000, capacity: 35000, importance: 0.5 });
+    const files = [lib('ambience', 'a1', 30), lib('ambience', 'a2', 30)];
+    useLibrary(m, ctx, files);
+    for (let t = 0; t < sec; t += 0.1) m.setCrowd(0.4, 0.12, t);
+    const d = m.debug();
+    expect(d.ambienceSample).toBe(true);
+    const b = await ctx.startRendering() as unknown as AudioBuffer;
+    // zwei verschiedene Aufnahmen nacheinander (keine identische Wiederholung)
+    const amb = d.history.filter((h) => h.channel === 'ambience').map((h) => h.id);
+    expect(amb.length).toBeGreaterThanOrEqual(2);
+    for (let i = 1; i < amb.length; i++) expect(amb[i]).not.toBe(amb[i - 1]);
+    // Pegel bleibt über die Überblendung gleichmäßig (kein Loch, kein Buckel)
+    const lv: number[] = [];
+    for (let t = 4; t < sec - 0.5; t += 0.5) lv.push((rmsDb(b, 0, t, t + 0.5) + rmsDb(b, 1, t, t + 0.5)) / 2);
+    const med = [...lv].sort((x, y) => x - y)[Math.floor(lv.length / 2)]!;
+    for (const v of lv) expect(Math.abs(v - med)).toBeLessThan(3);
   }, 120_000);
+
+  it('Heimfans dominieren, Gästefans leiser aber hörbar; Auswärtstor: Gästeblock kurz sehr laut', async () => {
+    const { StadiumMixer } = await import('./audioMixer');
+    const render = async (fn: (m: InstanceType<typeof StadiumMixer>) => Promise<void> | void, home: number, away: number) => {
+      const ctx = new wa!.OfflineAudioContext(2, SR * 5, SR);
+      const m = new StadiumMixer();
+      m.attach(ctx as unknown as BaseAudioContext, { attendance: 30000, capacity: 35000, importance: 0.5, awayShare: 0.08 });
+      useLibrary(m, ctx, [lib('chant_sung', 's1', 10), lib('chant_sung', 's2', 10), lib('goal', 'g1', 6), lib('concede', 'c1', 4)]);
+      m.setVolume('ambience', 0); // Rauschen aus: nur die Fanspuren messen
+      m.setCrowd(home, away, 0);
+      await fn(m);
+      const b = await ctx.startRendering() as unknown as AudioBuffer;
+      return { all: (rmsDb(b, 0, 1, 4) + rmsDb(b, 1, 1, 4)) / 2, left: rmsDb(b, 0, 1, 4), right: rmsDb(b, 1, 1, 4) };
+    };
+    const chant = (side: 'home' | 'away') => async (m: InstanceType<typeof StadiumMixer>) => {
+      const f = m.pick(['chant_sung'], 'x')!;
+      await m.play(m.urlOf(f), { channel: side, id: f.id, category: f.category, at: 0, fadeIn: 0.2, volume: 0.85 });
+    };
+    const home = await render(chant('home'), 0.4, 0.12);
+    const away = await render(chant('away'), 0.4, 0.12);
+    console.table({ heim: home, gast: away });
+    expect(home.all - away.all).toBeGreaterThan(6); // Heimkurve dominiert
+    expect(away.all).toBeGreaterThan(-45); // Gäste hörbar
+    expect(home.left).toBeGreaterThan(home.right); // Heimkurve links
+    expect(away.right - away.left).toBeGreaterThan(3); // Gästeblock rechts
+    // Auswärtstor: Jubel des Gästeblocks deutlich lauter als sein normaler Gesang
+    const goal = await render(async (m) => { m.goal('away'); await new Promise((r) => setTimeout(r, 20)); }, 0.05, 0.65);
+    expect(goal.right - away.right).toBeGreaterThan(6);
+  }, 120_000);
+
+  it('Schichten aller Spuren übersteuert nicht', async () => {
+    const { StadiumMixer } = await import('./audioMixer');
+    const ctx = new wa!.OfflineAudioContext(2, SR * 6, SR);
+    const m = new StadiumMixer();
+    m.attach(ctx as unknown as BaseAudioContext, { attendance: 80000, capacity: 80000, importance: 1, awayShare: 0.15 });
+    useLibrary(m, ctx, [lib('ambience', 'a', 30, 0.9), lib('chant_short', 'c', 6, 0.9), lib('clap', 'k', 8, 0.9), lib('goal', 'g', 6, 0.95), lib('chance', 'o', 3, 0.95)]);
+    for (const c of ['ambience', 'home', 'away', 'events'] as const) m.setVolume(c, 1);
+    m.setCrowd(1, 1, 0);
+    const c = m.pick(['chant_short'], 'x')!, k = m.pick(['clap'], 'y')!;
+    await m.play(m.urlOf(c), { channel: 'home', at: 0.1, volume: 2 });
+    await m.play(m.urlOf(k), { channel: 'away', at: 0.1, volume: 2 });
+    m.goal('home');
+    await m.reaction('chance', 'home', { at: 0.3, volume: 2 });
+    await new Promise((r) => setTimeout(r, 20));
+    const b = await ctx.startRendering() as unknown as AudioBuffer;
+    let peak = 0;
+    for (let ch = 0; ch < 2; ch++) for (const v of b.getChannelData(ch)) peak = Math.max(peak, Math.abs(v));
+    expect(peak).toBeLessThan(1);
+    expect(peak).toBeGreaterThan(0.2);
+  }, 60_000);
+
+  it('fehlende Aufnahmen: keine Ersatzklänge, Kategorien werden gemeldet', async () => {
+    const { StadiumMixer } = await import('./audioMixer');
+    const ctx = new wa!.OfflineAudioContext(2, SR, SR);
+    const m = new StadiumMixer();
+    m.attach(ctx as unknown as BaseAudioContext, { attendance: 30000, capacity: 35000, importance: 0.5 });
+    const before = m.debug().sources;
+    expect(await m.reaction('goal', 'home')).toBeNull();
+    expect(await m.reaction('chance', 'away')).toBeNull();
+    m.goal('away');
+    expect(m.debug().sources).toBe(before);
+    expect(m.missing()).toEqual(['ambience', 'clap', 'chant_short', 'chant_sung', 'attack', 'chance', 'whistle', 'concede', 'goal']);
+    expect(m.roars).toBe(0);
+  });
+});
+
+/** Testaufnahme (gefiltertes Rauschen – nur Prüfsignal, keine Auslieferung) */
+type Ctx = InstanceType<NonNullable<typeof wa>['OfflineAudioContext']>;
+function lib(category: CrowdCategory, id: string, duration: number, amp = 0.3): CrowdFile {
+  return { id, category, file: `${category}/${id}.mp3`, duration, gain: amp };
+}
+function useLibrary(m: { setLibrary: (l: ReturnType<typeof buildLibrary>) => void; preload: (u: string, b: AudioBuffer) => void }, ctx: Ctx, files: CrowdFile[]) {
+  const l = buildLibrary('/t/', files);
+  for (const f of files) {
+    const b = ctx.createBuffer(2, Math.floor(SR * f.duration), SR) as unknown as AudioBuffer;
+    for (let ch = 0; ch < 2; ch++) { const d = b.getChannelData(ch); let x = 0; for (let i = 0; i < d.length; i++) { x = 0.9 * x + 0.1 * (Math.random() * 2 - 1); d[i] = x * 3 * (f.gain ?? 0.3); } }
+    m.preload(`/t/${f.file}`, b);
+    f.gain = 1;
+  }
+  m.setLibrary(l);
+}
+
+describe('Auswahl ohne Wiederholung', () => {
+  it('keine direkte Wiederholung, alle Aufnahmen kommen vor', () => {
+    const files = ['a', 'b', 'c', 'd'].map((id) => lib('chant_short', id, 5));
+    const l = buildLibrary('/', files);
+    const p = new Picker();
+    const seq: string[] = [];
+    for (let i = 0; i < 200; i++) seq.push(p.pick(l, ['chant_short'], 'k')!.id);
+    for (let i = 1; i < seq.length; i++) expect(seq[i]).not.toBe(seq[i - 1]);
+    // drei zuletzt gespielte gesperrt ⇒ bei vier Dateien feste Abwechslung ohne Häufung
+    for (let i = 3; i < seq.length; i++) expect(new Set(seq.slice(i - 3, i + 1)).size).toBe(4);
+    expect(new Set(seq).size).toBe(4);
+    // Gesperrte Datei der anderen Spur wird gemieden
+    for (let i = 0; i < 50; i++) expect(p.pick(l, ['chant_short'], 'z', ['a'])!.id).not.toBe('a');
+    expect(p.pick(buildLibrary('/', []), ['goal'], 'x')).toBeNull();
+  });
+
+  it('Kurvengesang je Situation: Angriff ⇒ Sprechchöre/Klatschen, ruhig ⇒ Dauergesang', async () => {
+    const { chantWeights } = await import('./fanAudio');
+    const w = (s: Parameters<typeof chantWeights>[0], own: boolean) => Object.fromEntries(chantWeights(s, own));
+    expect(w('home_attack', true).chant_short).toBeGreaterThan(w('home_attack', true).chant_sung!);
+    expect(w('calm', true).chant_sung).toBeGreaterThan(w('calm', true).chant_short!);
+    expect(w('finale', true).clap).toBeGreaterThan(w('finale', true).chant_sung!);
+  });
 });

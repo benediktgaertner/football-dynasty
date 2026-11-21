@@ -21,7 +21,7 @@ function App() {
   const client = useMemo(() => new MatchClient(server, fixture, { token: async () => token }), []);
   useEffect(() => { void client.connect(); return () => client.close(); }, [client]);
   const state = useSyncExternalStore((f) => client.subscribe(f), () => client.state) as MatchState;
-  const sound = useMatchAudio(state, client, fixture, (p) => `/e2e/${p}`);
+  const sound = useMatchAudio(state, client, fixture, (p) => `/e2e/${p}`, q.get('crowd') ?? '/e2e/crowd-test/manifest.json');
   const [voted, setVoted] = useState(false);
   useEffect(() => {
     const w = window as unknown as Record<string, unknown>;

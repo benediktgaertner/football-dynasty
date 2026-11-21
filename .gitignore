@@ -7,3 +7,8 @@ dist/
 .DS_Store
 .netlify/
 coverage/
+
+# Rohaufnahmen der Stadionatmosphäre (groß; aufbereitete MP3 liegen in apps/web/public/audio/crowd)
+assets/crowd-raw/**/*.wav
+assets/crowd-raw/**/*.flac
+assets/crowd-raw/**/*.aif*

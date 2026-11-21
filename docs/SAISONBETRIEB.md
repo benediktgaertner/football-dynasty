@@ -249,3 +249,33 @@ Speicher geben Postgres-Tabellen erst nach `VACUUM FULL` an das Dateisystem zur�
   - KI-Partie sofort; Multiplayer erst, wenn alle Manager zugestimmt haben (serverseitig).
   - Ohne Hymne nur eine kurze Einlaufsequenz (12 s). Mit Hymne läuft sie in voller Länge, wenn niemand überspringt.
 - **Ablauf:** Spielvorbereitung → Einlauf/Hymne (`waiting` + Einlaufzeit) → Anpfiff (`running`) → laufendes Spiel.
+
+## Update (ohne SQL): KI-Fans aus echten Stadionaufnahmen
+
+Ersetzt die Abschnitte zu `synthChant.ts`, generischen Gesängen und synthetischen Fanreaktionen oben.
+
+- **Prüfung vorher:** Im Projekt gab es keine einzige echte Zuschaueraufnahme. Alle KI-Fan-Klänge waren im Browser erzeugt: `synthChant.ts` (Rufmotive, Klatschen, Trommel), Rauschbetten sowie Jubel, „Ooooh“, Pfiffe und Raunen aus Oszillatoren mit Formanten. Das ist alles entfernt. `synthChant.ts`, `roar`, `ooh`, `jeer`, `groan` und `voices` gibt es nicht mehr.
+- **Neu: Bibliothek** (`apps/web/src/lib/crowdLibrary.ts`). Sie liest statische Dateien aus `/audio/crowd/manifest.json`, ohne Supabase-Verkehr. Es gibt neun Kategorien: ambience, clap, chant_short, chant_sung, attack, chance, whistle, concede, goal. Die Auswahl erfolgt zufällig ohne direkte Wiederholung: Die letzten bis zu drei Dateien sind gesperrt, und eine Datei, die gerade auf der anderen Spur läuft, wird gemieden.
+- **Mixer** (`audioMixer.ts`) mit getrennten Spuren und eigenen Reglern: Stadionrauschen · Heimfans · Gästefans · Fanreaktionen · Schiedsrichter & Ball · Hymnen.
+  - **Rauschen:** lange Aufnahmen in Abschnitten von 35–80 s, abwechselnd mit Überblendung gleicher Leistung (sin/cos, 4 s). Es entsteht keine Schleifennaht.
+  - **Gästeblock:** leiser, rechts, Höhen gedämpft (Tiefpass 3,6 kHz) und mit mehr Raumhall. Die Lautstärke richtet sich nach der Größe des Gästeblocks.
+  - **Akustik und Pegel:** kurzer Stadionhall (Faltung). Kompressor, Begrenzer und eine weiche Sicherheits-Sättigung verhindern Übersteuern, auch wenn viele Aufnahmen übereinanderliegen.
+  - **Natürliche Abwechslung:** Tempo ±3 % (Wiedergaberate), zufällige Einstiegsstellen bei langen Gesängen, und jeder Clip wird ein- und ausgeblendet.
+- **Fanlogik** (`fanAudio.ts`):
+  - Heim- und Gästefans singen unabhängig voneinander, je höchstens ein Gesang gleichzeitig. Danach folgt eine natürliche Pause, die in ruhigen Phasen länger ist.
+  - **Hochgeladene MP3-Gesänge** werden weiter verwendet, auch für die Gäste beim Auswärtsspiel. Sie haben Vorrang (75 %); dazwischen kommen Aufnahmen aus der Bibliothek.
+  - **Ereignisse:**
+    - Anfeuerung beim Übergang in einen Angriff
+    - Aufschrei bei Großchancen
+    - Pfiffe gegen den Gegner (Foul, Karten)
+    - Heimtor: Jubelaufnahme der ganzen Kurve
+    - Auswärtstor: Gästeblock kurz sehr laut (≈ 4,5 s), dazu Enttäuschung der Heimfans
+    - Mit dem Wiederanstoß endet der Jubel.
+  - **Lautstärke** folgt Ballbesitz, Angriffen, Strafraum, Spielstand (führende Fans etwas lauter) und Zuschauerzahl.
+- **Fehlende Aufnahmen** bleiben stumm und werden im Tonmenü (🎚) unter „Fehlende Stadionaufnahmen“ genannt. Es gibt keinen Ersatzklang. Einzige Ausnahme ist das Stadionrauschen: Fehlt es, läuft ein leises, gefiltertes Ersatzrauschen ohne Töne, das als „Ersatz“ gekennzeichnet ist.
+- **Synthetisch bleiben** nur Schiedsrichterpfiff, Netz, Aluminium und Ballkontakt. Das sind keine Zuschauergeräusche.
+- **Aufnahmen hinzufügen:** siehe [CROWD_AUDIO.md](CROWD_AUDIO.md). Die Rohdateien kommen nach `assets/crowd-raw/<kategorie>/`, mit Lizenzangabe. Danach `node scripts/crowd-audio.mjs` ausführen und `apps/web/public/audio/crowd/` committen.
+- **Tests:**
+  - Offline-Rendering (`crowdAudio.test.ts`): Überblendung ohne Pegelloch, Heim dominiert, Gäste hörbar und rechts, Auswärtstor im Gästeblock deutlich lauter, kein Übersteuern, keine Ersatzklänge ohne Dateien, Auswahl ohne Wiederholung.
+  - Playwright (`match.spec.ts`, „KI-Fankurve“): Heimspiel, ruhige Phasen gegen Angriffe, Auswärtsspiel mit hochgeladenem Gästegesang, Heimtor, Auswärtstor, leere Bibliothek.
+  - Die Tests nutzen eindeutig gekennzeichnete **Testsignale** (gefiltertes Rauschen) unter `apps/web/e2e/crowd-test/`. Diese werden nicht ausgeliefert.

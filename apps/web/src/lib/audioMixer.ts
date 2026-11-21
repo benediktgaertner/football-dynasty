@@ -1,61 +1,107 @@
 /**
  * Zentraler Stadion-Audiomixer (Web Audio API), vollständig im Browser.
  *
- * Kanäle (je mit eigenem Lautstärkeregler): Kulisse · Reaktionen · Effekte · Fangesänge · Hymnen
- * → Summenbus → Begrenzer (Kompressor + Ausgangspegel) → Lautsprecher.
+ * Getrennte Spuren (je mit eigenem Lautstärkeregler):
+ *   Stadionrauschen · Heimfans · Gästefans · Fanreaktionen (Ereignisse) · Schiedsrichter & Ball · Hymnen
+ *   → Summenbus → Kompressor → Begrenzer (kein Übersteuern) → Lautsprecher.
  *
- * - Kulisse: Rauschen der Heimfans (links) und Gästefans (rechts), Pegel nach Auslastung, Spielstand,
- *   Bedeutung und aktueller Spannung; kehrt nach Höhepunkten langsam zum Grundpegel zurück.
- * - Reaktionen/Effekte: im Browser synthetisiert (Jubel, „Ooooh“, Pfiffe, Schiedsrichterpfiff,
- *   Aluminium, Netz, Ballkontakt) – keine fremden Audiodateien, keine Lizenzfragen, keine Kosten.
- * - MP3 (Hymnen, Fangesänge, Torhymnen): einmal geladen und dekodiert zwischengespeichert,
- *   automatisch auf vergleichbare Lautheit gebracht (RMS), weich ein-/ausgeblendet.
- * - Ducking: Während Hymnen/Torhymnen wird die Kulisse abgesenkt; Pfiffe bleiben immer hörbar.
+ * KI-Fans klingen ausschließlich über ECHTE Stadionaufnahmen (crowdLibrary, /audio/crowd/manifest.json):
+ * - Stadionrauschen: lange Aufnahmen, abwechselnd mit gleichleistungs-Überblendung (keine Schleifennaht).
+ * - Heim-/Gästefans: Gesänge, Klatschen, Sprechchöre (Aufnahmen bzw. hochgeladene MP3 der Vereine).
+ *   Gästeblock: leiser, rechts, dumpfer und hallender (Entfernung).
+ * - Ereignisse: Torjubel, Aufschrei, Pfiffe, Enttäuschung – als Aufnahmen, über die anderen Spuren geschichtet.
+ * Fehlt eine Kategorie, bleibt sie stumm und wird als fehlend gemeldet (missing()). Es gibt KEINE künstlichen
+ * Chöre, Melodien oder Musikschleifen. Nur wenn gar keine Rauschaufnahme vorliegt, läuft ein leises,
+ * gefiltertes Ersatzrauschen (als „Ersatz“ gekennzeichnet). Schiedsrichterpfiff, Netz, Aluminium und
+ * Ballkontakt sind kurze synthetische Effekte (keine Zuschauergeräusche).
  */
 import { stadiumSound } from './stadiumSound';
 import { intensityGain } from './crowdModel';
-import { renderChant } from './synthChant';
+import { CROWD_CATEGORIES, Picker, crowdStatus, emptyLibrary, urlOf, type CrowdCategory, type CrowdFile, type CrowdLibrary } from './crowdLibrary';
 
-export type Channel = 'crowd' | 'reactions' | 'sfx' | 'chants' | 'anthem';
+export type Channel = 'ambience' | 'home' | 'away' | 'events' | 'sfx' | 'anthem';
 export const CHANNELS: Array<{ key: Channel; label: string }> = [
-  { key: 'crowd', label: 'Zuschauerkulisse' }, { key: 'reactions', label: 'Fanreaktionen' }, { key: 'sfx', label: 'Pfiffe & Ball' },
-  { key: 'chants', label: 'Fangesänge' }, { key: 'anthem', label: 'Hymnen & Torhymnen' },
+  { key: 'ambience', label: 'Stadionrauschen' }, { key: 'home', label: 'Heimfans' }, { key: 'away', label: 'Gästefans' },
+  { key: 'events', label: 'Fanreaktionen (Tor, Chancen, Pfiffe)' }, { key: 'sfx', label: 'Schiedsrichter & Ball' },
+  { key: 'anthem', label: 'Hymnen & Torhymnen' },
 ];
 const VOL_KEY = 'fd-mixer-volumes';
-const DEFAULT_VOL: Record<Channel, number> = { crowd: 0.8, reactions: 0.85, sfx: 0.75, chants: 0.8, anthem: 0.85 };
+const DEFAULT_VOL: Record<Channel, number> = { ambience: 0.8, home: 0.85, away: 0.8, events: 0.85, sfx: 0.7, anthem: 0.85 };
 
 export function loadVolumes(): Record<Channel, number> {
-  try { return { ...DEFAULT_VOL, ...(JSON.parse(localStorage.getItem(VOL_KEY) ?? '{}') as Partial<Record<Channel, number>>) }; } catch { return { ...DEFAULT_VOL }; }
+  try {
+    const raw = JSON.parse(localStorage.getItem(VOL_KEY) ?? '{}') as Record<string, number>;
+    // frühere Kanäle übernehmen (Kulisse → Rauschen, Fangesänge → Heim/Gäste, Reaktionen → Ereignisse)
+    const old: Partial<Record<Channel, number>> = { ambience: raw.crowd, home: raw.chants, away: raw.chants, events: raw.reactions };
+    const out = { ...DEFAULT_VOL };
+    for (const c of CHANNELS) { const v = raw[c.key] ?? old[c.key]; if (typeof v === 'number' && v >= 0 && v <= 1) out[c.key] = v; }
+    return out;
+  } catch { return { ...DEFAULT_VOL }; }
 }
 
 export interface Track { stop: (fadeSec?: number) => void; ended: Promise<void>; url: string }
 
-/** Ziel-Lautheit (RMS) für hochgeladene MP3 */
+/** Ziel-Lautheit (RMS) für Aufnahmen und hochgeladene MP3 */
 const TARGET_RMS = 0.12;
+type Decoded = { buffer: AudioBuffer; norm: number };
+type Side = 'home' | 'away';
+
+/** Lautstärke je Kategorie (nach Lautheitsangleich) */
+const CAT_VOL: Record<CrowdCategory, number> = {
+  ambience: 0.75, clap: 0.7, chant_short: 0.85, chant_sung: 0.8, attack: 0.75, chance: 0.85, whistle: 0.6, concede: 0.55, goal: 1,
+};
+
+export interface PlayOpts {
+  channel: Channel; volume?: number; pan?: number; maxSec?: number; fadeIn?: number; fadeOut?: number; offset?: number;
+  /** leichte Tonhöhen-/Tempoabweichung für natürliche Abwechslung */
+  rate?: number;
+  /** Startzeitpunkt im Audiokontext (Offline-Tests) */
+  at?: number;
+  /** Ereignis endet mit dem Wiederanstoß (endCelebration) */
+  celebrate?: boolean;
+  /** Ereignisspur: Seite (Heim links/präsent, Gäste rechts/entfernt) */
+  side?: Side;
+  id?: string;
+  category?: CrowdCategory | 'upload';
+}
 
 export class StadiumMixer {
   private ctx: BaseAudioContext | null = null;
   /** Offline-Kontext (Hörbarkeitsprüfung): immer aktiv */
   private offline = false;
   private awayScale = 1;
-  private crowdMode = false;
   private lastCrowd: [number, number] = [-1, -1];
   private out: GainNode | null = null;
   private bus: Partial<Record<Channel, GainNode>> = {};
   private duck: GainNode | null = null;
+  /** Eingänge der Spuren (vor Pegel/Klangfärbung) */
+  private input: Partial<Record<'ambience' | 'home' | 'away' | 'eventsHome' | 'eventsAway', AudioNode>> = {};
+  /** Intensitätsgesteuerte Pegel je Spur */
+  private lvl: Partial<Record<'ambience' | 'home' | 'away', GainNode>> = {};
   private noise: AudioBuffer | null = null;
+  private bedMaster: GainNode | null = null;
   private bedHome: { g: GainNode; f: BiquadFilterNode } | null = null;
   private bedAway: { g: GainNode; f: BiquadFilterNode } | null = null;
   private sources = new Set<AudioScheduledSourceNode>();
-  private cache = new Map<string, Promise<{ buffer: AudioBuffer; norm: number } | null>>();
+  private cache = new Map<string, Promise<Decoded | null>>();
+  private ready = new Map<string, Decoded>();
   private volumes = loadVolumes();
   private running = false;
-  /** Spannung 0…1 (Ziel) und aktueller, geglätteter Wert */
-  private excitement = 0.2;
-  private target = 0.2;
   private base = 0.5;
-  private hold = 0;
   private lastFx = new Map<string, number>();
+  private lib: CrowdLibrary = emptyLibrary();
+  private picker = new Picker();
+  /** Stadionrauschen: nächster Überblendzeitpunkt, aktuelle Datei, echte Aufnahme aktiv? */
+  private ambNext = 0;
+  private ambId: string | null = null;
+  private ambSample = false;
+  private celebration: Array<{ stop: (f?: number) => void }> = [];
+  /** laufende Dateien (Diagnose: welche Aufnahme läuft auf welcher Spur) */
+  private playing = new Set<{ url: string; channel: Channel; id?: string; category?: string; side?: Side }>();
+  /** Verlauf gespielter Aufnahmen (Diagnose/Tests: keine identischen Wiederholungen) */
+  history: Array<{ id: string; channel: Channel; category?: string; t: number }> = [];
+  /** Anzahl ausgelöster Torjubel (Diagnose/Tests) */
+  roars = 0;
   /** zählt Starts; verspätete Abschaltungen eines alten Spiels betreffen kein neues */
   generation = 0;
 
@@ -80,26 +126,63 @@ export class StadiumMixer {
   private setup(ctx: BaseAudioContext, opts: { attendance: number; capacity: number; importance: number; awayShare?: number }) {
     this.ctx = ctx;
     this.generation++;
-    // Summenbus mit Begrenzer
+    // Summenbus: Kompressor (Dichte) + Begrenzer (verhindert Übersteuern beim Schichten mehrerer Aufnahmen)
     const comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = -14; comp.knee.value = 8; comp.ratio.value = 6; comp.attack.value = 0.004; comp.release.value = 0.25;
+    comp.threshold.value = -16; comp.knee.value = 8; comp.ratio.value = 4; comp.attack.value = 0.006; comp.release.value = 0.3;
+    const lim = ctx.createDynamicsCompressor();
+    lim.threshold.value = -3; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.1;
     this.out = ctx.createGain(); this.out.gain.value = 0;
-    this.out.connect(comp).connect(ctx.destination);
-    this.out.gain.setTargetAtTime(0.9, ctx.currentTime, 0.4);
+    // Sicherheits-Sättigung: unterhalb ±0,7 linear, darüber weich bis höchstens ±0,98 (kein digitales Clipping)
+    const safe = ctx.createWaveShaper(); safe.curve = softClip(); safe.oversample = '2x';
+    this.out.connect(comp).connect(lim).connect(safe).connect(ctx.destination);
+    this.out.gain.setTargetAtTime(0.85, ctx.currentTime, 0.4);
     this.duck = ctx.createGain(); this.duck.connect(this.out);
     for (const c of CHANNELS) {
       const g = ctx.createGain(); g.gain.value = this.volumes[c.key];
-      g.connect(c.key === 'crowd' || c.key === 'chants' ? this.duck : this.out);
+      g.connect(c.key === 'ambience' || c.key === 'home' || c.key === 'away' ? this.duck : this.out);
       this.bus[c.key] = g;
     }
+    // Stadionakustik: kurzer, diffuser Raumhall (Impulsantwort einmal berechnet) – Gästeblock hallt stärker
+    const verb = ctx.createConvolver();
+    verb.buffer = impulse(ctx, 1.7);
+    const verbRet = ctx.createGain(); verbRet.gain.value = 0.5;
+    verb.connect(verbRet).connect(this.duck);
+    const send = (from: AudioNode, amount: number) => { const s = ctx.createGain(); s.gain.value = amount; from.connect(s).connect(verb); };
+
+    // Stadionrauschen
+    this.lvl.ambience = ctx.createGain(); this.lvl.ambience.gain.value = 0;
+    this.lvl.ambience.connect(this.bus.ambience!);
+    this.input.ambience = this.lvl.ambience;
+    // Heimfans: präsent, links/mittig
+    this.lvl.home = ctx.createGain(); this.lvl.home.gain.value = 0.6;
+    const hp = ctx.createStereoPanner(); hp.pan.value = -0.25;
+    this.lvl.home.connect(hp).connect(this.bus.home!);
+    send(this.lvl.home, 0.12);
+    this.input.home = this.lvl.home;
+    // Gästefans: rechts, entfernt (Höhen gedämpft, mehr Hall)
+    this.lvl.away = ctx.createGain(); this.lvl.away.gain.value = 0.3;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3600; lp.Q.value = 0.5;
+    const ap = ctx.createStereoPanner(); ap.pan.value = 0.7;
+    this.lvl.away.connect(lp).connect(ap).connect(this.bus.away!);
+    send(lp, 0.35);
+    this.input.away = this.lvl.away;
+    // Ereignisse je Seite
+    const eh = ctx.createStereoPanner(); eh.pan.value = -0.3; eh.connect(this.bus.events!); send(eh, 0.12);
+    const elp = ctx.createBiquadFilter(); elp.type = 'lowpass'; elp.frequency.value = 5000;
+    const ea = ctx.createStereoPanner(); ea.pan.value = 0.7; elp.connect(ea).connect(this.bus.events!); send(elp, 0.3);
+    this.input.eventsHome = eh; this.input.eventsAway = elp;
+
+    // Ersatzrauschen (nur ohne Rauschaufnahme; gefiltertes Rauschen, keine Töne)
     const len = ctx.sampleRate * 3;
     this.noise = ctx.createBuffer(2, len, ctx.sampleRate);
     for (let ch = 0; ch < 2; ch++) { const d = this.noise.getChannelData(ch); let b = 0; for (let i = 0; i < len; i++) { b = 0.97 * b + 0.03 * (Math.random() * 2 - 1); d[i] = b * 6 + (Math.random() * 2 - 1) * 0.25; } }
+    this.bedMaster = ctx.createGain(); this.bedMaster.gain.value = 1; this.bedMaster.connect(this.bus.ambience!);
     this.bedHome = this.makeBed(-0.55, 650);
     this.bedAway = this.makeBed(0.7, 800);
     this.running = true;
-    this.crowdMode = false;
     this.lastCrowd = [-1, -1];
+    this.ambNext = 0; this.ambId = null; this.ambSample = false;
+    this.history = [];
     this.configure(opts);
   }
 
@@ -109,7 +192,7 @@ export class StadiumMixer {
     const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = 0.5;
     const g = ctx.createGain(); g.gain.value = 0;
     const p = ctx.createStereoPanner(); p.pan.value = pan;
-    src.connect(f).connect(g).connect(p).connect(this.bus.crowd!);
+    src.connect(f).connect(g).connect(p).connect(this.bedMaster!);
     src.start(ctx.currentTime, Math.random() * 2);
     this.sources.add(src);
     return { g, f };
@@ -123,40 +206,91 @@ export class StadiumMixer {
     this.awayScale = Math.max(0.5, Math.min(1.6, Math.sqrt((o.awayShare ?? 0.08) / 0.08)));
   }
 
+  // ------------------------------------------------------------------ Bibliothek
+  setLibrary(lib: CrowdLibrary) {
+    this.lib = lib;
+    // Rauschaufnahmen sofort laden (lang, werden zuerst gebraucht)
+    for (const f of lib.byCategory.get('ambience') ?? []) void this.load(urlOf(lib, f));
+  }
+  get library(): CrowdLibrary { return this.lib; }
+  /** Kategorien ohne Aufnahme (bleiben stumm – werden in der Tonanzeige genannt) */
+  missing(): CrowdCategory[] { return crowdStatus(this.lib).filter((c) => c.missing).map((c) => c.key); }
+  has(cat: CrowdCategory): boolean { return (this.lib.byCategory.get(cat)?.length ?? 0) > 0; }
+  pick(cats: CrowdCategory[] | Array<[CrowdCategory, number]>, key: string, avoid: string[] = []): CrowdFile | null {
+    return this.picker.pick(this.lib, cats, key, avoid);
+  }
+  urlOf(f: CrowdFile) { return urlOf(this.lib, f); }
+
+  /** Für Tests: dekodierte Aufnahme direkt hinterlegen */
+  preload(url: string, buffer: AudioBuffer) {
+    const d = { buffer, norm: loudnessGain(buffer) };
+    this.cache.set(url, Promise.resolve(d)); this.ready.set(url, d);
+  }
+
   /**
    * Heim- und Gästefans getrennt steuern (Intensität 0…1 aus crowdModel, je Frame).
-   * 30-dB-Bereich: ruhiges Spiel deutlich leiser als Strafraumszene oder Torjubel.
-   * Getrennte Spuren: Heimkurve links/mittig, Gästeblock rechts.
+   * - Stadionrauschen trägt die große Dynamik (30-dB-Bereich): ruhige Phase deutlich leiser als Strafraumszene.
+   * - Heim-/Gästespur (Gesänge, Klatschen) folgen enger (12 dB): Gesänge bleiben verständlich,
+   *   verstummen aber nach einem Gegentor; der Gästeblock skaliert mit seiner Größe.
    */
   setCrowd(home: number, away: number, at?: number) {
-    if (!this.active || !this.bedHome || !this.bedAway || !this.ctx) return;
-    this.crowdMode = true;
-    // nur spürbare Änderungen planen (keine Flut gleichartiger Automationsereignisse)
+    if (!this.active || !this.ctx) return;
+    const now = at ?? this.ctx.currentTime;
+    this.pumpAmbience(now);
     if (Math.abs(home - this.lastCrowd[0]) < 0.004 && Math.abs(away - this.lastCrowd[1]) < 0.004) return;
     this.lastCrowd = [home, away];
-    const now = at ?? this.ctx.currentTime;
-    this.excitement = home;
-    // lineare Rampen über 120 ms: die Hüllkurve (crowdModel) glättet bereits, so entstehen keine Sprünge
     const ramp = (p: AudioParam, v: number) => { p.linearRampToValueAtTime(v, now + 0.12); };
-    ramp(this.bedHome.g.gain, this.base * 0.95 * intensityGain(home));
-    ramp(this.bedHome.f.frequency, 480 + 1000 * home);
-    ramp(this.bedAway.g.gain, this.base * 0.95 * this.awayScale * intensityGain(away));
-    ramp(this.bedAway.f.frequency, 520 + 900 * away);
+    const mix = Math.max(home, Math.min(1, away * 0.9 * this.awayScale));
+    if (this.lvl.ambience) ramp(this.lvl.ambience.gain, this.base * 1.3 * intensityGain(0.15 + 0.85 * mix));
+    if (this.lvl.home) ramp(this.lvl.home.gain, Math.min(1.4, this.base * 1.6) * 10 ** ((-12 + 12 * Math.min(1, home / 0.65)) / 20));
+    if (this.lvl.away) ramp(this.lvl.away.gain, Math.min(1.4, this.base * 1.6) * 0.5 * this.awayScale * 10 ** ((-12 + 12 * Math.min(1, away / 0.5)) / 20));
+    if (this.bedHome && this.bedAway) {
+      ramp(this.bedHome.g.gain, this.base * 0.95 * intensityGain(home));
+      ramp(this.bedHome.f.frequency, 480 + 1000 * home);
+      ramp(this.bedAway.g.gain, this.base * 0.95 * this.awayScale * intensityGain(away));
+      ramp(this.bedAway.f.frequency, 520 + 900 * away);
+    }
+  }
+
+  /** Stadionrauschen: verschiedene Aufnahmen bzw. Abschnitte, gleichleistungs-Überblendung (4 s), keine Naht */
+  private pumpAmbience(now: number) {
+    const files = this.lib.byCategory.get('ambience');
+    if (!files?.length || !this.ctx || !this.input.ambience) return;
+    if (this.ambSample && now + 3 < this.ambNext) return;
+    const f = this.pick(['ambience'], 'ambience', this.ambId ? [this.ambId] : []);
+    if (!f) return;
+    const url = this.urlOf(f);
+    const data = this.ready.get(url);
+    if (!data) { void this.load(url); return; }
+    const ctx = this.ctx;
+    const first = !this.ambSample;
+    const at = first ? now + 0.05 : Math.max(now, this.ambNext);
+    const XF = 4; // Überblenddauer zwischen zwei Aufnahmen
+    const xfIn = first ? 2 : XF;
+    const dur = data.buffer.duration;
+    const seg = Math.min(dur, 35 + Math.random() * 45);
+    const offset = dur > seg + 1 ? Math.random() * (dur - seg) : 0;
+    const src = ctx.createBufferSource(); src.buffer = data.buffer;
+    src.playbackRate.value = 0.98 + Math.random() * 0.04;
+    const g = ctx.createGain(); g.gain.value = 0;
+    const v = Math.min(2.5, data.norm * CAT_VOL.ambience * (f.gain ?? 1));
+    const len = seg / src.playbackRate.value;
+    g.gain.setValueCurveAtTime(curve(v, true), at, xfIn);
+    g.gain.setValueCurveAtTime(curve(v, false), at + len - XF, XF);
+    src.connect(g).connect(this.input.ambience);
+    src.start(at, offset, seg);
+    this.track(src, { url, channel: 'ambience', id: f.id, category: 'ambience' }, at);
+    this.ambNext = at + len - XF;
+    this.ambId = f.id;
+    if (first) {
+      this.ambSample = true;
+      // Ersatzrauschen weich aus
+      if (this.bedMaster) { this.bedMaster.gain.setValueAtTime(1, at); this.bedMaster.gain.linearRampToValueAtTime(0, at + 3); }
+    }
   }
 
   /** Lautstärkefaktor der Gästefans (Gästeblock) – für Gesänge */
   get awayLevel(): number { return this.awayScale; }
-
-  /** Generischer, vereinsneutraler Fangesang (Fanstimmen + Trommel), einmal gerendert und zwischengespeichert */
-  chant(pattern: number, o: { volume?: number; pan?: number; maxSec?: number; fadeIn?: number; side: 'home' | 'away' }): Promise<Track | null> {
-    const key = `synth:chant:${pattern}`;
-    if (!this.cache.has(key) && this.ctx) {
-      const sr = this.ctx.sampleRate;
-      const p = renderChant(pattern, sr).then((buffer) => (buffer ? { buffer, norm: loudnessGain(buffer) } : null)).catch(() => null);
-      this.cache.set(key, p);
-    }
-    return this.play(key, { channel: 'chants', volume: o.volume, pan: o.pan, maxSec: o.maxSec, fadeIn: o.fadeIn });
-  }
 
   setVolume(c: Channel, v: number) {
     this.volumes[c] = v;
@@ -165,30 +299,6 @@ export class StadiumMixer {
     if (g && this.ctx) g.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
   }
   getVolumes() { return { ...this.volumes }; }
-
-  /** Spannung setzen (0…1); hold = Sekunden, in denen der Wert nicht unterschritten wird */
-  push(level: number, hold = 0) {
-    this.target = Math.max(this.target, Math.min(1, level));
-    if (hold > 0 && this.ctx) this.hold = Math.max(this.hold, this.ctx.currentTime + hold);
-  }
-  /** Grundstimmung je Frame aus dem Spielgeschehen (wird langsam angenähert) */
-  ambient(level: number) {
-    if (!this.ctx || (this.hold > this.ctx.currentTime)) return;
-    this.target = level;
-  }
-
-  /** etwa 10× pro Sekunde aufrufen: Kulisse dem Spielgeschehen nachführen */
-  tick(dt: number, homeMood = 1) {
-    if (!this.active || !this.bedHome || !this.bedAway || !this.ctx || this.crowdMode) return;
-    const k = this.target > this.excitement ? Math.min(1, dt * 2.5) : Math.min(1, dt * 0.35); // schnell rauf, langsam runter
-    this.excitement += (this.target - this.excitement) * k;
-    if (this.hold < this.ctx.currentTime) this.target += (0.25 - this.target) * Math.min(1, dt * 0.15);
-    const now = this.ctx.currentTime;
-    const lvl = this.base * (0.35 + 0.9 * this.excitement);
-    this.bedHome.g.gain.setTargetAtTime(lvl * 0.55 * homeMood, now, 0.25);
-    this.bedHome.f.frequency.setTargetAtTime(550 + 700 * this.excitement, now, 0.3);
-    this.bedAway.g.gain.setTargetAtTime(this.base * 0.12 * (0.6 + 0.6 * this.excitement), now, 0.3);
-  }
 
   /** Kulisse während Hymnen/Torhymnen absenken (1 = normal) */
   ducking(level: number, sec = 0.6) {
@@ -203,7 +313,57 @@ export class StadiumMixer {
     return true;
   }
 
-  // ------------------------------------------------------------------ Effekte (synthetisiert)
+  // ------------------------------------------------------------------ Fanreaktionen (Aufnahmen)
+  /**
+   * Aufnahme einer Kategorie auf der Ereignisspur einer Seite abspielen (geschichtet über Gesänge/Rauschen).
+   * Ohne passende Aufnahme: nichts (kein Ersatzklang).
+   */
+  reaction(cat: CrowdCategory, side: Side, o: { volume?: number; maxSec?: number; celebrate?: boolean; cooldownMs?: number; at?: number } = {}): Promise<Track | null> {
+    if (!this.active || !this.once(`r:${cat}:${side}`, o.cooldownMs ?? 1500)) return Promise.resolve(null);
+    const f = this.pick([cat], `ev:${cat}`);
+    if (!f) return Promise.resolve(null);
+    if (cat === 'goal') this.roars++;
+    const away = side === 'away';
+    return this.play(this.urlOf(f), {
+      channel: 'events', side, id: f.id, category: cat, at: o.at,
+      volume: (o.volume ?? 1) * CAT_VOL[cat] * (f.gain ?? 1) * (away ? 0.75 * this.awayScale : 1) * Math.min(1.3, this.base * 1.6),
+      maxSec: o.maxSec, celebrate: o.celebrate, fadeIn: cat === 'goal' || cat === 'chance' ? 0.04 : 0.2, fadeOut: 0.8,
+      rate: 0.97 + Math.random() * 0.06,
+    });
+  }
+
+  /** Torjubel: Heimtor = ganze Kurve, Auswärtstor = Gästeblock kurz sehr laut, Heimfans enttäuscht */
+  goal(side: Side) {
+    if (!this.active) return;
+    if (side === 'home') void this.reaction('goal', 'home', { celebrate: true, maxSec: 8 });
+    else {
+      void this.reaction('goal', 'away', { celebrate: true, maxSec: 4.5, volume: 1.25 });
+      void this.reaction('concede', 'home', { celebrate: true, maxSec: 5, volume: 0.8 });
+    }
+  }
+
+  /** Wiederanstoß: laufenden Torjubel sofort weich beenden (keine überlappenden Jubel) */
+  endCelebration(fade = 0.4) {
+    const list = this.celebration; this.celebration = [];
+    for (const t of list) t.stop(fade);
+  }
+
+  /** Diagnose für Tests (keine Wirkung auf den Klang) */
+  debug() {
+    const by = (c: Channel) => [...this.playing].filter((p) => p.channel === c).map((p) => p.url);
+    const ids = (c: Channel) => [...this.playing].filter((p) => p.channel === c).map((p) => `${p.category ?? ''}:${p.id ?? p.url}`);
+    return {
+      sources: this.sources.size, celebrating: this.celebration.length, roars: this.roars, active: this.active,
+      crowd: this.lastCrowd.slice() as [number, number], anthem: by('anthem'),
+      chants: [...by('home'), ...by('away')],
+      tracks: { ambience: ids('ambience'), home: ids('home'), away: ids('away'), events: ids('events') },
+      ambienceSample: this.ambSample, missing: this.missing(),
+      history: this.history.slice(-60),
+      library: Object.fromEntries(CROWD_CATEGORIES.map((c) => [c.key, this.lib.byCategory.get(c.key)?.length ?? 0])),
+    };
+  }
+
+  // ------------------------------------------------------------------ Schiedsrichter & Ball (synthetisch)
   private node<T extends AudioScheduledSourceNode>(n: T, at: number, dur: number): T {
     n.start(at); n.stop(at + dur); this.sources.add(n);
     n.onended = () => this.sources.delete(n);
@@ -218,9 +378,6 @@ export class StadiumMixer {
     this.node(s, at, dur + 0.05);
     s.playbackRate.value = 0.9 + Math.random() * 0.2;
     return f;
-  }
-  private panned(pan: number, ch: Channel): AudioNode {
-    const p = this.ctx!.createStereoPanner(); p.pan.value = pan; p.connect(this.bus[ch]!); return p;
   }
 
   /** Schiedsrichterpfiff: kurz (Foul/Abseits), dezent (Aus/Ecke), lang (Anpfiff), dreifach (Spielende) */
@@ -244,7 +401,7 @@ export class StadiumMixer {
     }
   }
 
-  /** Aluminium: unharmonische, abklingende Teiltöne (Pfosten/Latte) + Raunen */
+  /** Aluminium: unharmonische, abklingende Teiltöne (Pfosten/Latte) */
   woodwork() {
     if (!this.active || !this.once('wood', 800)) return;
     const ctx = this.ctx!;
@@ -279,106 +436,10 @@ export class StadiumMixer {
     this.noiseBurst(at, 0.03, p * 0.6, 1500, 0.8, this.bus.sfx!);
   }
 
-  /** Torjubel (Heim: laut, links; Gäste: kleiner, rechts) */
-  roar(side: 'home' | 'away', strength = 1) {
-    if (!this.active || !this.once('roar' + side, 2000)) return;
-    const ctx = this.ctx!;
-    const home = side === 'home';
-    const dest = this.panned(home ? -0.4 : 0.75, 'reactions');
-    const at = ctx.currentTime + 0.02;
-    // Auswärtstor: Gästeblock kurzzeitig besonders laut (nach Größe des Gästeblocks)
-    const peak = (home ? 0.55 : 0.3 * this.awayScale) * this.base * 1.6 * strength;
-    // kurz und intensiv: der Wiederanstoß beendet den Jubel ohnehin (endCelebration)
-    const dur = home ? 4.6 : 3.5;
-    const cel = ctx.createGain(); cel.connect(dest); this.celebration.push(cel); this.roars++;
-    const s = ctx.createBufferSource(); s.buffer = this.noise; s.loop = true;
-    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 0.7;
-    f.frequency.setValueAtTime(600, at); f.frequency.linearRampToValueAtTime(1500, at + 0.4); f.frequency.linearRampToValueAtTime(900, at + dur);
-    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(peak, at + 0.25);
-    g.gain.setTargetAtTime(peak * 0.55, at + 1.5, 1.2); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
-    s.connect(f).connect(g).connect(cel); this.node(s, at, dur + 0.1);
-    // Stimmen: viele leicht verstimmte Sägezähne durch „ah“-Formanten
-    this.voices(at, dur * 0.7, home ? 14 : 9, peak * 0.22, 'ah', cel, 1.0);
-    setTimeout(() => { this.celebration = this.celebration.filter((x) => x !== cel); }, (dur + 0.5) * 1000);
-    if (!this.crowdMode) this.push(1, home ? 7 : 2);
-  }
-
-  private celebration: GainNode[] = [];
-  /** laufende Dateien/Gesänge (für Diagnose: Hymne läuft? Torhymne beendet?) */
-  private playing = new Set<{ url: string; channel: Channel }>();
-  /** Anzahl ausgelöster Torjubel (Diagnose/Tests) */
-  roars = 0;
-
-  /** Wiederanstoß: laufenden Torjubel sofort weich beenden (keine überlappenden Jubelschleifen) */
-  endCelebration(fade = 0.4) {
-    if (!this.ctx) return;
-    const now = this.ctx.currentTime;
-    for (const g of this.celebration) { g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(g.gain.value, now); g.gain.linearRampToValueAtTime(0, now + fade); }
-    this.celebration = [];
-  }
-
-  /** Diagnose für Tests (keine Wirkung auf den Klang) */
-  debug() {
-    const by = (c: Channel) => [...this.playing].filter((p) => p.channel === c).map((p) => p.url);
-    return { sources: this.sources.size, celebrating: this.celebration.length, roars: this.roars, active: this.active,
-      crowd: this.lastCrowd.slice() as [number, number], anthem: by('anthem'), chants: by('chants') };
-  }
-
-  /** Kollektives „Ooooh“ nach vergebener Großchance / Aluminium */
-  ooh() {
-    if (!this.active || !this.once('ooh', 2500)) return;
-    const at = this.ctx!.currentTime + 0.05;
-    this.voices(at, 1.8, 16, 0.16 * this.base * 1.6, 'oo', this.panned(-0.3, 'reactions'), -1);
-    this.push(0.75, 1.5);
-  }
-
-  /** Pfiffe und empörte Rufe der Heimfans (Foul des Gegners) */
-  jeer() {
-    if (!this.active || !this.once('jeer', 3500)) return;
-    const ctx = this.ctx!;
-    const at = ctx.currentTime + 0.05;
-    const dest = this.panned(-0.45, 'reactions');
-    const n = 9;
-    for (let i = 0; i < n; i++) {
-      const o = ctx.createOscillator(); o.type = 'sine'; const st = at + Math.random() * 0.4; const d = 0.5 + Math.random() * 0.9;
-      o.frequency.setValueAtTime(2200 + Math.random() * 1400, st); o.frequency.linearRampToValueAtTime(1800 + Math.random() * 1200, st + d);
-      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, st); g.gain.exponentialRampToValueAtTime(0.025 * this.base * 1.6, st + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, st + d);
-      o.connect(g).connect(dest); this.node(o, st, d + 0.02);
-    }
-    this.voices(at, 1.2, 8, 0.09 * this.base * 1.6, 'eh', dest, 0.3);
-    this.push(0.6, 1);
-  }
-
-  /** enttäuschtes Raunen (Gegentor) */
-  groan() {
-    if (!this.active || !this.once('groan', 3000)) return;
-    this.voices(this.ctx!.currentTime + 0.05, 2.2, 10, 0.08 * this.base * 1.6, 'oo', this.panned(-0.4, 'reactions'), -1.5);
-  }
-
-  /** Stimmengruppe mit Formanten (Vokal) und Tonhöhenverlauf (glide in Halbtönen) */
-  private voices(at: number, dur: number, n: number, peak: number, vowel: 'ah' | 'oo' | 'eh', dest: AudioNode, glide: number) {
-    const ctx = this.ctx!;
-    const F: Record<string, [number, number]> = { ah: [750, 1150], oo: [380, 850], eh: [550, 1750] };
-    const [f1, f2] = F[vowel]!;
-    const mix = ctx.createGain(); mix.gain.value = 1;
-    const a = ctx.createBiquadFilter(); a.type = 'bandpass'; a.frequency.value = f1; a.Q.value = 4;
-    const b = ctx.createBiquadFilter(); b.type = 'bandpass'; b.frequency.value = f2; b.Q.value = 5;
-    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(peak, at + 0.18); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
-    mix.connect(a).connect(g); mix.connect(b).connect(g); g.connect(dest);
-    for (let i = 0; i < n; i++) {
-      const o = ctx.createOscillator(); o.type = 'sawtooth';
-      const base = 110 + Math.random() * 120;
-      o.frequency.setValueAtTime(base, at); o.frequency.linearRampToValueAtTime(base * 2 ** (glide / 12) * (0.97 + Math.random() * 0.06), at + dur);
-      const og = ctx.createGain(); og.gain.value = 1 / n;
-      o.connect(og).connect(mix); this.node(o, at + Math.random() * 0.12, dur);
-    }
-  }
-
-  // ------------------------------------------------------------------ MP3
+  // ------------------------------------------------------------------ Dateien
   /** MP3 laden, dekodieren, Lautheit bestimmen – je URL nur einmal */
-  load(url: string): Promise<{ buffer: AudioBuffer; norm: number } | null> {
+  load(url: string): Promise<Decoded | null> {
     let p = this.cache.get(url);
-    if (!p && url.startsWith('synth:')) return Promise.resolve(null);
     if (!p) {
       p = (async () => {
         try {
@@ -387,7 +448,9 @@ export class StadiumMixer {
           const res = await fetch(url, { cache: 'force-cache' });
           if (!res.ok) return null;
           const buffer = await ctx.decodeAudioData(await res.arrayBuffer());
-          return { buffer, norm: loudnessGain(buffer) };
+          const d = { buffer, norm: loudnessGain(buffer) };
+          this.ready.set(url, d);
+          return d;
         } catch { return null; }
       })();
       this.cache.set(url, p);
@@ -396,41 +459,72 @@ export class StadiumMixer {
     return p;
   }
 
-  /** MP3 weich abspielen (Lautheit angeglichen), optional räumlich; maxSec begrenzt die Länge */
-  async play(url: string, o: { channel: Channel; volume?: number; pan?: number; maxSec?: number; fadeIn?: number; offset?: number }): Promise<Track | null> {
+  private destOf(o: PlayOpts): AudioNode {
+    if (o.channel === 'home' || o.channel === 'away' || o.channel === 'ambience') return this.input[o.channel]!;
+    if (o.channel === 'events') return o.side === 'away' ? this.input.eventsAway! : this.input.eventsHome!;
+    return this.bus[o.channel]!;
+  }
+
+  private track(src: AudioBufferSourceNode, entry: { url: string; channel: Channel; id?: string; category?: string; side?: Side }, at: number) {
+    this.sources.add(src);
+    this.playing.add(entry);
+    if (entry.id) this.history.push({ id: entry.id, channel: entry.channel, category: entry.category, t: at });
+    if (this.history.length > 200) this.history.splice(0, 100);
+    src.onended = () => { this.sources.delete(src); this.playing.delete(entry); };
+    return entry;
+  }
+
+  /** Datei weich abspielen (Lautheit angeglichen), auf einer Spur; maxSec begrenzt die Länge */
+  async play(url: string, o: PlayOpts): Promise<Track | null> {
     if (!this.active) return null;
-    const data = await this.load(url);
-    if (!data || !this.active) return null;
+    const gen = this.generation;
+    const data = this.ready.get(url) ?? await this.load(url);
+    if (!data || !this.active || gen !== this.generation) return null;
     const ctx = this.ctx!;
     const src = ctx.createBufferSource(); src.buffer = data.buffer;
+    const rate = Math.max(0.9, Math.min(1.1, o.rate ?? 1));
+    src.playbackRate.value = rate;
     const g = ctx.createGain();
-    const lvl = Math.min(2.5, data.norm * (o.volume ?? 0.85));
-    const at = ctx.currentTime + 0.02;
-    const fi = o.fadeIn ?? 0.8;
-    g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(Math.max(0.001, lvl), at + fi);
-    const p = ctx.createStereoPanner(); p.pan.value = o.pan ?? 0;
-    src.connect(g).connect(p).connect(this.bus[o.channel]!);
+    const lvl = Math.max(0.001, Math.min(2.5, data.norm * (o.volume ?? 0.85)));
+    const at = o.at ?? ctx.currentTime + 0.02;
+    const fi = Math.max(0.02, o.fadeIn ?? 0.8);
+    g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(lvl, at + fi);
+    let dest = this.destOf(o);
+    if (o.pan) { const p = ctx.createStereoPanner(); p.pan.value = o.pan; p.connect(dest); dest = p; }
+    src.connect(g).connect(dest);
     // Einstieg mitten in der Datei (z. B. später beigetretener Manager: Hymne synchron zu allen)
     const offset = Math.max(0, o.offset ?? 0);
     if (offset >= data.buffer.duration - 0.2) return null;
     src.start(at, offset);
-    this.sources.add(src);
-    const entry = { url, channel: o.channel };
-    this.playing.add(entry);
+    const entry = this.track(src, { url, channel: o.channel, id: o.id, category: o.category, side: o.side }, at);
     let done = false;
     let resolve!: () => void;
     const ended = new Promise<void>((r) => { resolve = r; });
     const stop = (fade = 1) => {
       if (done) return; done = true;
       this.playing.delete(entry);
-      const t = ctx.currentTime;
+      this.celebration = this.celebration.filter((x) => x !== handle);
+      const t = Math.max(ctx.currentTime, at);
       g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), t); g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.05, fade));
       try { src.stop(t + Math.max(0.05, fade) + 0.05); } catch { /* bereits beendet */ }
     };
-    src.onended = () => { this.sources.delete(src); this.playing.delete(entry); done = true; resolve(); };
-    const rest = data.buffer.duration - offset;
+    const handle = { stop };
+    src.onended = () => {
+      this.sources.delete(src); this.playing.delete(entry); done = true;
+      this.celebration = this.celebration.filter((x) => x !== handle);
+      resolve();
+    };
+    if (o.celebrate) this.celebration.push(handle);
+    const rest = (data.buffer.duration - offset) / rate;
     const len = Math.min(rest, o.maxSec ?? rest);
-    if (len < rest) setTimeout(() => stop(1.5), Math.max(0, (len - 1.5) * 1000));
+    const fo = o.fadeOut ?? 1.5;
+    if (len < rest) {
+      // Ende geplant ausblenden (kein harter Schnitt)
+      const endAt = at + len;
+      g.gain.setValueAtTime(lvl, Math.max(at + fi, endAt - fo));
+      g.gain.exponentialRampToValueAtTime(0.0001, endAt);
+      try { src.stop(endAt + 0.05); } catch { /* */ }
+    }
     return { stop, ended, url };
   }
 
@@ -447,16 +541,45 @@ export class StadiumMixer {
     this.celebration = [];
     this.running = false;
     this.bedHome = this.bedAway = null;
+    this.generation++;
     setTimeout(() => {
       for (const s of srcs) { try { s.stop(); } catch { /* bereits beendet */ } }
       try { out.disconnect(); } catch { /* */ }
       // Kontext ruhen lassen, solange kein Spiel läuft (kein Ton im Menü, spart Akku)
       if (!this.running && !this.offline && 'suspend' in ctx) void (ctx as AudioContext).suspend().catch(() => undefined);
     }, fade * 1000 + 100);
-    this.out = null; this.duck = null; this.bus = {};
-    this.excitement = this.target = 0.2;
-    this.crowdMode = false;
+    this.out = null; this.duck = null; this.bus = {}; this.input = {}; this.lvl = {}; this.bedMaster = null;
+    this.ambSample = false; this.ambId = null; this.ambNext = 0;
   }
+}
+
+/** gleichleistungs-Blendkurve (sin/cos), damit sich überlappende Aufnahmen nicht zu einem Loch/Buckel addieren */
+function curve(v: number, up: boolean): Float32Array {
+  const n = 48, c = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const x = i / (n - 1); c[i] = Math.max(0.0001, v * (up ? Math.sin((x * Math.PI) / 2) : Math.cos((x * Math.PI) / 2))); }
+  return c;
+}
+
+let clipCurve: Float32Array<ArrayBuffer> | null = null;
+function softClip(): Float32Array<ArrayBuffer> {
+  if (clipCurve) return clipCurve;
+  const n = 4096, c = new Float32Array(n), k = 0.7, h = 0.98 - k;
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1, a = Math.abs(x);
+    c[i] = Math.sign(x) * (a <= k ? a : k + h * Math.tanh((a - k) / h));
+  }
+  return (clipCurve = c);
+}
+
+/** diffuse Raum-Impulsantwort (Stadion: früher Abfall, kurzer Nachhall) */
+function impulse(ctx: BaseAudioContext, sec: number): AudioBuffer {
+  const len = Math.floor(ctx.sampleRate * sec);
+  const b = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = b.getChannelData(ch);
+    for (let i = 0; i < len; i++) { const t = i / ctx.sampleRate; d[i] = (Math.random() * 2 - 1) * Math.exp(-t * 4.2) * (t < 0.012 ? t / 0.012 : 1) * 0.35; }
+  }
+  return b;
 }
 
 /** Verstärkung, die eine Aufnahme auf die Ziel-Lautheit bringt (RMS über Stichproben, Spitzen begrenzt) */

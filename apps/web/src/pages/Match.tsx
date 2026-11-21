@@ -7,6 +7,7 @@ import { MatchPitch, WALKOUT_MS, pitchAspect } from '../components/match/MatchPi
 import { fanApi } from '../lib/fanApi';
 import { prefs } from '../lib/stadiumSound';
 import { CHANNELS, mixer, type Track } from '../lib/audioMixer';
+import { crowdStatus } from '../lib/crowdLibrary';
 import { MatchSound, type ChantRef } from '../lib/fanAudio';
 import type { AudioRef, MatchState } from '../lib/matchClient';
 import { LiveBoard } from '../components/match/LiveBoard';
@@ -406,8 +407,8 @@ export function WalkoutOverlay({ state, voted, onSkip, sound }: { state: MatchSt
  * Einlauf → Hymne des Heimvereins, danach Signatur-Fangesang; im Spiel Kulisse, Reaktionen und
  * zufällige Fangesänge über den zentralen Mixer. Verlassen der Seite oder Abpfiff ⇒ sanft aus.
  */
-export function useMatchAudio(state: MatchState | null, client: MatchClient | null, fixtureId: string, urlFor: (path: string) => string = (p) => fanApi.publicUrl(p)) {
-  const sound = useMemo(() => new MatchSound(urlFor), [fixtureId]); // eslint-disable-line react-hooks/exhaustive-deps
+export function useMatchAudio(state: MatchState | null, client: MatchClient | null, fixtureId: string, urlFor: (path: string) => string = (p) => fanApi.publicUrl(p), crowdManifest?: string) {
+  const sound = useMemo(() => new MatchSound(urlFor, crowdManifest), [fixtureId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [on, setOn] = useState(false);
   const [needsUnlock, setNeedsUnlock] = useState(false);
   const [line, setLine] = useState<string | null>(null);
@@ -424,10 +425,10 @@ export function useMatchAudio(state: MatchState | null, client: MatchClient | nu
     const awayShare = Math.min(0.15, Math.max(0.04, 2400 / Math.max(10000, st.capacity)));
     const ok = await mixer.start({ attendance: att, capacity: st.capacity, importance: st.atmosphere?.choreo ? 1 : 0.4, awayShare });
     setOn(ok); setNeedsUnlock(!ok);
-    if (ok) mixer.setCrowd(0.55, 0.2); // Vorfreude vor dem Anpfiff (Einlauf)
+    if (ok) sound.warmup(); // Vorfreude vor dem Anpfiff (Einlauf): Stadionrauschen läuft
     if (ok) prefs.sound = true;
     return ok;
-  }, [st]);
+  }, [st, sound]);
 
   // Gesänge aus dem Match-Setup übernehmen (einmal je Spiel), Ton wie zuletzt gewählt starten
   useEffect(() => {
@@ -504,11 +505,14 @@ export function useMatchAudio(state: MatchState | null, client: MatchClient | nu
   };
 }
 
-/** Lautstärke je Soundkategorie */
+/** Lautstärke je Spur; fehlende Stadionaufnahmen werden offen genannt (kein Ersatzklang) */
 function MixerPanel({ onClose }: { onClose: () => void }) {
   const [v, setV] = useState(() => mixer.getVolumes());
+  const status = crowdStatus(mixer.library);
+  const missing = status.filter((c) => c.missing);
+  const thin = status.filter((c) => c.thin);
   return (
-    <div className="absolute bottom-14 right-3 z-20 w-64 rounded-xl border border-olive-600 bg-ink/95 p-3 text-sm shadow-xl">
+    <div className="absolute bottom-14 right-3 z-20 w-72 rounded-xl border border-olive-600 bg-ink/95 p-3 text-sm shadow-xl" data-testid="mixer-panel">
       <div className="mb-2 flex items-center justify-between"><span className="display font-bold uppercase">Ton</span><button type="button" onClick={onClose} aria-label="Schließen">✕</button></div>
       {CHANNELS.map((c) => (
         <label key={c.key} className="mb-1 block">
@@ -517,6 +521,12 @@ function MixerPanel({ onClose }: { onClose: () => void }) {
             onChange={(e) => { const x = Number(e.target.value); mixer.setVolume(c.key, x); setV((o) => ({ ...o, [c.key]: x })); }} />
         </label>
       ))}
+      {(missing.length > 0 || thin.length > 0) && (
+        <div className="mt-2 border-t border-olive-700 pt-2 text-xs text-cream-dim" data-testid="crowd-missing">
+          {missing.length > 0 && <p><b>Fehlende Stadionaufnahmen</b> (stumm, kein Ersatzklang): {missing.map((c) => c.label).join(', ')}{missing.some((c) => c.key === 'ambience') ? ' – Rauschen: gefiltertes Ersatzrauschen' : ''}</p>}
+          {thin.length > 0 && <p className="mt-1">Wenig Abwechslung: {thin.map((c) => `${c.label} (${c.count}/${c.min})`).join(', ')}</p>}
+        </div>
+      )}
     </div>
   );
 }

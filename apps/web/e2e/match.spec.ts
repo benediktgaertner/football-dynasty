@@ -190,32 +190,115 @@ test.describe('Torjubel', () => {
   }
 });
 
-test.describe('KI-Fankurve', () => {
-  test('generische Reaktionen klingen wie eine Kurve (Rufen/Klatschen), nicht wie Musik', async ({ page }) => {
+test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
+  /** Mixer-Zustand alle 250 ms mitschreiben */
+  async function record(page: Page, ms: number) {
+    const out: Array<{ m: any; s: any }> = [];
+    const end = Date.now() + ms;
+    while (Date.now() < end) { out.push({ m: await mix(page), s: await snd(page) }); await page.waitForTimeout(250); }
+    return out;
+  }
+  const noRepeat = (h: Array<{ id: string; channel: string }>, ch: string, n: number) => {
+    const ids = h.filter((x) => x.channel === ch).map((x) => x.id);
+    for (let i = 1; i < ids.length; i++) if (n > 1) expect(ids[i], `${ch}: ${ids.join(',')}`).not.toBe(ids[i - 1]);
+    return ids;
+  };
+
+  test('Heimspiel: Rauschen, Heimkurve und Gästeblock aus Aufnahmen; Heimfans dominieren; keine Wiederholung', async ({ page }) => {
     await open(page, fx('home-noanthem-ai'));
-    const r = await page.evaluate(async () => {
-      const m = await import('/src/lib/synthChant.ts');
-      const out: Array<{ name: string; h: number; db: number; claps: number; hasClaps: boolean }> = [];
-      for (let i = 0; i < m.CHANT_PATTERNS.length; i++) {
-        const b = (await m.renderChant(i, 22050))!;
-        const d = b.getChannelData(0);
-        let e = 0; for (const v of d) e += v * v;
-        // Klatsch-/Ruf-Transienten: sprunghafte Energieanstiege in 20-ms-Fenstern
-        const w = 441; let prev = 0, peaks = 0;
-        for (let k = 0; k + w < d.length; k += w) { let s = 0; for (let j = 0; j < w; j++) s += d[k + j]! * d[k + j]!; if (s > prev * 4 && s > 0.02) peaks++; prev = s; }
-        out.push({ name: m.CHANT_PATTERNS[i]!.name, h: m.harmonicity(d, 22050), db: 10 * Math.log10(e / d.length), claps: peaks, hasClaps: m.CHANT_PATTERNS[i]!.claps.length > 0 });
-      }
-      // Gegenprobe: ein gesungener Unisono-Chor (Musik) muss deutlich „tonaler“ sein
-      const c = new OfflineAudioContext(1, 22050 * 2, 22050);
-      for (let v = 0; v < 26; v++) { const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 196; o.detune.value = (Math.random() - 0.5) * 60; const g = c.createGain(); g.gain.value = 0.02; o.connect(g).connect(c.destination); o.start(); }
-      const music = m.harmonicity((await c.startRendering()).getChannelData(0), 22050);
-      return { out, music };
-    });
-    expect(r.music).toBeGreaterThan(0.8);
-    for (const c of r.out) {
-      expect(c.h, c.name).toBeLessThan(0.35); // kein Ton/keine Melodie
-      expect(c.db, c.name).toBeGreaterThan(-36); // hörbar
-      if (c.hasClaps) expect(c.claps, c.name).toBeGreaterThan(2); // synchrones Klatschen als Impulse
+    await waitWalkout(page);
+    await page.getByTestId('skip-walkout').click();
+    await page.waitForFunction(() => (window as any).__fd.state().status === 'running');
+    const rec = await record(page, 22_000);
+    const last = rec[rec.length - 1]!.m;
+    // Bibliothek vollständig (Testaufnahmen), Stadionrauschen aus Aufnahmen statt Ersatzrauschen
+    expect(last.missing).toEqual([]);
+    expect(last.ambienceSample).toBe(true);
+    expect(rec.some((r) => r.m.tracks.ambience.length > 0)).toBe(true);
+    // Heimkurve singt/klatscht aus der Bibliothek; Gästeblock leiser und seltener
+    const h = last.history as Array<{ id: string; channel: string; category: string }>;
+    const homeClips = h.filter((x) => x.channel === 'home');
+    expect(homeClips.length).toBeGreaterThan(0);
+    for (const c of homeClips) expect(['chant_short', 'chant_sung', 'clap']).toContain(c.category);
+    expect(h.filter((x) => x.channel === 'away').length).toBeLessThanOrEqual(homeClips.length);
+    // nur Dateien aus dem Manifest – keine synthetischen Gesänge
+    for (const x of h) expect(x.id).toMatch(/^(ambience|clap|chant_short|chant_sung|attack|chance|whistle|concede|goal)_test_/);
+    noRepeat(h, 'home', 6); noRepeat(h, 'ambience', 2);
+    // Heimfans dominieren die Kulisse
+    const avgH = rec.reduce((a, r) => a + r.s.home, 0) / rec.length, avgA = rec.reduce((a, r) => a + r.s.away, 0) / rec.length;
+    expect(avgH).toBeGreaterThan(avgA * 1.5);
+    // natürliche Pausen: nicht ununterbrochen Gesang auf der Heimspur
+    expect(rec.some((r) => r.m.tracks.home.length === 0)).toBe(true);
+    expect(Math.max(...rec.map((r) => r.m.tracks.home.length))).toBeLessThanOrEqual(1);
+  });
+
+  test('ruhige Phasen leiser als Angriffe; Lautstärke folgt dem Spielgeschehen', async ({ page }) => {
+    await open(page, fx('home-noanthem-ai'));
+    await waitWalkout(page);
+    await page.getByTestId('skip-walkout').click();
+    await page.waitForFunction(() => (window as any).__fd.state().status === 'running');
+    const rec = await record(page, 25_000);
+    const by = (pred: (s: string) => boolean) => rec.filter((r) => pred(r.s.situation)).map((r) => r.m.crowd[0] as number);
+    const quiet = by((s) => ['calm', 'harmless', 'away_possession', 'away_attack', 'away_box'].includes(s));
+    const loud = by((s) => s === 'home_attack' || s === 'home_box');
+    expect(quiet.length).toBeGreaterThan(3);
+    if (loud.length > 3) {
+      const avg = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
+      expect(avg(loud) - avg(quiet)).toBeGreaterThan(0.12);
     }
+    // ruhige Phase: Heimintensität deutlich unter Torjubel-Niveau
+    expect(Math.min(...quiet)).toBeLessThan(0.5);
+  });
+
+  test('Auswärtsspiel: eigene hochgeladene Gesänge im Gästeblock, KI-Heimfans aus Aufnahmen', async ({ page }) => {
+    await open(page, fx('away-chants-ai'), 'token-away-xxxx');
+    await waitWalkout(page);
+    await page.getByTestId('skip-walkout').click();
+    await page.waitForFunction(() => (window as any).__fd.state().status === 'running');
+    const rec = await record(page, 30_000);
+    const h = rec[rec.length - 1]!.m.history as Array<{ id: string; channel: string; category: string }>;
+    const away = h.filter((x) => x.channel === 'away');
+    expect(away.length).toBeGreaterThan(0);
+    expect(away.some((x) => x.id === 'up-away-1' && x.category === 'upload')).toBe(true); // hochgeladener Gesang
+    expect(h.filter((x) => x.channel === 'home').every((x) => x.category !== 'upload')).toBe(true); // KI-Heim: Aufnahmen
+    const avgH = rec.reduce((a, r) => a + r.s.home, 0) / rec.length, avgA = rec.reduce((a, r) => a + r.s.away, 0) / rec.length;
+    expect(avgH).toBeGreaterThan(avgA); // Heimfans dominieren auch beim Auswärtsspiel
+    expect(avgA).toBeGreaterThan(0.08); // Gäste hörbar
+  });
+
+  for (const [name, side] of [['goal-home-ai', 'home'], ['goal-away-ai', 'away']] as const) {
+    test(`${side === 'home' ? 'Heimtor' : 'Auswärtstor'}: Jubelaufnahme${side === 'away' ? ' im Gästeblock + Enttäuschung der Heimfans' : ''}, endet beim Anstoß`, async ({ page }) => {
+      await open(page, fx(name));
+      await waitWalkout(page);
+      await page.getByTestId('skip-walkout').click();
+      await page.waitForFunction(() => (window as any).__fd.state().status === 'running');
+      await page.waitForFunction(() => (window as any).__fd.state().events.some((e: any) => e.type === 'goal'), null, { timeout: 40_000 });
+      await page.waitForFunction(() => (window as any).__fd.mixer().tracks.events.some((t: string) => t.startsWith('goal:')), null, { timeout: 1500 });
+      const m = await mix(page);
+      const goalClip = m.history.filter((x: any) => x.category === 'goal');
+      expect(goalClip.length).toBe(1);
+      if (side === 'away') expect(m.tracks.events.some((t: string) => t.startsWith('concede:'))).toBe(true);
+      // während des Jubels keine Fangesänge
+      expect(m.tracks.home).toEqual([]);
+      await page.waitForFunction(() => (window as any).__fd.state().events.some((e: any, i: number, a: any[]) => e.type === 'kickoff' && e.side && a.findIndex((x: any) => x.type === 'goal') < i), null, { timeout: 8000 });
+      await page.waitForTimeout(1000);
+      const after = await mix(page);
+      expect(after.tracks.events.filter((t: string) => t.startsWith('goal:') || t.startsWith('concede:'))).toEqual([]);
+      expect(after.celebrating).toBe(0);
+    });
+  }
+
+  test('ohne Aufnahmen: fehlende Kategorien gemeldet, keine Ersatzgesänge', async ({ page }) => {
+    await page.goto(`/e2e/harness.html?fixture=${encodeURIComponent(fx('home-noanthem-ai'))}&token=token-home-xxxx&server=${encodeURIComponent(SERVER)}&crowd=${encodeURIComponent('/audio/crowd/manifest.json')}`);
+    await page.waitForFunction(() => !!(window as any).__fd?.state().status);
+    await waitWalkout(page);
+    await page.getByTestId('skip-walkout').click();
+    await page.waitForFunction(() => (window as any).__fd.state().status === 'running');
+    await page.waitForTimeout(8000);
+    const m = await mix(page);
+    expect(m.missing.length).toBe(9);
+    expect(m.ambienceSample).toBe(false);
+    expect(m.history).toEqual([]);
+    expect(m.chants).toEqual([]);
   });
 });

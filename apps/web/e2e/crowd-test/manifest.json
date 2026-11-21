@@ -1,0 +1,186 @@
+{
+  "version": 1,
+  "generated": "2026-11-21T17:48:09.768Z",
+  "files": [
+    {
+      "id": "ambience_test_ambience_1",
+      "category": "ambience",
+      "file": "ambience/ambience_test_ambience_1.mp3",
+      "duration": 40.05,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "ambience_test_ambience_2",
+      "category": "ambience",
+      "file": "ambience/ambience_test_ambience_2.mp3",
+      "duration": 40.05,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "clap_test_clap_1",
+      "category": "clap",
+      "file": "clap/clap_test_clap_1.mp3",
+      "duration": 8.05,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "clap_test_clap_2",
+      "category": "clap",
+      "file": "clap/clap_test_clap_2.mp3",
+      "duration": 8.05,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "chant_short_test_chant_short_1",
+      "category": "chant_short",
+      "file": "chant_short/chant_short_test_chant_short_1.mp3",
+      "duration": 4.05,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "chant_short_test_chant_short_2",
+      "category": "chant_short",
+      "file": "chant_short/chant_short_test_chant_short_2.mp3",
+      "duration": 4.05,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "chant_sung_test_chant_sung_1",
+      "category": "chant_sung",
+      "file": "chant_sung/chant_sung_test_chant_sung_1.mp3",
+      "duration": 20.04,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "chant_sung_test_chant_sung_2",
+      "category": "chant_sung",
+      "file": "chant_sung/chant_sung_test_chant_sung_2.mp3",
+      "duration": 20.04,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "attack_test_attack_1",
+      "category": "attack",
+      "file": "attack/attack_test_attack_1.mp3",
+      "duration": 3.03,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "attack_test_attack_2",
+      "category": "attack",
+      "file": "attack/attack_test_attack_2.mp3",
+      "duration": 3.03,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "chance_test_chance_1",
+      "category": "chance",
+      "file": "chance/chance_test_chance_1.mp3",
+      "duration": 3.03,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "chance_test_chance_2",
+      "category": "chance",
+      "file": "chance/chance_test_chance_2.mp3",
+      "duration": 3.03,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "whistle_test_whistle_1",
+      "category": "whistle",
+      "file": "whistle/whistle_test_whistle_1.mp3",
+      "duration": 3.03,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "whistle_test_whistle_2",
+      "category": "whistle",
+      "file": "whistle/whistle_test_whistle_2.mp3",
+      "duration": 3.03,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "concede_test_concede_1",
+      "category": "concede",
+      "file": "concede/concede_test_concede_1.mp3",
+      "duration": 3.03,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "concede_test_concede_2",
+      "category": "concede",
+      "file": "concede/concede_test_concede_2.mp3",
+      "duration": 3.03,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "goal_test_goal_1",
+      "category": "goal",
+      "file": "goal/goal_test_goal_1.mp3",
+      "duration": 6.03,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "goal_test_goal_2",
+      "category": "goal",
+      "file": "goal/goal_test_goal_2.mp3",
+      "duration": 6.03,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    }
+  ]
+}

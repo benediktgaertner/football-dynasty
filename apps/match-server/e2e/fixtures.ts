@@ -19,7 +19,10 @@ export function dbTeam(seed: string, control: 'human' | 'ai', manager: string | 
 /** Vereinshymne (15 s, liegt im Web-Projekt unter /e2e/anthem.wav) */
 export const ANTHEM = { id: 'anthem-1', name: 'Testhymne', source: 'upload', path: 'anthem.wav', volume: 0.9, duration: 15 };
 
-interface Case { kind: string; homeHuman: boolean; awayHuman: boolean; anthem: boolean; seed?: string }
+interface Case { kind: string; homeHuman: boolean; awayHuman: boolean; anthem: boolean; seed?: string; awayChants?: boolean }
+
+/** hochgeladener Gästegesang (Testsignal, liegt unter /e2e/chant-away.mp3) */
+export const AWAY_CHANT = { id: 'up-away-1', name: 'Testgesang Gäste', source: 'upload', path: 'chant-away.mp3', volume: 0.9, situation: 'general' };
 export const CASES: Record<string, Case> = {
   'home-anthem-ai': { kind: 'league', homeHuman: true, awayHuman: false, anthem: true },
   'home-anthem-full': { kind: 'league', homeHuman: true, awayHuman: false, anthem: true },
@@ -27,6 +30,8 @@ export const CASES: Record<string, Case> = {
   'away-noanthem-ai': { kind: 'league', homeHuman: false, awayHuman: true, anthem: false },
   'cup-anthem-ai': { kind: 'domestic_cup', homeHuman: true, awayHuman: false, anthem: true },
   'cl-anthem-ai': { kind: 'champions_league', homeHuman: true, awayHuman: false, anthem: true },
+  // Auswärtsspiel des Managers: eigene hochgeladene Gesänge im Gästeblock, KI-Heimfans
+  'away-chants-ai': { kind: 'league', homeHuman: false, awayHuman: true, anthem: false, awayChants: true },
   'mp-anthem': { kind: 'league', homeHuman: true, awayHuman: true, anthem: true },
   // Seeds mit frühem Tor (gesucht mit e2e/findGoalSeed.ts): Heimtor nach ≈ 15 s, Auswärtstor nach ≈ 13 s
   'goal-home-ai': { kind: 'league', homeHuman: true, awayHuman: false, anthem: false, seed: 'goal-seed-9' },
@@ -48,7 +53,8 @@ export function makeBackend(): Backend {
         home: dbTeam('h', c.homeHuman ? 'human' : 'ai', c.homeHuman ? 'u-home' : null),
         away: dbTeam('a', c.awayHuman ? 'human' : 'ai', c.awayHuman ? 'u-away' : null),
         stadium: { name: 'Teststadion', capacity: 30000, design: {}, attendance: 26000,
-          fans: { flags: [], ultras: [], choreo: null, audio: { anthem: c.anthem ? ANTHEM : null, signature: null, chants: [] }, away: null } },
+          fans: { flags: [], ultras: [], choreo: null, audio: { anthem: c.anthem ? ANTHEM : null, signature: null, chants: [] },
+            away: c.awayChants ? { id: 'club-a', name: 'Manager A', short: 'MAN', control: 'human', colors: ['#1d4ed8', '#ffffff'], flags: [], ultra: null, chants: [AWAY_CHANT] } : null } },
         checkpoint: null,
       } as unknown as DbSetup;
     },

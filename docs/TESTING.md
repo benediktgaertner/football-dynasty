@@ -105,6 +105,8 @@ npm run build
 - `C0_free_agents.sql` (0034): Erstligist mit 70 % Gehalt schlägt Zweitligist mit 100 %; Zweitligist braucht mehr als +25 % und gewinnt mit 250 %; Kalibrierung (5.000 Ziehungen); garantierte Unterschrift bei akzeptablem Angebot; vereinslos nur bei unzureichenden Angeboten; Budget, Limit, Vertraulichkeit, KI-Angebote.
 - `C1_reduce_players.sql` (0034): Reduktion auf elf Spieler je Verein kleinerer Länder, Schutz von Spielern mit Historie, Stärke unverändert, idempotent, temporäre Europapokal-Bank.
 - `apps/web/src/lib/crowdAudio.test.ts` (0034): Hörbarkeit per Offline-Rendering (benötigt lokal `npm i --no-save node-web-audio-api`, sonst übersprungen).
+- `crowdAudio.test.ts` (KI-Fans aus Aufnahmen): Überblendung des Stadionrauschens ohne Pegelloch, Heim-/Gästespur (Dominanz, Stereoposition), Auswärtstor im Gästeblock, kein Übersteuern beim Schichten, keine Ersatzklänge ohne Dateien, Auswahl ohne Wiederholung.
+- Playwright „KI-Fankurve (echte Stadionaufnahmen)“: Heimspiel, ruhige Phasen vs. Angriffe, Auswärtsspiel mit hochgeladenem Gästegesang, Heimtor, Auswärtstor, leere Bibliothek. Testsignale: `apps/web/e2e/crowd-test/` (neu erzeugen: `node scripts/crowd-audio.mjs <roh> apps/web/e2e/crowd-test`).
 - `B1_country_setup.sql` + `B2_country_world.sql` (0033): Welterstellung für Italien (1. Liga), San Marino (2. Liga), Niederlande (3. Liga) und Deutschland (3. Liga): Host-Rechte, Ligen/Namen, Menschen in der Startliga, Skalierung von Pool und Startkapital, Draft, Saisonstart ohne Europapokal, 27 Ligaspiele je Spieltag, Amateurvereine des Landes.
 - `50_season.sql` prüft zusätzlich den Übergang Saison 1 → 2: Saison 1 ohne Europapokal, Saison 2 mit 13 Europapokal-Terminen und Qualifikation aus der Abschlusstabelle.
 
