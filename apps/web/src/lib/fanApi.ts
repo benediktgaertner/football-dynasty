@@ -93,6 +93,19 @@ export const fanApi = {
       throw e;
     }
   },
+  /** Länge einer Audiodatei speichern (bestimmt die Dauer des Einlaufs bei Hymnen) */
+  setAudioDuration: (id: string, seconds: number) => rpc<void>('set_club_audio_duration', { p_id: id, p_seconds: Math.round(seconds * 100) / 100 }),
+  /** Länge einer MP3 aus den Metadaten (ohne vollständiges Dekodieren) */
+  mp3Duration: (file: File) => new Promise<number | null>((resolve) => {
+    const url = URL.createObjectURL(file);
+    const a = new Audio();
+    const done = (v: number | null) => { URL.revokeObjectURL(url); resolve(v); };
+    a.preload = 'metadata';
+    a.onloadedmetadata = () => done(Number.isFinite(a.duration) && a.duration > 0 ? a.duration : null);
+    a.onerror = () => done(null);
+    setTimeout(() => done(null), 8000);
+    a.src = url;
+  }),
   publicUrl: (path: string) => requireSupabase().storage.from(BUCKET).getPublicUrl(path).data.publicUrl,
   saveKits: (worldId: string, kits: KitSet) => rpc<KitSet>('save_kits', { p_world: worldId, p_kits: kits }),
   prep: (worldId: string) => rpc<PrepState>('prep_state', { p_world: worldId }),

@@ -17,6 +17,10 @@ export const engineCommandSchema = z.discriminatedUnion('kind', [
 export const clientMessageSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('hello'), token: z.string().min(10).max(4096), fixtureId: uuidish }),
   z.object({ t: z.literal('start') }),
+  /** Einlauf: gemeinsam überspringen (jeder anwesende Manager muss zustimmen) */
+  z.object({ t: z.literal('skip_walkout') }),
+  /** Einlauf: gemessene Länge der Heimhymne (nur Heim-Manager, nur falls nicht gespeichert) */
+  z.object({ t: z.literal('anthem'), durationMs: z.number().int().min(1000).max(900_000) }),
   z.object({ t: z.literal('cmd'), id: z.number().int().nonnegative(), cmd: engineCommandSchema }),
   z.object({ t: z.literal('ping') }),
 ]);

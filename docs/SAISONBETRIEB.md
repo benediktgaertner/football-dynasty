@@ -219,3 +219,18 @@ Speicher geben Postgres-Tabellen erst nach `VACUUM FULL` an das Dateisystem zur�
 | Schlussphase knapp | 80 % | −21,5 | 25 % | −35,7 |
 
   Ablauf im Test: ruhig −31,6 → Angriff −25,4 → Strafraum −20,3 → vergeben −33,2 → Rückpässe −34,3 → Heimtor −16,1 → nach Gegentor −33,8 (Gäste −24,9 statt −35,2). Kein Sprung über 6 dB zwischen zwei 100-ms-Fenstern.
+
+## Update 0035: Vereinshymne in voller Länge
+- **Einlaufdauer:** Der Einlauf dauert so lange wie die hochgeladene Heimhymne plus 2,5 s Ausklang, mindestens 20 s und höchstens 6 Minuten. Danach pfeift der Match-Server für alle gleichzeitig an.
+- **Länge der Hymne:** wird beim Hochladen aus den MP3-Metadaten gespeichert (`club_audio.duration_sec`). Bei älteren Uploads misst der Browser des Heim-Managers sie beim ersten Spiel, meldet sie dem Server (der den Einlauf verlängert) und speichert sie.
+- **Synchron:** Alle Clients starten die Hymne ab dem gemeinsamen Einlaufbeginn. Wer später beitritt, steigt an der laufenden Stelle ein.
+- **Hymne überspringen:**
+  - KI-Partie: sofortiger Anpfiff.
+  - Multiplayer: Anpfiff erst, wenn alle verbundenen Manager zugestimmt haben. Die Anzeige zeigt, auf wen noch gewartet wird.
+  - „Einlauf immer überspringen“ gibt die eigene Stimme automatisch ab.
+- **Bild:** Einlauf (≈ 14 s), dann Aufstellung vor der Haupttribüne mit leichtem Wiegen, solange die Hymne läuft. Fahnen und Choreografie bleiben sichtbar, nichts wiederholt sich. In den letzten 5,6 s geht es in die Anfangsformation.
+- **Ton:**
+  - Während der Hymne sind Kulisse und Gesänge abgesenkt (Ducking 40 %).
+  - Nach dem Ende der Hymne steigt die normale Kulisse über 3 s wieder an; beim Anpfiff wird die Hymne weich ausgeblendet.
+  - Beim Verlassen der Partie stoppt alles.
+  - Dynamische Kulisse, Fanreaktionen und Gesänge sind unverändert.

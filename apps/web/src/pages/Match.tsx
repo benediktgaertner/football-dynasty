@@ -44,9 +44,14 @@ export function Match() {
   const [panel, setPanel] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const banner = useBanner(state?.events ?? [], state?.teams ?? null);
-  // Einlauf überspringen ist rein lokal; der Anpfiff kommt für alle gleichzeitig vom Server
-  const [skipWalkout, setSkipWalkout] = useState(() => prefs.alwaysSkip);
-  const sound = useMatchAudio(state, skipWalkout, fixtureId);
+  // Hymne überspringen wird beim Match-Server abgestimmt: KI-Partie sofort, Multiplayer nur gemeinsam
+  const [voted, setVoted] = useState(false);
+  const skipWalkout = useCallback(() => { if (!client) return; setVoted(true); client.skipWalkout(); }, [client]);
+  useEffect(() => {
+    // „Einlauf immer überspringen“: eigene Stimme automatisch abgeben (Manager, einmal je Einlauf)
+    if (prefs.alwaysSkip && !voted && state?.status === 'waiting' && state.walkoutEndsAt && (state.role === 'home' || state.role === 'away')) skipWalkout();
+  }, [state?.status, state?.walkoutEndsAt, state?.role, voted, skipWalkout]);
+  const sound = useMatchAudio(state, client, fixtureId);
   const [mixerOpen, setMixerOpen] = useState(false);
 
   if (!configured) {
@@ -97,7 +102,7 @@ export function Match() {
       <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,1fr)_228px] xl:grid-cols-[minmax(0,1fr)_250px]">
         <div className="relative">
           <div className="mx-auto w-full" style={{ aspectRatio: pitchAspect(state.stadium), maxHeight: 'calc(100vh - 220px)', maxWidth: `calc((100vh - 220px) * ${pitchAspect(state.stadium).replace(' / ', ' / ')})` }}>
-            <MatchPitch client={client} teams={teams} homeColor={homeColor} awayColor={awayColor} stadium={state.stadium} walkoutEndsAt={state.walkoutEndsAt} walkoutSkipped={skipWalkout} sound={sound.on ? sound.sound : null} />
+            <MatchPitch client={client} teams={teams} homeColor={homeColor} awayColor={awayColor} stadium={state.stadium} walkoutEndsAt={state.walkoutEndsAt} walkoutStartedAt={state.walkoutStartedAt} sound={sound.on ? sound.sound : null} />
           </div>
           {banner && banner.big && (
             <div key={banner.key} className="fd-banner pointer-events-none absolute left-1/2 top-[40%] text-center">
@@ -119,7 +124,7 @@ export function Match() {
             </div>
           )}
           {status === 'waiting' && state.walkoutEndsAt && (
-            <WalkoutOverlay endsAt={state.walkoutEndsAt} skipped={skipWalkout} onSkip={() => { setSkipWalkout(true); sound.stopMusic(); }} sound={sound} />
+            <WalkoutOverlay state={state} voted={voted} onSkip={skipWalkout} sound={sound} />
           )}
           {status !== 'waiting' && status !== 'finished' && (
             <div className="absolute bottom-3 right-3 flex gap-2">
@@ -359,24 +364,39 @@ function Summary({ result, saved, teams, homeColor, awayColor, worldId, kind, fi
   );
 }
 
-/** Einlauf: Countdown bis zum gemeinsamen Anpfiff, lokal überspringbar, Ton an/aus */
-function WalkoutOverlay({ endsAt, skipped, onSkip, sound }: { endsAt: number; skipped: boolean; onSkip: () => void; sound: ReturnType<typeof useMatchAudio> }) {
+/**
+ * Einlauf: Hymne des Heimvereins in voller Länge, Countdown bis zum gemeinsamen Anpfiff.
+ * „Hymne überspringen“: KI-Partie sofort; im Multiplayer erst, wenn alle anwesenden Manager zugestimmt haben.
+ */
+function WalkoutOverlay({ state, voted, onSkip, sound }: { state: MatchState; voted: boolean; onSkip: () => void; sound: ReturnType<typeof useMatchAudio> }) {
   const [, tick] = useState(0);
   useEffect(() => { const id = setInterval(() => tick((x) => x + 1), 250); return () => clearInterval(id); }, []);
-  const left = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+  const left = Math.max(0, Math.ceil(((state.walkoutEndsAt ?? Date.now()) - Date.now()) / 1000));
+  const mmss = left >= 60 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : `${left} s`;
   const [always, setAlways] = useState(prefs.alwaysSkip);
+  const manager = state.role === 'home' || state.role === 'away';
+  const { votes, needed } = state.walkoutSkip;
+  const others = needed.filter((s) => s !== state.role && !votes.includes(s));
+  const otherName = (side: 'home' | 'away') => (side === 'home' ? state.teams?.home.name : state.teams?.away.name) ?? 'Gegner';
   return (
-    <div className={`pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-3 ${skipped ? 'top-0 justify-center rounded-xl bg-ink/55' : ''}`}>
-      {skipped && <p className="display text-3xl font-extrabold uppercase">Anpfiff in {left} s</p>}
-      {sound.line && !skipped && <p className="display rounded-lg bg-ink/70 px-4 py-1.5 text-center text-xl font-bold uppercase text-gold">{sound.line}</p>}
-      <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-xl bg-ink/75 px-3 py-2 text-sm">
-        {!skipped && <span className="display text-lg font-bold uppercase">Anpfiff in {left} s</span>}
-        {!skipped && <Button variant="secondary" className="min-h-10 !px-3 !text-sm" onClick={onSkip}>Einlauf überspringen</Button>}
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-3">
+      {sound.line && <p className="display rounded-lg bg-ink/70 px-4 py-1.5 text-center text-xl font-bold uppercase text-gold">{sound.line}</p>}
+      <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-xl bg-ink/80 px-3 py-2 text-sm shadow-xl">
+        <span className="display text-lg font-bold uppercase">Anpfiff in {mmss}</span>
+        {manager && !voted && (
+          <Button className="min-h-12 !px-5 !text-base" onClick={onSkip}>⏭ Hymne überspringen</Button>
+        )}
+        {manager && voted && others.length > 0 && (
+          <span className="rounded-lg bg-gold/15 px-3 py-2 font-semibold text-gold">Warte auf {others.map(otherName).join(', ')} ({votes.length}/{needed.length})</span>
+        )}
+        {!manager && votes.length > 0 && <span className="text-cream-dim">Überspringen: {votes.length}/{needed.length} Manager</span>}
         <Button variant="ghost" className="min-h-10 !px-3 !text-sm" onClick={() => void (sound.on ? sound.mute() : sound.unlock())}>{sound.on ? '🔊 Ton aus' : '🔈 Ton an'}</Button>
-        <label className="flex items-center gap-1.5 text-cream-dim"><input type="checkbox" checked={always} className="h-4 w-4 accent-[var(--fd-accent)]"
-          onChange={(e) => { prefs.alwaysSkip = e.target.checked; setAlways(e.target.checked); if (e.target.checked) onSkip(); }} />Einlauf immer überspringen</label>
+        {manager && (
+          <label className="flex items-center gap-1.5 text-cream-dim"><input type="checkbox" checked={always} className="h-4 w-4 accent-[var(--fd-accent)]"
+            onChange={(e) => { prefs.alwaysSkip = e.target.checked; setAlways(e.target.checked); if (e.target.checked && !voted) onSkip(); }} />Einlauf immer überspringen</label>
+        )}
       </div>
-      <p className="text-xs text-cream-dim">Der Anpfiff erfolgt für alle Manager gleichzeitig – Überspringen ändert nur deine Ansicht.</p>
+      <p className="text-xs text-cream-dim">Der Anpfiff erfolgt für alle gleichzeitig – im Multiplayer wird nur übersprungen, wenn alle Manager zustimmen.</p>
     </div>
   );
 }
@@ -386,7 +406,7 @@ function WalkoutOverlay({ endsAt, skipped, onSkip, sound }: { endsAt: number; sk
  * Einlauf → Hymne des Heimvereins, danach Signatur-Fangesang; im Spiel Kulisse, Reaktionen und
  * zufällige Fangesänge über den zentralen Mixer. Verlassen der Seite oder Abpfiff ⇒ sanft aus.
  */
-function useMatchAudio(state: MatchState | null, skipped: boolean, fixtureId: string) {
+function useMatchAudio(state: MatchState | null, client: MatchClient | null, fixtureId: string) {
   const sound = useMemo(() => new MatchSound((p) => fanApi.publicUrl(p)), [fixtureId]);
   const [on, setOn] = useState(false);
   const [needsUnlock, setNeedsUnlock] = useState(false);
@@ -419,36 +439,46 @@ function useMatchAudio(state: MatchState | null, skipped: boolean, fixtureId: st
   // Seite verlassen ⇒ alles sanft ausblenden; kein Ton im Menü
   useEffect(() => () => { walkoutTrack.current?.stop(0.4); sound.stop(0.6); }, [sound]);
 
-  // Einlauf: Hymne, danach Signatur-Fangesang (bis zum Anpfiff); Kulisse wird dabei abgesenkt
-  const endsAt = state?.walkoutEndsAt ?? null;
+  // Einlauf: Hymne des Heimvereins in VOLLER Länge (synchron für alle: Einstieg ab gemeinsamem Startzeitpunkt).
+  // Ohne Hymne: Signatur-Fangesang bis zum Anpfiff. Kulisse und Gesänge sind währenddessen abgesenkt.
+  const hasWalkout = !!state?.walkoutEndsAt;
   useEffect(() => {
-    if (!on || !endsAt || skipped || played.current || state?.status !== 'waiting' || !fans) return;
+    if (!on || !hasWalkout || played.current || state?.status !== 'waiting' || !fans) return;
     played.current = true;
-    const left = (endsAt - Date.now()) / 1000;
-    const anthemSec = Math.max(4, Math.min(12, left * 0.6));
     let cancelled = false;
-    let sig: ReturnType<typeof setTimeout> | undefined;
-    mixer.ducking(0.5, 1);
+    mixer.ducking(0.4, 1.5);
     void (async () => {
       const a = fans.audio.anthem;
       if (a?.path) {
-        const t = await mixer.play(fanApi.publicUrl(a.path), { channel: 'anthem', volume: a.volume, maxSec: anthemSec, fadeIn: 1 });
+        const url = fanApi.publicUrl(a.path);
+        const data = await mixer.load(url);
+        if (cancelled || !data) { if (!data) mixer.ducking(1, 2); return; }
+        // Ältere Uploads ohne gespeicherte Länge: Heim-Manager meldet sie (Server verlängert den Einlauf) und speichert sie
+        if (!(Number(a.duration) > 0) && state?.role === 'home') {
+          client?.reportAnthem(data.buffer.duration * 1000);
+          void fanApi.setAudioDuration(a.id, data.buffer.duration).catch(() => undefined);
+        }
+        const startedAt = state?.walkoutStartedAt ?? Date.now();
+        const offset = Math.max(0, (Date.now() - startedAt) / 1000 - 0.3);
+        const t = await mixer.play(url, { channel: 'anthem', volume: a.volume, offset, fadeIn: offset > 1 ? 0.8 : 1.2 });
         if (cancelled) { t?.stop(0.3); return; }
+        if (!t) { mixer.ducking(1, 2); return; }
         walkoutTrack.current = t;
-        if (t) setLine(`♪ ${a.name}`);
+        setLine(`♪ ${a.name}`);
+        // Hymne zu Ende ⇒ sanft zurück zur normalen Kulisse (Anpfiff folgt kurz danach)
+        void t.ended.then(() => { if (walkoutTrack.current === t) { walkoutTrack.current = null; setLine(null); mixer.ducking(1, 3); } });
+        return;
       }
-      sig = setTimeout(async () => {
-        const g = fans.audio.signature;
-        if (cancelled || !g?.path) return;
-        walkoutTrack.current?.stop(1);
-        const t2 = await mixer.play(fanApi.publicUrl(g.path), { channel: 'anthem', volume: g.volume, maxSec: Math.max(3, (endsAt - Date.now()) / 1000), fadeIn: 1 });
-        walkoutTrack.current = t2;
-        if (t2) setLine(`♪ ${g.name}`);
-        mixer.push(0.8, 4);
-      }, (a?.path ? anthemSec - 1 : 0) * 1000);
+      const g = fans.audio.signature;
+      const endsAt = state?.walkoutEndsAt ?? Date.now();
+      if (!g?.path) { mixer.ducking(1, 2); return; }
+      const t2 = await mixer.play(fanApi.publicUrl(g.path), { channel: 'anthem', volume: g.volume, maxSec: Math.max(3, (endsAt - Date.now()) / 1000), fadeIn: 1 });
+      if (cancelled) { t2?.stop(0.3); return; }
+      walkoutTrack.current = t2;
+      if (t2) setLine(`♪ ${g.name}`);
     })();
-    return () => { cancelled = true; if (sig) clearTimeout(sig); };
-  }, [on, endsAt, skipped, state?.status, fans]);
+    return () => { cancelled = true; };
+  }, [on, hasWalkout, state?.status, fans]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Anpfiff: Einlaufmusik ausblenden, Playlist starten
   useEffect(() => {
@@ -466,8 +496,8 @@ function useMatchAudio(state: MatchState | null, skipped: boolean, fixtureId: st
   return {
     sound, on, needsUnlock, line,
     unlock: async () => { const ok = await start(); if (ok && state?.status === 'running' && !begun.current) { begun.current = true; sound.begin(); } },
-    mute: () => { walkoutTrack.current?.stop(0.3); sound.stop(0.4); setOn(false); prefs.sound = false; begun.current = false; },
-    stopMusic: () => { walkoutTrack.current?.stop(0.6); walkoutTrack.current = null; setLine(null); mixer.ducking(1); },
+    // Ton aus/an während des Einlaufs: Hymne beim Wiedereinschalten an der aktuellen Stelle fortsetzen
+    mute: () => { walkoutTrack.current?.stop(0.3); walkoutTrack.current = null; setLine(null); sound.stop(0.4); setOn(false); prefs.sound = false; begun.current = false; played.current = false; },
   };
 }
 

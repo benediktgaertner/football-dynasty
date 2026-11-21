@@ -16,6 +16,13 @@ const CHECKPOINT_EVERY = 400; // alle 20 s Echtzeit (Seed + Befehlsprotokoll)
 const START_COUNTDOWN_MS = 90_000; // spätestens 90 s nach Öffnen startet das Spiel automatisch
 /** Einlaufzeremonie vor Pflichtspielen: für alle Teilnehmer gleich lang, der Anpfiff folgt serverseitig */
 export const WALKOUT_MS = 20_000;
+/** Mit hochgeladener Heimhymne: Einlauf = volle Hymnenlänge + kurzer Ausklang (höchstens 6 Minuten) */
+export const ANTHEM_TAIL_MS = 2_500;
+export const WALKOUT_MAX_MS = 360_000;
+export function walkoutMsFor(anthemMs: number | null | undefined): number {
+  if (!anthemMs || !Number.isFinite(anthemMs) || anthemMs <= 0) return WALKOUT_MS;
+  return Math.min(WALKOUT_MAX_MS, Math.max(WALKOUT_MS, Math.round(anthemMs) + ANTHEM_TAIL_MS));
+}
 
 /**
  * Ein Raum = eine Partie. Der Server ist autoritativ: Clients senden nur Befehle,
@@ -36,7 +43,12 @@ export class MatchRoom {
   private finishing = false;
   /** Zeitpunkt des Anpfiffs nach der Einlaufzeremonie (Server-Uhr) */
   private walkoutUntil = 0;
+  private walkoutStart = 0;
   private walkoutTimer: NodeJS.Timeout | null = null;
+  /** Hymnenlänge noch unbekannt (ältere Uploads): der Heim-Manager meldet sie einmal */
+  private anthemPending = false;
+  /** Zustimmungen zum gemeinsamen Überspringen (Seiten mit Manager) */
+  private skipVotes = new Set<Side>();
 
   constructor(fixtureId: string, private backend: Backend, onClose: () => void, private speed = 1) {
     this.fixtureId = fixtureId;
@@ -61,12 +73,57 @@ export class MatchRoom {
         // nur eine Anzeige beim Client und verändert den gemeinsamen Spielzustand nicht.
         const walkout = (this.db.stadium as { fans?: { walkout?: boolean } } | null | undefined)?.fans?.walkout !== false;
         if (walkout) {
-          const ms = WALKOUT_MS / this.speed;
-          this.walkoutUntil = Date.now() + ms;
-          this.walkoutTimer = setTimeout(() => this.begin(), ms);
+          const anthem = this.anthem();
+          this.anthemPending = !!anthem?.path && !(Number(anthem.duration) > 0);
+          this.walkoutStart = Date.now();
+          this.scheduleWalkout(walkoutMsFor(Number(anthem?.duration) > 0 ? Number(anthem!.duration) * 1000 : null));
         } else queueMicrotask(() => this.begin());
       } else this.autoStart = setTimeout(() => this.begin(), START_COUNTDOWN_MS / this.speed);
     }
+  }
+
+  private anthem(): { path?: string | null; duration?: number | null } | null {
+    const fans = (this.db.stadium as { fans?: { audio?: { anthem?: { path?: string | null; duration?: number | null } | null } } } | null | undefined)?.fans;
+    return fans?.audio?.anthem ?? null;
+  }
+
+  /** Anpfiff nach totalMs ab Einlaufbeginn (Server-Uhr), Zeitgeber neu setzen */
+  private scheduleWalkout(totalMs: number): void {
+    if (this.walkoutTimer) clearTimeout(this.walkoutTimer);
+    this.walkoutTotal = totalMs;
+    this.walkoutUntil = this.walkoutStart + totalMs / this.speed;
+    this.walkoutTimer = setTimeout(() => this.begin(), Math.max(0, this.walkoutUntil - Date.now()));
+  }
+  private walkoutTotal = 0;
+
+  /** Seiten, deren Manager zustimmen müssen: alle menschlichen Teams mit verbundenem Manager */
+  private skipNeeded(): Side[] {
+    return (['home', 'away'] as const).filter((s) => (s === 'home' ? this.db.home : this.db.away).control === 'human' && this.managerOnline(s));
+  }
+
+  private walkoutInfo() {
+    return {
+      t: 'walkout', ms: Math.max(0, this.walkoutUntil - Date.now()), totalMs: this.walkoutTotal / this.speed,
+      skipVotes: [...this.skipVotes], skipNeeded: this.skipNeeded(),
+    };
+  }
+
+  /** Hymne überspringen: KI-Partie sofort, Multiplayer erst wenn alle anwesenden Manager zugestimmt haben */
+  handleSkipWalkout(c: Client): void {
+    if (c.role === 'spectator') return this.send(c, { t: 'error', message: 'Zuschauer können den Einlauf nicht überspringen.' });
+    if (this.status !== 'waiting' || this.walkoutUntil === 0) return;
+    this.skipVotes.add(c.role);
+    const needed = this.skipNeeded();
+    if (needed.every((s) => this.skipVotes.has(s))) { this.begin(); return; }
+    this.broadcast(this.walkoutInfo());
+  }
+
+  /** Länge der Heimhymne (vom Heim-Manager gemessen), einmalig, verlängert den Einlauf auf volle Länge */
+  handleAnthemDuration(c: Client, durationMs: number): void {
+    if (c.role !== 'home' || !this.anthemPending || this.status !== 'waiting' || this.walkoutUntil === 0) return;
+    this.anthemPending = false;
+    this.scheduleWalkout(walkoutMsFor(durationMs));
+    this.broadcast(this.walkoutInfo());
   }
 
   private managerOnline(side: Side): boolean {
@@ -90,6 +147,7 @@ export class MatchRoom {
     if (this.walkoutTimer) clearTimeout(this.walkoutTimer);
     this.walkoutTimer = null;
     this.walkoutUntil = 0;
+    this.skipVotes.clear();
     this.updateAutopilot();
     this.status = 'running';
     // Bei Wiederaufnahme: Zeitbudget anteilig fortsetzen
@@ -201,6 +259,9 @@ export class MatchRoom {
       status: this.status,
       // verbleibende Zeit bis zum Anpfiff (relativ, unabhängig von Uhrabweichungen der Geräte)
       walkoutMs: this.walkoutUntil > 0 ? Math.max(0, this.walkoutUntil - Date.now()) : 0,
+      walkoutTotalMs: this.walkoutUntil > 0 ? this.walkoutTotal / this.speed : 0,
+      skipVotes: [...this.skipVotes],
+      skipNeeded: this.walkoutUntil > 0 ? this.skipNeeded() : [],
       fixtureId: this.fixtureId,
       kind: this.db.kind,
       stadium: this.db.stadium ?? null,
@@ -211,10 +272,17 @@ export class MatchRoom {
       view: c.role === 'spectator' ? null : this.engine.teamView(c.role),
     });
     if (this.status === 'running') this.updateAutopilot();
+    // neuer Manager während des Einlaufs: alle sehen, wer noch zustimmen muss
+    if (this.status === 'waiting' && this.walkoutUntil > 0 && c.role !== 'spectator') this.broadcast(this.walkoutInfo());
   }
 
   leave(c: Client): void {
     this.clients.delete(c);
+    // Manager weg: ggf. haben jetzt alle verbliebenen Manager zugestimmt
+    if (this.status === 'waiting' && this.walkoutUntil > 0 && this.skipVotes.size > 0) {
+      const needed = this.skipNeeded();
+      if (needed.every((s) => this.skipVotes.has(s))) this.begin(); else this.broadcast(this.walkoutInfo());
+    }
     if (this.status === 'running') this.updateAutopilot();
   }
 

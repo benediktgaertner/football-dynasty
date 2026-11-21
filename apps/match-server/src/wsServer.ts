@@ -87,6 +87,8 @@ export function attachMatchServer(server: Server, backend: Backend, opts: { allo
       }
       if (!client || !room) return fail('Bitte zuerst anmelden.', 4001);
       if (m.t === 'start') return room.handleStart(client);
+      if (m.t === 'skip_walkout') return room.handleSkipWalkout(client);
+      if (m.t === 'anthem') return room.handleAnthemDuration(client, m.durationMs);
       if (m.t === 'cmd') return room.handleCommand(client, m.id, m.cmd as MatchCommand);
     });
     ws.on('close', () => {

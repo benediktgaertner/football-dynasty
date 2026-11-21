@@ -373,7 +373,7 @@ export class StadiumMixer {
   }
 
   /** MP3 weich abspielen (Lautheit angeglichen), optional räumlich; maxSec begrenzt die Länge */
-  async play(url: string, o: { channel: Channel; volume?: number; pan?: number; maxSec?: number; fadeIn?: number }): Promise<Track | null> {
+  async play(url: string, o: { channel: Channel; volume?: number; pan?: number; maxSec?: number; fadeIn?: number; offset?: number }): Promise<Track | null> {
     if (!this.active) return null;
     const data = await this.load(url);
     if (!data || !this.active) return null;
@@ -386,7 +386,10 @@ export class StadiumMixer {
     g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(Math.max(0.001, lvl), at + fi);
     const p = ctx.createStereoPanner(); p.pan.value = o.pan ?? 0;
     src.connect(g).connect(p).connect(this.bus[o.channel]!);
-    src.start(at);
+    // Einstieg mitten in der Datei (z. B. später beigetretener Manager: Hymne synchron zu allen)
+    const offset = Math.max(0, o.offset ?? 0);
+    if (offset >= data.buffer.duration - 0.2) return null;
+    src.start(at, offset);
     this.sources.add(src);
     let done = false;
     let resolve!: () => void;
@@ -398,8 +401,9 @@ export class StadiumMixer {
       try { src.stop(t + Math.max(0.05, fade) + 0.05); } catch { /* bereits beendet */ }
     };
     src.onended = () => { this.sources.delete(src); done = true; resolve(); };
-    const len = Math.min(data.buffer.duration, o.maxSec ?? data.buffer.duration);
-    if (len < data.buffer.duration) setTimeout(() => stop(1.5), Math.max(0, (len - 1.5) * 1000));
+    const rest = data.buffer.duration - offset;
+    const len = Math.min(rest, o.maxSec ?? rest);
+    if (len < rest) setTimeout(() => stop(1.5), Math.max(0, (len - 1.5) * 1000));
     return { stop, ended, url };
   }
 

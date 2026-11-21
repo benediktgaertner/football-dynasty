@@ -117,3 +117,8 @@ Keine Schlüssel nötig, keine laufenden Kosten: Musik entsteht im Browser oder 
 1. **Supabase:** SQL Editor → New query → `football_dynasty_update_0034.sql` → Run (wiederholbar). Am Ende zeigt das Ergebnis je Welt: Spieler vorher, entfernt, nachher.
 2. **GitHub/Netlify:** Zip-Inhalt ins Repository kopieren und pushen.
 3. **Fly.io:** kein Deploy nötig.
+
+## Update 0035 (Hymne in voller Länge)
+1. **Supabase:** SQL Editor → New query → `football_dynasty_update_0035.sql` → Run (wiederholbar).
+2. **GitHub/Netlify:** Zip-Inhalt ins Repository kopieren und pushen.
+3. **Fly.io: Deploy nötig** (Match-Server: Einlaufdauer nach Hymnenlänge, gemeinsames Überspringen): `& "$env:USERPROFILE\.fly\bin\flyctl.exe" deploy -a football-dynasty`

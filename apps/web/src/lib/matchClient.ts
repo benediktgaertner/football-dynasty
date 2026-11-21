@@ -49,6 +49,11 @@ export interface MatchState {
   stadium: StadiumView | null;
   /** Anpfiff nach der Einlaufzeremonie (lokale Uhr, aus der vom Server gemeldeten Restzeit) */
   walkoutEndsAt: number | null;
+  /** Beginn und Gesamtdauer des Einlaufs (lokale Uhr) – für synchronen Hymnenstart */
+  walkoutStartedAt: number | null;
+  walkoutTotalMs: number;
+  /** Gemeinsames Überspringen: wer schon zugestimmt hat / wer zustimmen muss */
+  walkoutSkip: { votes: Array<'home' | 'away'>; needed: Array<'home' | 'away'> };
 }
 
 /**
@@ -73,14 +78,14 @@ export interface StandArea { x: number; y: number; w: number; h: number }
 export type StandBlock = 'home_curve' | 'main_stand' | 'back_stand' | 'corner_left' | 'corner_right';
 export interface UltraGroup { id: string; name: string; colors: string[]; banner?: string; block?: StandBlock; area?: StandArea | null; flags?: number; flag?: FlagDesign | null }
 export interface ChoreoDesign { pattern: 'stripes' | 'blocks' | 'checker' | 'wave' | 'gradient' | 'rays' | 'mosaic'; colors: string[]; text?: string; motif?: 'none' | 'star' | 'heart' | 'crown' | 'crest' | 'lion' | 'eagle' | 'anchor' | 'castle'; block?: 'home_curve' | 'main_stand' | 'back_stand' | 'all'; name?: string }
-export interface AudioRef { id: string; name: string; source: 'upload'; path: string | null; volume: number; situation?: string | null; signature?: boolean }
+export interface AudioRef { id: string; name: string; source: 'upload'; path: string | null; volume: number; situation?: string | null; signature?: boolean; duration?: number | null; club_id?: string }
 export interface FanClub { id: string; name: string; short: string; control: 'human' | 'ai'; colors: [string | null, string | null] }
 export interface FanView { flags: FlagDesign[]; ultras: UltraGroup[]; choreo: ChoreoDesign | null; audio: { anthem: AudioRef | null; signature: AudioRef | null; chants: AudioRef[] }; walkout: boolean;
   home_club?: FanClub; away?: FanClub & { flags: FlagDesign[]; ultra: UltraGroup | null; chants?: Array<AudioRef & { signature?: boolean }> } }
 export interface StadiumDesign { style?: 'classic' | 'modern' | 'arena' | 'traditional'; stand?: string; seat?: string; accent?: string; club_colors?: boolean; roof?: boolean }
 
 export class MatchClient {
-  state: MatchState = { connection: 'connecting', error: null, role: null, status: 'loading', skip: null, teams: null, events: [], view: null, latest: null, end: null, kind: null, stadium: null, walkoutEndsAt: null };
+  state: MatchState = { connection: 'connecting', error: null, role: null, status: 'loading', skip: null, teams: null, events: [], view: null, latest: null, end: null, kind: null, stadium: null, walkoutEndsAt: null, walkoutStartedAt: null, walkoutTotalMs: 0, walkoutSkip: { votes: [], needed: [] } };
   private ws: WebSocket | null = null;
   private listeners = new Set<() => void>();
   private buffer: Array<{ at: number; s: Snapshot }> = [];
@@ -175,7 +180,7 @@ export class MatchClient {
         this.scene = m.scene ?? 0;
         this.buffer = [{ at: performance.now(), s: m.snapshot }];
         this.emit({ connection: 'open', error: null, role: m.role, status: m.status, teams: m.teams, events: m.events, view: m.view, latest: m.snapshot, kind: m.kind, stadium: m.stadium ?? null,
-          walkoutEndsAt: m.status === 'waiting' && m.walkoutMs > 0 ? Date.now() + Number(m.walkoutMs) : null });
+          ...this.walkoutFrom(m.status === 'waiting' ? Number(m.walkoutMs) : 0, Number(m.walkoutTotalMs ?? 0), m.skipVotes, m.skipNeeded) });
         break;
       case 'frame':
         // Neue Szene (Schnitt/Sprung): nicht über den Schnitt hinweg interpolieren
@@ -192,8 +197,11 @@ export class MatchClient {
       case 'view':
         this.emit({ view: m.view });
         break;
+      case 'walkout':
+        if (this.state.status === 'waiting') this.emit(this.walkoutFrom(Number(m.ms), Number(m.totalMs), m.skipVotes, m.skipNeeded));
+        break;
       case 'status':
-        this.emit({ status: m.status, walkoutEndsAt: m.status === 'running' ? null : this.state.walkoutEndsAt });
+        this.emit({ status: m.status, walkoutEndsAt: m.status === 'running' ? null : this.state.walkoutEndsAt, walkoutSkip: m.status === 'running' ? { votes: [], needed: [] } : this.state.walkoutSkip });
         break;
       case 'skip':
         this.emit({ skip: { from: m.from, to: m.to, at: performance.now() } });
@@ -215,6 +223,20 @@ export class MatchClient {
   }
 
   start(): void { this.ws?.send(JSON.stringify({ t: 'start' })); }
+  /** Hymne überspringen (KI-Partie sofort, Multiplayer erst wenn alle Manager zustimmen) */
+  skipWalkout(): void { this.ws?.send(JSON.stringify({ t: 'skip_walkout' })); }
+  /** Gemessene Länge der Heimhymne melden (nur Heim-Manager, falls noch nicht gespeichert) */
+  reportAnthem(durationMs: number): void { this.ws?.send(JSON.stringify({ t: 'anthem', durationMs: Math.round(durationMs) })); }
+
+  private walkoutFrom(ms: number, totalMs: number, votes: unknown, needed: unknown): Partial<MatchState> {
+    if (!(ms > 0)) return { walkoutEndsAt: null, walkoutStartedAt: null, walkoutTotalMs: 0 };
+    const now = Date.now();
+    const total = totalMs > 0 ? totalMs : ms;
+    return {
+      walkoutEndsAt: now + ms, walkoutStartedAt: now + ms - total, walkoutTotalMs: total,
+      walkoutSkip: { votes: Array.isArray(votes) ? votes : [], needed: Array.isArray(needed) ? needed : [] },
+    };
+  }
 
   command(cmd: Command): Promise<{ ok: boolean; error?: string }> {
     const id = this.nextId++;

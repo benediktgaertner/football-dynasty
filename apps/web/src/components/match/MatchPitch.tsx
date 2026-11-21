@@ -38,12 +38,13 @@ interface Puff { x: number; y: number; r: number; a: number; vx: number; vy: num
  * Versatz; Spur je Ballart (flach, hoch, Flanke, Schuss). Standards: Einblendung, Mauer, Positionierung.
  * Stadion: Ränge nach Kapazität, weiße Sitze, Fans in Bewegung, Choreografie, Banner, Pyrotechnik.
  */
-export function MatchPitch({ client, teams, homeColor, awayColor, highlight, stadium, walkoutEndsAt = null, walkoutSkipped = false, sound = null }: {
+export function MatchPitch({ client, teams, homeColor, awayColor, highlight, stadium, walkoutEndsAt = null, walkoutStartedAt = null, walkoutSkipped = false, sound = null }: {
   /** Stadionton: erhält die gerade sichtbaren Ereignisse (gleicher Tick wie die Darstellung) */
   sound?: MatchSound | null;
   stadium?: StadiumView | null;
   /** Anpfiff nach der Einlaufzeremonie (lokale Uhr); null = kein Einlauf */
   walkoutEndsAt?: number | null;
+  walkoutStartedAt?: number | null;
   /** Einlauf lokal übersprungen (gemeinsamer Spielzustand bleibt unverändert) */
   walkoutSkipped?: boolean;
   client: MatchClient;
@@ -229,7 +230,16 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
       }
 
       if (!st) { drawWeather(); drawPyro(); return; }
-      if (inWalkout) { drawWalkout([...st.players].map(([id, [x, y]]) => [id, x, y] as [string, number, number]), 1 - (walkoutEndsAt! - Date.now()) / WALKOUT_MS); drawWeather(); drawPyro(); return; }
+      if (inWalkout) {
+        // Ablauf in Echtzeit: Einlauf (≈ 14 s) → Aufstellung vor der Haupttribüne, solange die Hymne läuft →
+        // in den letzten 5,6 s zur Anfangsformation. Lange Hymnen verlängern nur das Stehen, nichts wiederholt sich.
+        const nowMs = Date.now();
+        const remaining = walkoutEndsAt! - nowMs;
+        const elapsed = walkoutStartedAt ? nowMs - walkoutStartedAt : WALKOUT_MS - remaining;
+        const p = remaining < WALKOUT_MS * 0.28 ? Math.max(Math.min(0.72, elapsed / WALKOUT_MS), 1 - remaining / WALKOUT_MS) : Math.min(0.72, elapsed / WALKOUT_MS);
+        drawWalkout([...st.players].map(([id, [x, y]]) => [id, x, y] as [string, number, number]), p, nowMs / 1000);
+        drawWeather(); drawPyro(); return;
+      }
       const sp = st.setPiece;
       {
         const evs = client.state.events as MatchEvent[];
@@ -377,7 +387,7 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
        * gehen in zwei Reihen zur Mitte, stellen sich vor der Haupttribüne auf und laufen dann auf
        * ihre Startpositionen (= Positionen des ersten Snapshots, für alle gleich).
        */
-      function drawWalkout(players: Array<[string, number, number]>, p: number) {
+      function drawWalkout(players: Array<[string, number, number]>, p: number, t: number) {
         const home = players.filter(([id]) => info.get(id)?.side === 'home');
         const away = players.filter(([id]) => info.get(id)?.side === 'away');
         const tunnel: [number, number] = [L / 2, W + 2.4];
@@ -402,7 +412,9 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
         for (const [side, list] of [['home', home], ['away', away]] as const) {
           list.forEach(([id, tx, ty], i) => {
             if (p < 0.1 + i * 0.012) return;
-            const [x, y] = pos(side, i, [tx, ty]);
+            const [x0, y] = pos(side, i, [tx, ty]);
+            // in der Aufstellung: kaum merkliches Wiegen (lebendig, aber ruhig während der Hymne)
+            const x = x0 + (p >= 0.6 && p <= 0.74 ? Math.sin(t * 1.1 + i * 0.9) * 0.07 : 0);
             ctx.beginPath(); ctx.ellipse(X(x) + 0.3 * s, Y(y) + 0.5 * s, rr, rr * 0.55, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
             ctx.beginPath(); ctx.arc(X(x), Y(y), rr, 0, Math.PI * 2); ctx.fillStyle = fill[side]; ctx.fill();
             kitPattern(side, X(x), Y(y), rr);
@@ -423,7 +435,7 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
           });
         }
         // Einblendung
-        const label = p < 0.42 ? 'Einlauf der Mannschaften' : p < 0.72 ? 'Aufstellung vor der Haupttribüne' : 'Gleich geht es los';
+        const label = p < 0.42 ? 'Einlauf der Mannschaften' : p <= 0.72 ? 'Aufstellung vor der Haupttribüne' : 'Gleich geht es los';
         ctx.font = `800 ${Math.round(2.1 * s)}px "Barlow Condensed", system-ui, sans-serif`;
         const w = ctx.measureText(label.toUpperCase()).width + 2.4 * s;
         ctx.fillStyle = 'rgba(10,12,16,0.8)';
@@ -541,6 +553,6 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
     };
     draw();
     return () => cancelAnimationFrame(raf);
-  }, [client, teams, homeColor, awayColor, highlight, stadium, walkoutEndsAt, walkoutSkipped, sound]);
+  }, [client, teams, homeColor, awayColor, highlight, stadium, walkoutEndsAt, walkoutStartedAt, walkoutSkipped, sound]);
   return <canvas ref={ref} className="block h-full w-full rounded-xl" aria-label="Spielfeld mit Live-Positionen" />;
 }

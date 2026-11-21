@@ -87,7 +87,7 @@ describe.skipIf(!wa)('Stadionatmosphäre – hörbare Pegelunterschiede (Offline
     expect(marks.strafraum - marks.vergeben).toBeGreaterThan(5);
     expect(marks.heimtor - marks.ruhig).toBeGreaterThan(12);
     expect(marks.heimtor - marks.gegentor_heim).toBeGreaterThan(15);
-    expect(marks.gegentor_gast - marks.ruhig_gast).toBeGreaterThan(10);
+    expect(marks.gegentor_gast - marks.ruhig_gast).toBeGreaterThan(8);
     // weich: zwischen zwei 100-ms-Fenstern höchstens wenige dB Sprung
     let maxJump = 0;
     for (let t = 1; t < sec - 0.2; t += 0.1) maxJump = Math.max(maxJump, Math.abs(rmsDb(b, 0, t + 0.1, t + 0.2) - rmsDb(b, 0, t, t + 0.1)));

@@ -160,6 +160,7 @@ node "$ROOT/scripts/build-europe-payload.mjs" "$SEED" "$EXISTING" "$PDIR/full" M
 chmod -R 755 "$PDIR/full"
 run -tAc "select public.admin_add_europe('$WORLD', pg_read_file('$PDIR/full/MDA.json')::jsonb) ->> 'status'" >/dev/null
 check "C1_reduce_players.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/C1_reduce_players.sql"
+check "D0_anthem.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/D0_anthem.sql"
 
 # Welterstellung mit Land und Startliga: alle drei Startligen in unterschiedlichen Ländern
 TAG=1

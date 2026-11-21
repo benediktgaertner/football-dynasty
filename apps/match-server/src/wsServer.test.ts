@@ -24,9 +24,14 @@ const backend: Backend = {
   async verifyToken(t) { return users[t] ?? null; },
   async role(_f, u) { return u === 'u-home' ? 'home' : u === 'u-away' ? 'away' : u === 'u-fan' ? 'spectator' : null; },
   async setup(f) {
-    return { fixtureId: f, worldId: 'w', seed: `seed-${f}`, kind: f.startsWith('league') ? 'league' : 'friendly', neutral: false, home: dbTeam('h', 'human', 'u-home'), away: dbTeam('a', 'human', 'u-away'), checkpoint: f === 'resume' ? stored : null };
+    // league-ai-*: Gegner ist KI · league-anthem-*: Heimhymne 30 s gespeichert · league-measure-*: Hymne ohne gespeicherte Länge
+    const anthem = f.startsWith('league-anthem') ? { path: 'w/c/a.mp3', duration: 30 } : f.startsWith('league-measure') ? { path: 'w/c/a.mp3', duration: null } : null;
+    return { fixtureId: f, worldId: 'w', seed: `seed-${f}`, kind: f.startsWith('league') ? 'league' : 'friendly', neutral: false,
+      home: dbTeam('h', 'human', 'u-home'), away: dbTeam('a', f.startsWith('league-ai') ? 'ai' : 'human', f.startsWith('league-ai') ? null : 'u-away'),
+      stadium: anthem ? { name: 'S', capacity: 30000, design: {}, attendance: 20000, fans: { audio: { anthem } } } : null,
+      checkpoint: f === 'resume' ? stored : null } as DbSetup;
   },
-  async checkpoint(_f, tick, data) { checkpoints.push({ tick, data }); },
+  async checkpoint(f, tick, data) { if (!f.startsWith('league-')) checkpoints.push({ tick, data }); },
   async finish(id, result) { finished.push({ id, result }); },
   async pendingFixtures() { return []; },
   async isMember() { return true; },
@@ -88,6 +93,50 @@ describe('Match-Server (echte WebSocket-Clients)', () => {
     // 20 s Einlauf bei 40-facher Testgeschwindigkeit = 500 ms; der Start-Befehl darf nicht vorziehen
     expect(Date.now() - t0).toBeGreaterThanOrEqual(400);
     home.ws.close(); fan.ws.close();
+  });
+
+  it('Hymne: Einlauf dauert die volle Hymnenlänge (+ Ausklang)', async () => {
+    const home = await connect('token-home-xxxx', 'league-anthem-1');
+    const ih = await home.wait((m) => m.t === 'init');
+    // 30 s Hymne + 2,5 s bei 40-facher Testgeschwindigkeit ≈ 812 ms (statt 500 ms Standard)
+    expect(ih.walkoutTotalMs).toBeGreaterThan(780);
+    home.ws.close();
+  });
+
+  it('Hymne ohne gespeicherte Länge: Heim-Manager meldet sie, Einlauf wird verlängert', async () => {
+    const home = await connect('token-home-xxxx', 'league-measure-1');
+    const ih = await home.wait((m) => m.t === 'init');
+    expect(ih.walkoutTotalMs).toBe(500);
+    home.send({ t: 'anthem', durationMs: 90_000 });
+    const w = await home.wait((m) => m.t === 'walkout' && (m.totalMs as number) > 1000);
+    expect(w.totalMs).toBeGreaterThan(2300); // (90 s + 2,5 s) / 40
+    home.ws.close();
+  });
+
+  it('KI-Partie: Hymne sofort überspringbar', async () => {
+    const home = await connect('token-home-xxxx', 'league-ai-anthem-1');
+    await home.wait((m) => m.t === 'init');
+    const t0 = Date.now();
+    home.send({ t: 'skip_walkout' });
+    await home.wait((m) => m.t === 'status' && m.status === 'running');
+    expect(Date.now() - t0).toBeLessThan(300);
+    home.ws.close();
+  });
+
+  it('Multiplayer: Überspringen nur gemeinsam', async () => {
+    const home = await connect('token-home-xxxx', 'league-anthem-mp');
+    const away = await connect('token-away-xxxx', 'league-anthem-mp');
+    await home.wait((m) => m.t === 'init'); await away.wait((m) => m.t === 'init');
+    home.send({ t: 'skip_walkout' });
+    const w = await away.wait((m) => m.t === 'walkout' && (m.skipVotes as string[]).includes('home'));
+    expect(w.skipNeeded).toEqual(['home', 'away']);
+    await new Promise((r) => setTimeout(r, 150));
+    expect(home.msgs.some((m) => m.t === 'status' && m.status === 'running')).toBe(false);
+    const t0 = Date.now();
+    away.send({ t: 'skip_walkout' });
+    await Promise.all([home.wait((m) => m.t === 'status' && m.status === 'running'), away.wait((m) => m.t === 'status' && m.status === 'running')]);
+    expect(Date.now() - t0).toBeLessThan(300);
+    home.ws.close(); away.ws.close();
   });
 
   it('lehnt fremde Origins und ungültige Tokens ab', async () => {

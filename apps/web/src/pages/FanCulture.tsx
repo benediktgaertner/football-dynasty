@@ -485,7 +485,10 @@ function AudioLibrary({ worldId, clubId, audio, ultras, onChange }: { worldId: s
             <input ref={fileRef} type="file" accept="audio/mpeg,.mp3" onChange={(e) => { const f = e.target.files?.[0] ?? null; setFile(f); if (f && !name) setName(f.name.replace(/\.mp3$/i, '').slice(0, 40)); }} className="block w-full text-sm" />
             {file && <p className="mt-1 text-xs text-cream-dim">{file.name} · {(file.size / 1048576).toFixed(1)} MB</p>}
             <Button className="mt-2" busy={busy === 'up'} disabled={!file || name.trim().length < 2} onClick={() => void run('up', async () => {
-              await fanApi.uploadAndSave(worldId, clubId, file!, { kind, name, situation, ultra_id: kind === 'chant' && ultra ? ultra : null, volume: 0.85 });
+              const id = await fanApi.uploadAndSave(worldId, clubId, file!, { kind, name, situation, ultra_id: kind === 'chant' && ultra ? ultra : null, volume: 0.85 });
+              // Länge merken: die Hymne läuft beim Einlauf in voller Länge
+              const sec = await fanApi.mp3Duration(file!);
+              if (sec && id) await fanApi.setAudioDuration(id, sec).catch(() => undefined);
               setFile(null); setName(''); if (fileRef.current) fileRef.current.value = '';
             }, `${label} hochgeladen und gespeichert.`)}>Als {label} hochladen</Button>
           </div>
