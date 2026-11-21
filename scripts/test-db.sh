@@ -153,6 +153,13 @@ check "98_transfers_training.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/98_
 check "99_active_countries.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/99_active_countries.sql"
 check "A0_kits_prep_audio.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/A0_kits_prep_audio.sql"
 check "B0_europe32.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/B0_europe32.sql"
+check "C0_free_agents.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/C0_free_agents.sql"
+# Reduktion internationaler Kader: ein kleines Land mit vollen Kadern (Stand vor 0034) anlegen und bereinigen
+EXISTING="$(run -tAc "select json_agg(json_build_object('name', name, 'short_name', short_name)) from public.clubs where world_id = '$WORLD'")"
+node "$ROOT/scripts/build-europe-payload.mjs" "$SEED" "$EXISTING" "$PDIR/full" MDA --full
+chmod -R 755 "$PDIR/full"
+run -tAc "select public.admin_add_europe('$WORLD', pg_read_file('$PDIR/full/MDA.json')::jsonb) ->> 'status'" >/dev/null
+check "C1_reduce_players.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/C1_reduce_players.sql"
 
 # Welterstellung mit Land und Startliga: alle drei Startligen in unterschiedlichen Ländern
 TAG=1

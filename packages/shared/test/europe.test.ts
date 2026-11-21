@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ASSOCIATIONS, EUROPE_ASSOCIATIONS, EUROPE_PLACES, buildEuropeAssociation, buildWorldInitialization, isBlockedClubName, normalizeName, registryFrom } from '../src/index.js';
+import { UEFA_TOP20, ASSOCIATIONS, EUROPE_ASSOCIATIONS, EUROPE_PLACES, buildEuropeAssociation, buildWorldInitialization, isBlockedClubName, normalizeName, registryFrom } from '../src/index.js';
 
 describe('Europaweiter Transfermarkt', () => {
   it('jeder Verband hat genug Orte für seine Liga', () => {
@@ -27,13 +27,22 @@ describe('Europaweiter Transfermarkt', () => {
         expect(isBlockedClubName(c.name)).toBe(false);
         expect(c.short_name).toMatch(/^[A-ZÄÖÜ0-9]{3,4}$/u);
         const squad = p.players.filter((x) => x.club_key === c.key);
-        expect(squad.length).toBe(22);
-        expect(squad.filter((x) => x.pos === 'GK').length).toBe(3);
+        if (UEFA_TOP20.includes(a.code)) {
+          expect(squad.length).toBe(22);
+          expect(squad.filter((x) => x.pos === 'GK').length).toBe(3);
+        } else {
+          // reduzierte Länder: die besten elf in Grundordnung
+          expect(squad.length).toBe(11);
+          expect(squad.filter((x) => x.pos === 'GK').length).toBe(1);
+          expect(squad.filter((x) => ['CB', 'LB', 'RB'].includes(x.pos)).length).toBe(4);
+          expect(squad.filter((x) => ['CDM', 'CM', 'CAM', 'LM', 'RM'].includes(x.pos)).length).toBe(3);
+        }
       }
       clubs += p.clubs.length; players += p.players.length;
     }
     expect(clubs).toBeGreaterThan(650);
-    expect(players).toBeGreaterThan(clubs * 22);
+    expect(players).toBeGreaterThan(clubs * 11);
+    expect(players).toBeLessThan(clubs * 20);
   });
 
   it('deterministisch und Stärke folgt der Verbandsstärke', () => {
@@ -63,5 +72,21 @@ describe('Free Agents', () => {
     expect(Math.max(...xs)).toBe(72);
     expect(xs.filter((x) => x >= 69).length / xs.length).toBeLessThan(0.15);
     expect(xs.filter((x) => x <= 68).length / xs.length).toBeGreaterThan(0.85);
+  });
+});
+
+describe('Reduzierte Kader', () => {
+  it('reduziert: gleiche Vereine und Stärken, elf Spieler mit bester Grundordnung', () => {
+    const full = buildEuropeAssociation('r', 'SVN', registryFrom([]), new Set(), { reduced: false });
+    const red = buildEuropeAssociation('r', 'SVN', registryFrom([]), new Set(), { reduced: true });
+    expect(red.clubs.map((c) => c.name)).toEqual(full.clubs.map((c) => c.name));
+    for (const c of full.clubs) {
+      const f = full.players.filter((x) => x.club_key === c.key);
+      const r = red.players.filter((x) => x.club_key === c.key);
+      expect(r).toHaveLength(11);
+      const top11 = f.map((x) => x.overall).sort((a, b) => b - a).slice(0, 11).reduce((a, b) => a + b, 0) / 11;
+      const kept = r.reduce((a, b) => a + b.overall, 0) / 11;
+      expect(top11 - kept).toBeLessThan(1.5);
+    }
   });
 });

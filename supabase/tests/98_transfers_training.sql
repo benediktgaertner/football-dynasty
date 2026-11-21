@@ -79,7 +79,7 @@ select tests.login(:'host');
 select public.make_transfer_offer(:'tgt2', (:val2 * 1.3)::bigint, 9000000, 3) as o2 \gset
 reset role;
 select tests.assert(:'o2'::jsonb ->> 'status' in ('completed', 'rejected'), 'sofortige Annahme (oder Limit)');
-select tests.assert((select count(*) from public.financial_transactions where club_id = :'host_club' and kind = 'transfer_fee_paid' and description like '%' || (select last_name from public.players where id = :'tgt2')) <= 1, 'Ablöse höchstens einmal gebucht');
+select tests.assert((select count(*) from public.financial_transactions where club_id = :'host_club' and kind = 'transfer_fee_paid' and description like '%' || (select first_name || ' ' || last_name from public.players where id = :'tgt2')) <= 1, 'Ablöse höchstens einmal gebucht');
 
 -- KI-Transfermarkt: Angebote zwischen KI-Vereinen, gleiche Limits
 select set_config('fd.world', :'world', false);

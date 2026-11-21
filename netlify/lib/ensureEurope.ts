@@ -1,4 +1,4 @@
-import { buildEuropeAssociation, europeAssociationsFor, registryFrom, type EuropePayload } from '@fd/shared';
+import { buildEuropeAssociation, europeAssociationsFor, hasFullSquads, registryFrom, type EuropePayload } from '@fd/shared';
 import { json } from './startDraft.js';
 
 /**
@@ -54,7 +54,8 @@ export async function handleEnsureEurope(req: Request, deps: EnsureEuropeDeps, b
   for (const a of foreign) {
     if (done.has(a.code)) continue;
     if (added.length > 0 && now() - t0 > budgetMs) break;
-    const payload = buildEuropeAssociation(st.seed, a.code, registry);
+    // UEFA-Top-20 mit vollen Kadern, übrige Länder nur die besten elf je Verein
+    const payload = buildEuropeAssociation(st.seed, a.code, registry, new Set<string>(), { reduced: !hasFullSquads(a.code, (st.country ?? 'GER').trim()) });
     const { error } = await deps.add(worldId, payload);
     if (error) return json(500, { error: 'db_error', message: `Verband ${a.name} konnte nicht angelegt werden: ${error}`, done: done.size, total, finished: false });
     done.add(a.code);

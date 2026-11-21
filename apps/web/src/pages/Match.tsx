@@ -399,8 +399,12 @@ function useMatchAudio(state: MatchState | null, skipped: boolean, fixtureId: st
 
   const start = useCallback(async () => {
     if (!st) return false;
-    const ok = await mixer.start({ attendance: st.attendance ?? st.capacity * 0.7, capacity: st.capacity, importance: st.atmosphere?.choreo ? 1 : 0.4 });
+    // Gästeblock: etwa 8 % der Plätze (kleine Stadien relativ größer), Auslastung und Zuschauerzahl bestimmen den Pegel
+    const att = st.attendance ?? st.capacity * 0.7;
+    const awayShare = Math.min(0.15, Math.max(0.04, 2400 / Math.max(10000, st.capacity)));
+    const ok = await mixer.start({ attendance: att, capacity: st.capacity, importance: st.atmosphere?.choreo ? 1 : 0.4, awayShare });
     setOn(ok); setNeedsUnlock(!ok);
+    if (ok) mixer.setCrowd(0.55, 0.2); // Vorfreude vor dem Anpfiff (Einlauf)
     if (ok) prefs.sound = true;
     return ok;
   }, [st]);
@@ -408,7 +412,7 @@ function useMatchAudio(state: MatchState | null, skipped: boolean, fixtureId: st
   // Gesänge aus dem Match-Setup übernehmen (einmal je Spiel), Ton wie zuletzt gewählt starten
   useEffect(() => {
     if (!fans) return;
-    sound.setChants((fans.audio.chants ?? []) as ChantRef[], (fans.away?.chants ?? []) as ChantRef[]);
+    sound.setChants((fans.audio.chants ?? []) as ChantRef[], (fans.away?.chants ?? []) as ChantRef[], { home: fans.home_club?.id ?? state?.teams?.home.clubId ?? null, away: fans.away?.id ?? state?.teams?.away.clubId ?? null });
     if (prefs.sound) void start();
   }, [fans, sound]); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -27,7 +27,8 @@ reset role;
 select tests.assert((select count(*) from public.clubs where world_id = :'world') = :clubs_before + 68, '68 neue Vereine (20 + 20 + 10 + 18)');
 select tests.assert((select count(*) from public.players p join public.clubs c on c.id = p.club_id where c.world_id = :'world' and c.association_code = 'GER') = :ger_players_before, 'deutsche Kader unverändert');
 select tests.assert(not exists (select 1 from public.clubs c where c.world_id = :'world' and c.association_code <> 'GER'
-  and (select count(*) from public.players p where p.club_id = c.id) <> 22), 'jeder ausländische Verein hat 22 Spieler');
+  and (select count(*) from public.players p where p.club_id = c.id) <> case when public.fd_full_squad_assoc(:'world', c.association_code) then 22 else 11 end),
+  'UEFA-Top-20: 22 Spieler je Verein, kleinere Länder: die besten elf');
 select tests.assert(not exists (select 1 from public.clubs c where c.world_id = :'world' and c.association_code <> 'GER'
   and not exists (select 1 from public.club_branding b where b.club_id = c.id)), 'Wappen/Farben für alle');
 select tests.assert(not exists (select 1 from public.clubs c where c.world_id = :'world' and c.association_code <> 'GER'
@@ -49,7 +50,7 @@ select tests.assert((public.transfer_market_search(:'world', '{"league":"GER1"}'
 select tests.assert((select bool_and((r ->> 'main_position') = 'GK' and (r ->> 'age')::int between 20 and 30 and (r ->> 'overall')::int >= 60 and (r ->> 'market_value')::bigint <= 30000000)
   from jsonb_array_elements(public.transfer_market_search(:'world', '{"position":"GK","min_age":20,"max_age":30,"min_overall":60,"max_value":30000000}'::jsonb, 100, 0) -> 'rows') r), 'Filter Position/Alter/Stärke/Marktwert');
 select (select c.id from public.clubs c where c.world_id = :'world' and c.association_code = 'SMR' order by c.name limit 1) as smr_club \gset
-select tests.assert((public.transfer_market_search(:'world', jsonb_build_object('club', :'smr_club'), 50, 0) ->> 'total')::int = 22, 'Filter Verein');
+select tests.assert((public.transfer_market_search(:'world', jsonb_build_object('club', :'smr_club'), 50, 0) ->> 'total')::int = 11, 'Filter Verein (San Marino: elf Spieler)');
 select tests.assert((select bool_and(r -> 'club' = 'null'::jsonb) from jsonb_array_elements(public.transfer_market_search(:'world', '{"free_agents":true}'::jsonb, 100, 0) -> 'rows') r), 'nur Vereinslose');
 select tests.assert((select (r ->> 'market_value')::bigint from jsonb_array_elements(public.transfer_market_search(:'world', '{"sort":"value"}'::jsonb, 1, 0) -> 'rows') r)
   = (select max(p.market_value) from public.players p left join public.clubs c on c.id = p.club_id where p.world_id = :'world' and c.id is distinct from :'host_club'::uuid and not coalesce(c.amateur, false) and (c.id is not null or exists (select 1 from public.free_agents fa where fa.player_id = p.id))), 'Sortierung Marktwert');

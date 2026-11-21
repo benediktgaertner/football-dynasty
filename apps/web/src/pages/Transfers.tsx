@@ -2,6 +2,7 @@ import { ClubLink, PlayerLink } from '../components/links';
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { PlayerAvatar } from '../components/PlayerAvatar';
+import { FaNegotiation } from '../components/FaNegotiation';
 import { WorldNav } from '../components/WorldNav';
 import { Button, Card, ErrorBanner, Pill, Shell, Spinner, TextInput } from '../components/ui';
 import { formatEuro } from '../lib/api';
@@ -49,6 +50,8 @@ export function Transfers() {
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [faPlayer, setFaPlayer] = useState<string | null>(null);
+  const [faReload, setFaReload] = useState(0);
 
   const loadMeta = useCallback(async () => {
     const s = await seasonApi.matchday(worldId);
@@ -130,7 +133,7 @@ export function Transfers() {
           <p className="mt-2 text-xs text-cream-dim">Einmalig je Welt: Vereine und Kader aller 55 Verbände entstehen. Deine Karriere, Kader, Transfers und Finanzen bleiben unverändert.</p>
         </Card>
       )}
-      {tab === 'free' && <FaPanel worldId={worldId} act={act} reloadKey={msg ?? ''} />}
+      {tab === 'free' && <FaPanel worldId={worldId} act={act} reloadKey={`${msg ?? ''}:${faReload}`} onOpen={setFaPlayer} />}
       {(tab === 'market' || tab === 'free') && (
         <Card>
           <MarketFilterBar filters={filters} options={options} free={tab === 'free'} onChange={setFilters}
@@ -191,9 +194,12 @@ export function Transfers() {
         </Card>
       )}
 
-      {target && (
-        <OfferDialog player={target} free={tab === 'free'} onClose={() => setTarget(null)}
-          onSubmit={(fee, salary, years) => { const p = target; setTarget(null); act('offer', () => (tab === 'free' ? seasonApi.signFreeAgent(p.id, years) : seasonApi.offer(p.id, fee, salary, years))); }} />
+      {target && tab !== 'free' && (
+        <OfferDialog player={target} free={false} onClose={() => setTarget(null)}
+          onSubmit={(fee, salary, years) => { const p = target; setTarget(null); act('offer', () => seasonApi.offer(p.id, fee, salary, years)); }} />
+      )}
+      {(faPlayer || (target && tab === 'free')) && (
+        <FaNegotiation playerId={faPlayer ?? target!.id} onClose={() => { setTarget(null); setFaPlayer(null); setFaReload((x) => x + 1); }} onChanged={() => setFaReload((x) => x + 1)} />
       )}
     </Shell>
   );
@@ -337,18 +343,18 @@ function NegotiationsPanel({ worldId, busy, act, reloadKey }: { worldId: string;
 }
 
 /** Free Agents: persönliches Limit, offene Bewerbungen mit Countdown, Entscheidungen (für alle Manager gleich) */
-function FaPanel({ worldId, act, reloadKey }: { worldId: string; act: (k: string, fn: () => Promise<{ message?: string } | void>) => void; reloadKey: unknown }) {
+function FaPanel({ worldId, act, reloadKey, onOpen }: { worldId: string; act: (k: string, fn: () => Promise<{ message?: string } | void>) => void; reloadKey: unknown; onOpen: (playerId: string) => void }) {
   const [d, setD] = useState<FaOverview | null>(null);
   useEffect(() => { void seasonApi.faOverview(worldId).then(setD).catch(() => setD(null)); }, [worldId, reloadKey]);
   if (!d) return null;
   return (
     <Card className="mb-4">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="display text-xl font-bold uppercase">Free-Agent-Bewerbungen</h2>
+        <h2 className="display text-xl font-bold uppercase">Free-Agent-Verhandlungen</h2>
         <Pill tone={d.limit.used >= d.limit.max ? 'warn' : 'gold'}>Verpflichtet {d.limit.used}/{d.limit.max} in dieser Saison</Pill>
         {!d.window_open && <Pill tone="warn">Bewerbungen nur im offenen Fenster</Pill>}
       </div>
-      <p className="mt-1 text-sm text-cream-dim">Nach der ersten Interessensbekundung entscheidet der Spieler exakt 7 Tage später automatisch – nach sportlichem Erfolg, Liga, Ruf, Einsatzchancen und Karrierezielen. Bewerbungen und Absagen verbrauchen keinen Platz.</p>
+      <p className="mt-1 text-sm text-cream-dim">Nach dem ersten Angebot entscheidet der Spieler exakt 7 Tage später. Liegt mindestens ein für ihn akzeptables Angebot vor, unterschreibt er. Das Barometer (0–100) ist deine tatsächliche Verpflichtungswahrscheinlichkeit; Gehalt und Laufzeit kannst du bis zur Entscheidung verbessern. Absagen verbrauchen keinen Platz.</p>
       {d.open.length > 0 && (
         <ul className="mt-3 space-y-2">
           {d.open.map((f) => (
@@ -357,6 +363,8 @@ function FaPanel({ worldId, act, reloadKey }: { worldId: string; act: (k: string
                 <div className="font-semibold">{f.name} <span className="text-cream-dim">({f.position}, OVR {f.overall}, {f.age} J.) · {mio(f.salary)}/J.</span></div>
                 <div className="text-xs text-cream-dim">Interessenten: {(f.clubs ?? []).map((c) => c.name).join(', ') || '–'}</div>
               </div>
+              {f.mine && f.my_barometer != null && <span className="display rounded-lg bg-gold/15 px-2 py-1 text-lg font-bold tabular-nums text-gold" title="Deine Verpflichtungswahrscheinlichkeit">{f.my_barometer}/100</span>}
+              <Button variant="secondary" onClick={() => onOpen(f.player_id)}>{f.mine ? 'Verhandeln' : 'Ansehen'}</Button>
               <span className="display rounded-lg bg-anthracite px-3 py-1 text-lg font-bold tabular-nums" title={`Entscheidung am ${dm(f.decision_on)}`}>
                 {f.days_left > 0 ? `noch ${f.days_left} ${f.days_left === 1 ? 'Tag' : 'Tage'}` : 'Entscheidung heute'}
               </span>

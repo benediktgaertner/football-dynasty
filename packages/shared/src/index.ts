@@ -10,6 +10,7 @@ export * from './rules/fitness.js';
 export * from './rules/draft.js';
 export * from './rules/positions.js';
 export * from './rules/development.js';
+export * from './rules/freeAgents.js';
 export * from './formations.js';
 export * from './associations.js';
 export * from './world/names.js';

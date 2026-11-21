@@ -64,7 +64,7 @@ select public.fd_ai_training_batch(:'world', 1000);
 select tests.assert((select count(*) from public.training_sessions where world_id = :'world') = :nsess, 'kein doppeltes KI-Training');
 
 -- Bericht (laufende Saison) für eigenen und fremden Verein, ohne Potenzial
-select id as ai_club from public.clubs where world_id = :'world' and control = 'ai' and not amateur order by name limit 1 \gset
+select id as ai_club from public.clubs where world_id = :'world' and control = 'ai' and not amateur and association_code = 'GER' order by name limit 1 \gset
 set role authenticated;
 select tests.login(:'host');
 select public.development_report(:'world', :'host_club') as rep \gset

@@ -128,6 +128,8 @@ export interface EuropePlaces {
   first_season: boolean;
 }
 
+const optionsCache = new Map<string, { at: number; data: MarketOptions }>();
+
 export const seasonApi = {
   europePlaces: (worldId: string) => rpc<EuropePlaces | null>('europe_places', { p_world: worldId }),
   matchday: (worldId: string) => rpc<MatchdayState>('matchday_state', { p_world: worldId }),
@@ -203,6 +205,8 @@ export const seasonApi = {
   saveTrainingPlan: (worldId: string, active: boolean, entries: Array<{ player_id: string; focus: string; paused: boolean }>) =>
     rpc<TrainingPlan>('save_training_plan', { p_world: worldId, p_active: active, p_entries: entries }),
   faOverview: (worldId: string) => rpc<FaOverview>('fa_overview', { p_world: worldId }),
+  faNegotiation: (playerId: string) => rpc<FaNegotiationState>('fa_negotiation', { p_player: playerId }),
+  faOffer: (playerId: string, salary: number, years: number) => rpc<FaNegotiationState>('fa_offer', { p_player: playerId, p_salary: salary, p_years: years }),
   withdrawFa: (applicationId: string) => rpc<void>('withdraw_fa_application', { p_application: applicationId }),
   negotiations: (worldId: string) => rpc<Negotiation[]>('my_negotiations', { p_world: worldId }),
   renegotiate: (offerId: string, fee: number) => rpc<{ status: string; message?: string }>('renegotiate_offer', { p_offer: offerId, p_fee: fee }),
@@ -214,7 +218,14 @@ export const seasonApi = {
   retryRelease: (worldId: string) => rpc<{ released: boolean }>('retry_slot_release', { p_world: worldId }),
   marketSearch: (worldId: string, filters: MarketFilters, limit = 50, offset = 0) =>
     rpc<{ total: number; rows: MarketPlayer[] }>('transfer_market_search', { p_world: worldId, p_filters: Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== '' && v !== undefined && v !== null && v !== 0 && v !== false)), p_limit: limit, p_offset: offset }),
-  marketOptions: (worldId: string) => rpc<MarketOptions>('transfer_market_options', { p_world: worldId }),
+  /** Filteroptionen (Länder, Ligen, Vereine) ändern sich selten: 5 Minuten im Speicher halten */
+  marketOptions: async (worldId: string): Promise<MarketOptions> => {
+    const hit = optionsCache.get(worldId);
+    if (hit && hit.at > Date.now() - 300_000) return hit.data;
+    const data = await rpc<MarketOptions>('transfer_market_options', { p_world: worldId });
+    optionsCache.set(worldId, { at: Date.now(), data });
+    return data;
+  },
   europeStatus: (worldId: string) => rpc<{ associations: number; total: number; world_status: string } | null>('europe_market_status', { p_world: worldId }),
   /** Ergänzt fehlende ausländische Ligen (Netlify-Function, schrittweise) */
   async ensureEurope(worldId: string): Promise<{ done: number; total: number; finished: boolean }> {
@@ -333,12 +344,23 @@ export interface TrainingPlan {
   last_run: { week: number; executed: number; at: string; skipped: Array<{ player_id: string; reason: string }>; sessions: Array<{ player_id: string; name: string; focus: string; xp: number | null; gains: Record<string, number> }> } | null;
   this_week_done: boolean;
 }
+export interface FaNegotiationState {
+  available: boolean;
+  player: { id: string; name: string; age: number; position: string; overall: number; nationality: string };
+  ask: number; min_salary: number; max_salary: number; budget: number;
+  decision_on: string | null; days_left: number | null; window_open: boolean;
+  limit: { used: number; max: number };
+  my_club: ClubRefFull | null;
+  mine: { id: string; salary: number; years: number } | null;
+  model: { base: number; money: number; years: number[]; mu: number; s: number; t: number } | null;
+  board: Array<{ club: ClubRefFull; mine: boolean; barometer: number; u: number | null }>;
+}
 export interface FaOverview {
   today: string;
   limit: { used: number; max: number };
   window_open: boolean;
-  open: Array<{ player_id: string; name: string; overall: number; age: number; position: string; salary: number; decision_on: string; days_left: number; clubs: ClubRefFull[] | null; mine: boolean; application_id: string | null }>;
-  mine: Array<{ id: string; player_id: string; name: string; status: string; note: string | null; created_on: string }>;
+  open: Array<{ player_id: string; name: string; overall: number; age: number; position: string; salary: number; decision_on: string; days_left: number; clubs: ClubRefFull[] | null; mine: boolean; my_barometer?: number | null; application_id: string | null }>;
+  mine: Array<{ id: string; player_id: string; name: string; status: string; note: string | null; created_on: string; salary?: number }>;
   decisions: Array<{ player_id: string; name: string; club: ClubRefFull; applicants: number; at: string }>;
 }
 export interface Negotiation {

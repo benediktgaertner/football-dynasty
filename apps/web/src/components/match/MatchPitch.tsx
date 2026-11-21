@@ -94,7 +94,7 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
     let layerKey = '';
     let raf = 0;
     // Ereignisse im Takt der Darstellung (Ton + Einblendungen am Spieler), jedes genau einmal
-    const evState = { idx: -1, lastKind: null as string | null, out: false, lastT: performance.now() };
+    const evState = { idx: -1, lastKind: null as string | null, out: false, lastT: performance.now(), lastBx: null as number | null, vx: 0 };
     const overlays: Array<{ kind: string; id: string | null; name: string; until: number; start: number }> = [];
     const homeGkId = teams.home.players.find((p) => p.position === 'GK')?.id ?? null;
     const OVERLAY = new Set(['yellow', 'second_yellow', 'red', 'injury', 'offside', 'goal']);
@@ -251,16 +251,21 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
           const out = bx0 < -0.4 || bx0 > L + 0.4 || by0 < -0.4 || by0 > W + 0.4;
           if (out && !evState.out) sound.outOfPlay();
           evState.out = out;
-          // Druck der Heimmannschaft: Ballbesitz und Nähe zum gegnerischen Tor, Strafraum = höchste Stufe
-          let pressure = 0.15;
+          // Sichtbare Spielsituation für die Zuschauer: Ballbesitz, Abstand zum Tor, Strafraum, Tempo nach vorn
           const car = st.carrier ? info.get(st.carrier) : null;
-          if (car?.side === 'home') {
-            const gk = homeGkId ? st.players.get(homeGkId) : undefined;
-            const goalX = gk && gk[0] > L / 2 ? 0 : L;
-            const d = Math.abs(bx0 - goalX);
-            pressure = d < 16.5 && Math.abs(by0 - W / 2) < 20 ? 1 : Math.max(0.2, 1 - d / 65);
-          } else if (car?.side === 'away') pressure = 0.05;
-          sound.frame(dt, pressure);
+          const gk = homeGkId ? st.players.get(homeGkId) : undefined;
+          const homeAttacksRight = !(gk && gk[0] > L / 2);
+          const side = car?.side === 'home' || car?.side === 'away' ? car.side : null;
+          const dirRight = side === 'home' ? homeAttacksRight : !homeAttacksRight;
+          const toGoal = side ? (dirRight ? L - bx0 : bx0) : 52;
+          const vx = evState.lastBx === null ? 0 : (bx0 - evState.lastBx) / Math.max(0.016, dt);
+          evState.lastBx = bx0;
+          evState.vx = evState.vx * 0.8 + vx * 0.2;
+          sound.frame(dt, {
+            possession: side, toGoal, inBox: !!side && toGoal < 16.5 && Math.abs(by0 - W / 2) < 20.16,
+            forward: side ? (dirRight ? evState.vx : -evState.vx) : 0,
+            minute: st.minute, homeScore: st.score[0], awayScore: st.score[1],
+          });
         }
       }
       const sinceCut = performance.now() - client.cutAt;

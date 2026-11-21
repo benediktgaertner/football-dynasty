@@ -13,6 +13,8 @@
  * - Ducking: Während Hymnen/Torhymnen wird die Kulisse abgesenkt; Pfiffe bleiben immer hörbar.
  */
 import { stadiumSound } from './stadiumSound';
+import { intensityGain } from './crowdModel';
+import { renderChant } from './synthChant';
 
 export type Channel = 'crowd' | 'reactions' | 'sfx' | 'chants' | 'anthem';
 export const CHANNELS: Array<{ key: Channel; label: string }> = [
@@ -32,7 +34,12 @@ export interface Track { stop: (fadeSec?: number) => void; ended: Promise<void>;
 const TARGET_RMS = 0.12;
 
 export class StadiumMixer {
-  private ctx: AudioContext | null = null;
+  private ctx: BaseAudioContext | null = null;
+  /** Offline-Kontext (Hörbarkeitsprüfung): immer aktiv */
+  private offline = false;
+  private awayScale = 1;
+  private crowdMode = false;
+  private lastCrowd: [number, number] = [-1, -1];
   private out: GainNode | null = null;
   private bus: Partial<Record<Channel, GainNode>> = {};
   private duck: GainNode | null = null;
@@ -52,14 +59,25 @@ export class StadiumMixer {
   /** zählt Starts; verspätete Abschaltungen eines alten Spiels betreffen kein neues */
   generation = 0;
 
-  get active(): boolean { return this.running && !!this.ctx && this.ctx.state === 'running'; }
+  get active(): boolean { return this.running && !!this.ctx && (this.offline || this.ctx.state === 'running'); }
 
   /** Start für ein Spiel (nach Nutzeraktion bzw. wenn der Browser es erlaubt). Mehrfachaufrufe sind harmlos. */
-  async start(opts: { attendance: number; capacity: number; importance: number }): Promise<boolean> {
+  async start(opts: { attendance: number; capacity: number; importance: number; awayShare?: number }): Promise<boolean> {
     const ok = await stadiumSound.unlock();
     if (!ok || !stadiumSound.ctx) return false;
     const ctx = stadiumSound.ctx;
     if (this.running && this.ctx === ctx) { this.configure(opts); return true; }
+    this.setup(ctx, opts);
+    return true;
+  }
+
+  /** Für Tests: Mixer an einen (Offline-)Kontext hängen */
+  attach(ctx: BaseAudioContext, opts: { attendance: number; capacity: number; importance: number; awayShare?: number }) {
+    this.offline = true;
+    this.setup(ctx, opts);
+  }
+
+  private setup(ctx: BaseAudioContext, opts: { attendance: number; capacity: number; importance: number; awayShare?: number }) {
     this.ctx = ctx;
     this.generation++;
     // Summenbus mit Begrenzer
@@ -80,8 +98,9 @@ export class StadiumMixer {
     this.bedHome = this.makeBed(-0.55, 650);
     this.bedAway = this.makeBed(0.7, 800);
     this.running = true;
+    this.crowdMode = false;
+    this.lastCrowd = [-1, -1];
     this.configure(opts);
-    return true;
   }
 
   private makeBed(pan: number, freq: number) {
@@ -96,10 +115,47 @@ export class StadiumMixer {
     return { g, f };
   }
 
-  private configure(o: { attendance: number; capacity: number; importance: number }) {
+  private configure(o: { attendance: number; capacity: number; importance: number; awayShare?: number }) {
     const fill = Math.max(0, Math.min(1, o.attendance / Math.max(1, o.capacity)));
     const size = Math.min(1, Math.log10(Math.max(1000, o.attendance)) / 4.9);
     this.base = (0.25 + 0.5 * fill * size) * (0.85 + 0.3 * o.importance);
+    // Gästeblock: Anteil der Zuschauer (Standard 8 %) bestimmt, wie laut die Gäste werden können
+    this.awayScale = Math.max(0.5, Math.min(1.6, Math.sqrt((o.awayShare ?? 0.08) / 0.08)));
+  }
+
+  /**
+   * Heim- und Gästefans getrennt steuern (Intensität 0…1 aus crowdModel, je Frame).
+   * 30-dB-Bereich: ruhiges Spiel deutlich leiser als Strafraumszene oder Torjubel.
+   * Getrennte Spuren: Heimkurve links/mittig, Gästeblock rechts.
+   */
+  setCrowd(home: number, away: number, at?: number) {
+    if (!this.active || !this.bedHome || !this.bedAway || !this.ctx) return;
+    this.crowdMode = true;
+    // nur spürbare Änderungen planen (keine Flut gleichartiger Automationsereignisse)
+    if (Math.abs(home - this.lastCrowd[0]) < 0.004 && Math.abs(away - this.lastCrowd[1]) < 0.004) return;
+    this.lastCrowd = [home, away];
+    const now = at ?? this.ctx.currentTime;
+    this.excitement = home;
+    // lineare Rampen über 120 ms: die Hüllkurve (crowdModel) glättet bereits, so entstehen keine Sprünge
+    const ramp = (p: AudioParam, v: number) => { p.linearRampToValueAtTime(v, now + 0.12); };
+    ramp(this.bedHome.g.gain, this.base * 0.95 * intensityGain(home));
+    ramp(this.bedHome.f.frequency, 480 + 1000 * home);
+    ramp(this.bedAway.g.gain, this.base * 0.95 * this.awayScale * intensityGain(away));
+    ramp(this.bedAway.f.frequency, 520 + 900 * away);
+  }
+
+  /** Lautstärkefaktor der Gästefans (Gästeblock) – für Gesänge */
+  get awayLevel(): number { return this.awayScale; }
+
+  /** Generischer, vereinsneutraler Fangesang (Fanstimmen + Trommel), einmal gerendert und zwischengespeichert */
+  chant(pattern: number, o: { volume?: number; pan?: number; maxSec?: number; fadeIn?: number; side: 'home' | 'away' }): Promise<Track | null> {
+    const key = `synth:chant:${pattern}`;
+    if (!this.cache.has(key) && this.ctx) {
+      const sr = this.ctx.sampleRate;
+      const p = renderChant(pattern, sr).then((buffer) => (buffer ? { buffer, norm: loudnessGain(buffer) } : null)).catch(() => null);
+      this.cache.set(key, p);
+    }
+    return this.play(key, { channel: 'chants', volume: o.volume, pan: o.pan, maxSec: o.maxSec, fadeIn: o.fadeIn });
   }
 
   setVolume(c: Channel, v: number) {
@@ -123,7 +179,7 @@ export class StadiumMixer {
 
   /** etwa 10× pro Sekunde aufrufen: Kulisse dem Spielgeschehen nachführen */
   tick(dt: number, homeMood = 1) {
-    if (!this.active || !this.bedHome || !this.bedAway || !this.ctx) return;
+    if (!this.active || !this.bedHome || !this.bedAway || !this.ctx || this.crowdMode) return;
     const k = this.target > this.excitement ? Math.min(1, dt * 2.5) : Math.min(1, dt * 0.35); // schnell rauf, langsam runter
     this.excitement += (this.target - this.excitement) * k;
     if (this.hold < this.ctx.currentTime) this.target += (0.25 - this.target) * Math.min(1, dt * 0.15);
@@ -230,7 +286,8 @@ export class StadiumMixer {
     const home = side === 'home';
     const dest = this.panned(home ? -0.4 : 0.75, 'reactions');
     const at = ctx.currentTime + 0.02;
-    const peak = (home ? 0.55 : 0.14) * this.base * 1.6 * strength;
+    // Auswärtstor: Gästeblock kurzzeitig besonders laut (nach Größe des Gästeblocks)
+    const peak = (home ? 0.55 : 0.3 * this.awayScale) * this.base * 1.6 * strength;
     const dur = home ? 6.5 : 3.5;
     const s = ctx.createBufferSource(); s.buffer = this.noise; s.loop = true;
     const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 0.7;
@@ -239,8 +296,8 @@ export class StadiumMixer {
     g.gain.setTargetAtTime(peak * 0.55, at + 1.5, 1.2); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
     s.connect(f).connect(g).connect(dest); this.node(s, at, dur + 0.1);
     // Stimmen: viele leicht verstimmte Sägezähne durch „ah“-Formanten
-    this.voices(at, dur * 0.7, home ? 14 : 6, peak * 0.22, 'ah', dest, 1.0);
-    this.push(1, home ? 7 : 2);
+    this.voices(at, dur * 0.7, home ? 14 : 9, peak * 0.22, 'ah', dest, 1.0);
+    if (!this.crowdMode) this.push(1, home ? 7 : 2);
   }
 
   /** Kollektives „Ooooh“ nach vergebener Großchance / Aluminium */
@@ -297,6 +354,7 @@ export class StadiumMixer {
   /** MP3 laden, dekodieren, Lautheit bestimmen – je URL nur einmal */
   load(url: string): Promise<{ buffer: AudioBuffer; norm: number } | null> {
     let p = this.cache.get(url);
+    if (!p && url.startsWith('synth:')) return Promise.resolve(null);
     if (!p) {
       p = (async () => {
         try {
@@ -360,10 +418,11 @@ export class StadiumMixer {
       for (const s of srcs) { try { s.stop(); } catch { /* bereits beendet */ } }
       try { out.disconnect(); } catch { /* */ }
       // Kontext ruhen lassen, solange kein Spiel läuft (kein Ton im Menü, spart Akku)
-      if (!this.running) void ctx.suspend().catch(() => undefined);
+      if (!this.running && !this.offline && 'suspend' in ctx) void (ctx as AudioContext).suspend().catch(() => undefined);
     }, fade * 1000 + 100);
     this.out = null; this.duck = null; this.bus = {};
     this.excitement = this.target = 0.2;
+    this.crowdMode = false;
   }
 }
 

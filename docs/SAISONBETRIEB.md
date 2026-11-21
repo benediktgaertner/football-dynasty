@@ -156,3 +156,66 @@ Balancing nach den Änderungen (N = 400 je Unterschied): 0 OVR 34,5/34,3/31,3 ·
 - **Außerhalb des Spiels:** Nach dem Abpfiff (Schlusspfiff, dann Ausblenden) oder beim Verlassen der Seite wird alles sanft ausgeblendet und der AudioContext pausiert. Im Menü ist kein Ton zu hören. Beim nächsten Spiel startet der Mixer sauber neu.
 - **Einblendungen am Spieler:** Gelb, Gelb-Rot, Rot, Verletzung (Kreuz), Abseits (Fahne), Tor (Torschütze), jeweils etwa 1,7 Sekunden klein neben dem Spieler.
 - **Datenbank (0032):** Das Match-Setup liefert jetzt alle Gesänge mit Signatur-Kennzeichen und die Gesänge der Gäste. Das wird einmal je Spiel gelesen, während der Partie gibt es keine Abfragen.
+
+## Update 0034: Free-Agent-Verhandlungen, kleinere Spielwelt, dynamische Fanatmosphäre
+
+### Free Agents: Verhandlung mit kalibriertem Barometer
+- **Angebot:** Jahresgehalt (40–250 % der Forderung) und Laufzeit 1–5 Jahre. Innerhalb der 7-Tage-Frist jederzeit verbesserbar (`fa_offer`). Das Gehalt muss ins Budget passen, inklusive weiterer offener Free-Agent-Angebote des Vereins. Die Limits bleiben: zwei Free Agents pro Saison, fünf Neuzugänge pro Fenster, Kader höchstens 30, nur im offenen Fenster.
+- **Modell (verdeckt):** Nutzen = Basis(Verein) + Geldgewicht · ln(Gehalt/Forderung) + Laufzeit.
+  - Die Basis berücksichtigt: Liga, Champions/Europa League, Titel-/Aufstiegschance (Tabelle), Form der letzten fünf Spiele, Reputation, Einsatzchance (bessere Spieler auf der Position), Alter, persönliche Geld-/Sportorientierung und Mindestreputation.
+- **Entscheidung:** Der Spieler zieht eine verdeckte Schwelle R (logistisch um μ).
+  - Jedes gültige Angebot mit Nutzen ≥ R ist akzeptabel. Gibt es eines, unterschreibt er garantiert und wählt unter den akzeptablen per Logit.
+  - Nur wenn alle Angebote zu schwach oder ungültig sind, bleibt er vereinslos.
+- **Barometer 0–100:** genau die daraus folgende Verpflichtungswahrscheinlichkeit (`fd_fa_probs`, Spiegel `faProbabilities` im Client). Kalibrierung im Test geprüft: 5.000 Ziehungen ≈ Barometer ±3 %.
+- **KI:** Wöchentlich bieten bis zu zwei passende KI-Vereine je Free Agent. Ihr Gehalt zielt auf ≈ 70 % Alleinchance (50–160 % der Forderung, höchstens 25 % des Kontos). Zwei Tage vor der Entscheidung bessern sie um +20 % nach, wenn ihre Chance unter 40 % liegt (höchstens zweimal).
+- **Ansicht:**
+  - Profil, Schieberegler für das Gehalt, Laufzeit, Ranking aller Interessenten mit Wappen und Barometer, Restzeit.
+  - Das eigene Barometer rechnet der Client live aus dem Modell.
+  - Fremde Gehälter liegen nur in `fa_applications` (für Clients gesperrt) und stehen in keiner Antwort.
+  - Aktualisierung alle 20 s, solange die Ansicht offen ist.
+
+### Spielerdaten nach UEFA-Länderranking
+- **Volle Kader:** Spielland (drei Ligen) und UEFA-Top-20 (`uefa_ranking`, Fünfjahreswertung 2025/26: ENG, ITA, ESP, GER, FRA, POR, BEL, NED, TUR, CZE, POL, GRE, NOR, DEN, CYP, SUI, AUT, HUN, SCO, CRO).
+- **Übrige 35 Länder:** je Verein die besten elf in Grundordnung (1 TW, 4 Abwehr, 3 Mittelfeld, 3 Angriff). Neue Welten erzeugen nur diese (`buildEuropeAssociation(..., { reduced })`).
+- **Bestehende Welten:** `fd_reduce_world_players` läuft in der Migration und zu jedem Saisonende.
+  - Geschützt bleiben Spieler mit Transfers, Angeboten, Spielstatistiken oder -ereignissen, Auszeichnungen, Karrierehistorie, Rekorden, Free-Agent-Verfahren, Draft oder Taktikplatz.
+  - Menschliche Kader, Spielland, Top 20 und laufende Europapokal-Teilnehmer bleiben unberührt.
+  - Die Mannschaftsstärke bleibt im Test praktisch unverändert (Ø Abweichung < 0,6).
+- **Europapokal:** Reduzierte Teilnehmer bekommen eine temporäre Bank auf 16 Spieler (`players.temporary`).
+  - Diese Spieler sind nicht auf dem Transfermarkt, nicht transferierbar und zählen nicht zur Stärke.
+  - Zum Saisonende werden sie gelöscht oder, falls sie in Spielereignissen vorkommen, ohne Verein archiviert.
+- **Transfermarkt:** serverseitige Filter/Suche/Sortierung mit 50er-Seiten wie bisher. Attribute erst im Spielerprofil. Filteroptionen werden 5 Minuten im Client zwischengespeichert.
+
+**Messung (vor/nach)**
+
+| | vorher | nachher |
+|---|---|---|
+| Produktion gesamt (2 große + 1 kleine Welt) | 37.355 Spieler, DB 178 MB, Spielertabellen 69 MB | erwartet ≈ 28.000 Spieler (−9.300); die Migration zeigt die genauen Zahlen je Welt an |
+| Testwelt mit allen 55 Ländern | 17.815 Spieler, Spielertabellen 32 MB, DB 76 MB | 13.194 Spieler (−26 %), 23 MB, DB 67 MB |
+| Transfermarkt-Suche ohne Filter | 46 ms | 33 ms |
+| Suche mit Filtern | 12–19 ms | 11–17 ms |
+| Filteroptionen (109 KB) | jede Öffnung 1 Abfrage | 1 Abfrage je 5 Minuten |
+
+Speicher geben Postgres-Tabellen erst nach `VACUUM FULL` an das Dateisystem zurück; ohne diesen Schritt wird der frei gewordene Platz wiederverwendet (optional, sperrt kurz die Tabellen).
+
+### Dynamische Fanatmosphäre
+- **Modell `crowdModel.ts`:** Situation aus Ballbesitz, Abstand zum Tor, Strafraum, Tempo nach vorn (Rückpass beruhigt), Minute und Spielstand. Jede Situation liefert eine Ziel-Intensität für Heim- und Gästefans; eine Hüllkurve glättet (Anstieg ≈ 0,6 s, Abklingen ≈ 2,2 s, Verstummen nach Gegentor ≈ 0,35 s).
+- **Pegel:** Abbildung auf 30 dB, Heim- und Gästespur getrennt (links/rechts). Der Gästeblock skaliert mit seinem Anteil an der Zuschauerzahl, die Auslastung bestimmt den Gesamtpegel.
+- **Fangesänge:**
+  - Uploads werden auch auswärts gespielt, dann seltener und leiser (≈ 38 % × Gästeblock).
+  - Ohne Uploads (KI) singen die Fans generische, vereinsneutrale Gesänge: sechs eigene Rufmotive mit vielen verstimmten Stimmen, Formanten, großer Trommel und Stadionhall, im Browser gerendert und zwischengespeichert.
+  - Ballbesitz und Angriffe erhöhen die Gesangswahrscheinlichkeit.
+  - Es läuft höchstens ein Gesang gleichzeitig, ohne direkte Wiederholung. Torhymnen gibt es nur beim Tor des eigenen Vereins.
+- **Hörbarkeit geprüft** (`crowdAudio.test.ts`, echtes Offline-Rendering des Audiographen, RMS in dBFS):
+
+| Situation | Heim (Ziel) | Heim dB | Gäste (Ziel) | Gäste dB |
+|---|---|---|---|---|
+| normales Spiel | 40 % | −32,3 | 12 % | −38,9 |
+| Angriff Heim | 65 % | −25,5 | 10 % | −39,1 |
+| Heim vor dem Tor | 85 % | −20,0 | 8 % | −39,6 |
+| Heimtor | 100 % | −16,1 (+ Jubel) | 5 % | −40,4 |
+| Angriff Gäste | 25 % | −36,1 | 30 % | −34,4 |
+| Auswärtstor | 5 % | −41,0 | 65 % | −25,0 |
+| Schlussphase knapp | 80 % | −21,5 | 25 % | −35,7 |
+
+  Ablauf im Test: ruhig −31,6 → Angriff −25,4 → Strafraum −20,3 → vergeben −33,2 → Rückpässe −34,3 → Heimtor −16,1 → nach Gegentor −33,8 (Gäste −24,9 statt −35,2). Kein Sprung über 6 dB zwischen zwei 100-ms-Fenstern.

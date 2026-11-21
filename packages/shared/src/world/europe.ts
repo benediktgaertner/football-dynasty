@@ -41,6 +41,18 @@ const BLOCKED = new Set(EUROPE_BLOCKLIST.map(normalizeName));
 /** Alle Verbände, die als ausländische Ligen erzeugt werden (Welten mit Deutschland als Spielland) */
 export const EUROPE_ASSOCIATIONS: readonly Association[] = ASSOCIATIONS.filter((a) => a.code !== 'GER');
 
+/**
+ * UEFA-Fünfjahreswertung der Verbände (Saison 2025/26), Plätze 1–20: volle Kader auf dem Transfermarkt.
+ * Alle übrigen Länder speichern je Verein nur die besten elf (Grundordnung 1-4-3-3). In SQL: uefa_ranking.
+ */
+export const UEFA_TOP20: readonly string[] = ['ENG', 'ITA', 'ESP', 'GER', 'FRA', 'POR', 'BEL', 'NED', 'TUR', 'CZE',
+  'POL', 'GRE', 'NOR', 'DEN', 'CYP', 'SUI', 'AUT', 'HUN', 'SCO', 'CRO'];
+
+/** Volle Kader? Spielland immer, sonst UEFA-Top-20 */
+export function hasFullSquads(code: string, worldCountry = 'GER'): boolean {
+  return code === worldCountry || UEFA_TOP20.includes(code);
+}
+
 /** Ausländische Erstligen einer Welt: alle Verbände außer dem gewählten Spielland */
 export function europeAssociationsFor(country: string): readonly Association[] {
   return ASSOCIATIONS.filter((a) => a.code !== country);
@@ -152,7 +164,9 @@ export function leagueName(a: Association): string {
  * Erzeugt eine komplette ausländische Erstliga. `registry` enthält alle bereits vergebenen
  * Vereinsnamen und Kürzel der Welt (Eindeutigkeit über alle Verbände).
  */
-export function buildEuropeAssociation(worldSeed: string, code: string, registry: NameRegistry, usedNames = new Set<string>()): EuropePayload {
+export function buildEuropeAssociation(worldSeed: string, code: string, registry: NameRegistry, usedNames = new Set<string>(), options: { reduced?: boolean } = {}): EuropePayload {
+  // Reduzierte Länder: Zufallsfolge unverändert, gespeichert werden nur die elf Stammspieler je Verein
+  const reduced = options.reduced ?? !UEFA_TOP20.includes(code);
   const a = ASSOCIATIONS.find((x) => x.code === code);
   if (!a) throw new Error(`Ungültiger Verband ${code}`);
   // Deutschland als ausländische Erstliga (Welten mit anderem Spielland): deutsches Namensprofil
@@ -210,6 +224,7 @@ export function buildEuropeAssociation(worldSeed: string, code: string, registry
       target_strength: target,
     });
     const shirts = new Set<number>();
+    const clubPlayers: EuropePayloadPlayer[] = [];
     for (const { pos, role } of SQUAD) {
       const base = role === 'starter' ? target + rng.normal(0, 2) : role === 'bench' ? target - 3.5 + rng.normal(0, 2) : role === 'third' ? target - 9 : target - 8 + rng.normal(0, 1.5);
       const age = role === 'youth' ? rng.int(18, 20) : role === 'starter' ? randomAge(rng, 26.5, 3.5, 19, 34) : randomAge(rng, 25.5, 4.5, 18, 36);
@@ -217,8 +232,9 @@ export function buildEuropeAssociation(worldSeed: string, code: string, registry
       let shirt = p.prefShirt;
       if (shirts.has(shirt)) { shirt = 1; while (shirts.has(shirt)) shirt++; }
       shirts.add(shirt);
-      players.push({ ...p, club_key: key, contract_years: rng.int(1, 4), shirt });
+      clubPlayers.push({ ...p, club_key: key, contract_years: rng.int(1, 4), shirt });
     }
+    players.push(...(reduced ? bestEleven(clubPlayers) : clubPlayers));
   });
 
   // Einige vereinslose Spieler je Land (Free Agents): bewusst schwächer als Vertragsspieler
@@ -231,6 +247,24 @@ export function buildEuropeAssociation(worldSeed: string, code: string, registry
   }
 
   return { association_code: code, clubs, players };
+}
+
+const GROUP: Record<string, 'GK' | 'DEF' | 'MID' | 'ATT'> = {
+  GK: 'GK', CB: 'DEF', LB: 'DEF', RB: 'DEF', LWB: 'DEF', RWB: 'DEF', CDM: 'MID', CM: 'MID', CAM: 'MID', LM: 'MID', RM: 'MID',
+};
+
+/** Die stärksten elf in Grundordnung: 1 Torwart, 4 Abwehr, 3 Mittelfeld, 3 Angriff (wie SQL fd_reduce_world_players) */
+export function bestEleven<T extends { pos: Position; overall: number }>(list: readonly T[]): T[] {
+  const need = { GK: 1, DEF: 4, MID: 3, ATT: 3 } as const;
+  const sorted = [...list].sort((a, b) => b.overall - a.overall);
+  const out: T[] = [];
+  const count = { GK: 0, DEF: 0, MID: 0, ATT: 0 };
+  for (const p of sorted) {
+    const g = GROUP[p.pos] ?? 'ATT';
+    if (count[g] < need[g]) { count[g]++; out.push(p); }
+  }
+  for (const p of sorted) if (out.length < 11 && !out.includes(p)) out.push(p);
+  return out;
 }
 
 /**
