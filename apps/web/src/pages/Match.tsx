@@ -1,11 +1,13 @@
 import { TEAM_SETTINGS, readableTextColor, resolveAwayDisplayColor } from '@fd/shared';
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { competitionTheme, type CompetitionRef } from '../lib/theme';
 import { Link, useParams } from 'react-router-dom';
 import { Button, Card, ErrorBanner, Pill, Shell, Spinner } from '../components/ui';
 import { MatchPitch, WALKOUT_MS, pitchAspect } from '../components/match/MatchPitch';
 import { fanApi } from '../lib/fanApi';
-import { prefs, stadiumSound, type PlayHandle } from '../lib/stadiumSound';
+import { prefs } from '../lib/stadiumSound';
+import { CHANNELS, mixer, type Track } from '../lib/audioMixer';
+import { MatchSound, type ChantRef } from '../lib/fanAudio';
 import type { AudioRef, MatchState } from '../lib/matchClient';
 import { LiveBoard } from '../components/match/LiveBoard';
 import { matchServerUrl } from '../lib/matchApi';
@@ -44,7 +46,8 @@ export function Match() {
   const banner = useBanner(state?.events ?? [], state?.teams ?? null);
   // Einlauf überspringen ist rein lokal; der Anpfiff kommt für alle gleichzeitig vom Server
   const [skipWalkout, setSkipWalkout] = useState(() => prefs.alwaysSkip);
-  const sound = useStadiumAudio(state, skipWalkout);
+  const sound = useMatchAudio(state, skipWalkout, fixtureId);
+  const [mixerOpen, setMixerOpen] = useState(false);
 
   if (!configured) {
     return (
@@ -94,7 +97,7 @@ export function Match() {
       <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,1fr)_228px] xl:grid-cols-[minmax(0,1fr)_250px]">
         <div className="relative">
           <div className="mx-auto w-full" style={{ aspectRatio: pitchAspect(state.stadium), maxHeight: 'calc(100vh - 220px)', maxWidth: `calc((100vh - 220px) * ${pitchAspect(state.stadium).replace(' / ', ' / ')})` }}>
-            <MatchPitch client={client} teams={teams} homeColor={homeColor} awayColor={awayColor} stadium={state.stadium} walkoutEndsAt={state.walkoutEndsAt} walkoutSkipped={skipWalkout} />
+            <MatchPitch client={client} teams={teams} homeColor={homeColor} awayColor={awayColor} stadium={state.stadium} walkoutEndsAt={state.walkoutEndsAt} walkoutSkipped={skipWalkout} sound={sound.on ? sound.sound : null} />
           </div>
           {banner && banner.big && (
             <div key={banner.key} className="fd-banner pointer-events-none absolute left-1/2 top-[40%] text-center">
@@ -118,9 +121,19 @@ export function Match() {
           {status === 'waiting' && state.walkoutEndsAt && (
             <WalkoutOverlay endsAt={state.walkoutEndsAt} skipped={skipWalkout} onSkip={() => { setSkipWalkout(true); sound.stopMusic(); }} sound={sound} />
           )}
-          {status !== 'waiting' && sound.needsUnlock && (
-            <button type="button" onClick={() => void sound.unlock()} className="absolute bottom-3 right-3 rounded-full bg-ink/80 px-3 py-1.5 text-sm font-semibold text-cream shadow-lg">🔈 Stadionsound an</button>
+          {status !== 'waiting' && status !== 'finished' && (
+            <div className="absolute bottom-3 right-3 flex gap-2">
+              {sound.on ? (
+                <>
+                  <button type="button" onClick={() => setMixerOpen((x) => !x)} className="rounded-full bg-ink/80 px-3 py-1.5 text-sm font-semibold text-cream shadow-lg">🎚 Ton</button>
+                  <button type="button" onClick={() => sound.mute()} className="rounded-full bg-ink/80 px-3 py-1.5 text-sm font-semibold text-cream shadow-lg">🔇</button>
+                </>
+              ) : (
+                <button type="button" onClick={() => void sound.unlock()} className="rounded-full bg-ink/80 px-3 py-1.5 text-sm font-semibold text-cream shadow-lg">🔈 Stadionsound an</button>
+              )}
+            </div>
           )}
+          {mixerOpen && sound.on && <MixerPanel onClose={() => setMixerOpen(false)} />}
           {status === 'waiting' && !state.walkoutEndsAt && (
             <div className="absolute inset-0 grid place-items-center rounded-xl bg-ink/55">
               <div className="text-center">
@@ -347,7 +360,7 @@ function Summary({ result, saved, teams, homeColor, awayColor, worldId, kind, fi
 }
 
 /** Einlauf: Countdown bis zum gemeinsamen Anpfiff, lokal überspringbar, Ton an/aus */
-function WalkoutOverlay({ endsAt, skipped, onSkip, sound }: { endsAt: number; skipped: boolean; onSkip: () => void; sound: ReturnType<typeof useStadiumAudio> }) {
+function WalkoutOverlay({ endsAt, skipped, onSkip, sound }: { endsAt: number; skipped: boolean; onSkip: () => void; sound: ReturnType<typeof useMatchAudio> }) {
   const [, tick] = useState(0);
   useEffect(() => { const id = setInterval(() => tick((x) => x + 1), 250); return () => clearInterval(id); }, []);
   const left = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
@@ -369,91 +382,106 @@ function WalkoutOverlay({ endsAt, skipped, onSkip, sound }: { endsAt: number; sk
 }
 
 /**
- * Stadionsound (nur im Browser, kein Streaming über den Match-Server):
- * Einlauf → Hymne des Heimvereins, danach Signatur-Fangesang; im Spiel Gesänge je Situation
- * (Tor, Angriff, Führung, Rückstand, Topspiel) und Zuschauerkulisse.
+ * Stadionton (nur im Browser, kein Streaming über den Match-Server, keine Datenbankabfragen im Spiel):
+ * Einlauf → Hymne des Heimvereins, danach Signatur-Fangesang; im Spiel Kulisse, Reaktionen und
+ * zufällige Fangesänge über den zentralen Mixer. Verlassen der Seite oder Abpfiff ⇒ sanft aus.
  */
-function useStadiumAudio(state: MatchState | null, skipped: boolean) {
+function useMatchAudio(state: MatchState | null, skipped: boolean, fixtureId: string) {
+  const sound = useMemo(() => new MatchSound((p) => fanApi.publicUrl(p)), [fixtureId]);
   const [on, setOn] = useState(false);
   const [needsUnlock, setNeedsUnlock] = useState(false);
   const [line, setLine] = useState<string | null>(null);
-  const music = useRef<PlayHandle | null>(null);
-  const lastChant = useRef(0);
-  const played = useRef<{ walkout: boolean; signature: boolean; derby: boolean }>({ walkout: false, signature: false, derby: false });
-  const seen = useRef(-1);
-  const audio = state?.stadium?.fans?.audio ?? null;
+  const walkoutTrack = useRef<Track | null>(null);
+  const played = useRef(false);
+  const begun = useRef(false);
+  const st = state?.stadium ?? null;
+  const fans = st?.fans ?? null;
 
-  const play = (ref: AudioRef | null | undefined, maxSec: number) => {
-    if (!ref || !stadiumSound.enabled) return null;
-    music.current?.stop();
-    const h = ref.path ? stadiumSound.playUrl(fanApi.publicUrl(ref.path), ref.volume, maxSec) : null;
-    music.current = h;
-    return h;
-  };
-  const unlock = async () => {
-    const ok = await stadiumSound.unlock();
-    setOn(ok); setNeedsUnlock(!ok); prefs.sound = ok || prefs.sound;
-    if (ok) stadiumSound.crowdLevel(0.3);
-  };
-  // Beim Öffnen: Ton wie zuletzt gewählt (Browser erlauben das nach einer Nutzeraktion auf der Seite)
+  const start = useCallback(async () => {
+    if (!st) return false;
+    const ok = await mixer.start({ attendance: st.attendance ?? st.capacity * 0.7, capacity: st.capacity, importance: st.atmosphere?.choreo ? 1 : 0.4 });
+    setOn(ok); setNeedsUnlock(!ok);
+    if (ok) prefs.sound = true;
+    return ok;
+  }, [st]);
+
+  // Gesänge aus dem Match-Setup übernehmen (einmal je Spiel), Ton wie zuletzt gewählt starten
   useEffect(() => {
-    if (!prefs.sound) return;
-    void stadiumSound.unlock().then((ok) => { setOn(ok); setNeedsUnlock(!ok); if (ok) stadiumSound.crowdLevel(0.3); });
-    return () => stadiumSound.stopAll();
-  }, []);
+    if (!fans) return;
+    sound.setChants((fans.audio.chants ?? []) as ChantRef[], (fans.away?.chants ?? []) as ChantRef[]);
+    if (prefs.sound) void start();
+  }, [fans, sound]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Einlauf: Hymne, danach Signatur-Fangesang (bis zum Anpfiff)
+  // Seite verlassen ⇒ alles sanft ausblenden; kein Ton im Menü
+  useEffect(() => () => { walkoutTrack.current?.stop(0.4); sound.stop(0.6); }, [sound]);
+
+  // Einlauf: Hymne, danach Signatur-Fangesang (bis zum Anpfiff); Kulisse wird dabei abgesenkt
   const endsAt = state?.walkoutEndsAt ?? null;
   useEffect(() => {
-    if (!on || !endsAt || skipped || played.current.walkout || state?.status !== 'waiting') return;
-    played.current.walkout = true;
+    if (!on || !endsAt || skipped || played.current || state?.status !== 'waiting' || !fans) return;
+    played.current = true;
     const left = (endsAt - Date.now()) / 1000;
     const anthemSec = Math.max(4, Math.min(12, left * 0.6));
-    const h = play(audio?.anthem, anthemSec);
-    if (h && audio?.anthem) setLine(`♪ ${audio.anthem.name}`);
-    const sig = setTimeout(() => {
-      const s2 = play(audio?.signature, Math.max(3, (endsAt - Date.now()) / 1000));
-      setLine(s2 && audio?.signature ? `♪ ${audio.signature.name}` : null);
-      stadiumSound.crowdLevel(0.8);
-    }, (h ? anthemSec : 0) * 1000 + 300);
-    return () => { clearTimeout(sig); };
-  }, [on, endsAt, skipped, state?.status]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Spielsituationen
-  const events = state?.events ?? [];
-  useEffect(() => {
-    if (seen.current < 0) { seen.current = events.length; return; }
-    const fresh = events.slice(seen.current);
-    seen.current = events.length;
-    if (!on || !state?.latest) return;
-    const chants = audio?.chants ?? [];
-    const pick = (sit: string) => chants.filter((c) => c.situation === sit)[Math.floor(Math.random() * Math.max(1, chants.filter((c) => c.situation === sit).length))];
-    const now = Date.now();
-    for (const e of fresh) {
-      if (e.type === 'kickoff' && !played.current.derby && state.stadium?.atmosphere?.choreo) { played.current.derby = true; play(pick('derby') ?? audio?.signature, 10); lastChant.current = now; }
-      if (e.type === 'goal') {
-        stadiumSound.crowdLevel(e.side === 'home' ? 1 : 0.15);
-        setTimeout(() => stadiumSound.crowdLevel(0.35), 7000);
-        if (e.side === 'home') { play(pick('goal') ?? audio?.signature, 12); lastChant.current = now; }
-      } else if (e.type === 'chance' && e.side === 'home' && now - lastChant.current > 60_000) {
-        const c = pick('attack'); if (c) { play(c, 8); lastChant.current = now; }
+    let cancelled = false;
+    let sig: ReturnType<typeof setTimeout> | undefined;
+    mixer.ducking(0.5, 1);
+    void (async () => {
+      const a = fans.audio.anthem;
+      if (a?.path) {
+        const t = await mixer.play(fanApi.publicUrl(a.path), { channel: 'anthem', volume: a.volume, maxSec: anthemSec, fadeIn: 1 });
+        if (cancelled) { t?.stop(0.3); return; }
+        walkoutTrack.current = t;
+        if (t) setLine(`♪ ${a.name}`);
       }
-    }
-    // Führung/Rückstand: höchstens alle 90 Sekunden ein Gesang
-    const [h, a] = state.latest.score;
-    if (now - lastChant.current > 90_000 && state.status === 'running') {
-      const c = h > a ? pick('lead') : h < a ? pick('behind') : undefined;
-      if (c) { play(c, 10); lastChant.current = now; }
-    }
-  }, [events.length, on]); // eslint-disable-line react-hooks/exhaustive-deps
+      sig = setTimeout(async () => {
+        const g = fans.audio.signature;
+        if (cancelled || !g?.path) return;
+        walkoutTrack.current?.stop(1);
+        const t2 = await mixer.play(fanApi.publicUrl(g.path), { channel: 'anthem', volume: g.volume, maxSec: Math.max(3, (endsAt - Date.now()) / 1000), fadeIn: 1 });
+        walkoutTrack.current = t2;
+        if (t2) setLine(`♪ ${g.name}`);
+        mixer.push(0.8, 4);
+      }, (a?.path ? anthemSec - 1 : 0) * 1000);
+    })();
+    return () => { cancelled = true; if (sig) clearTimeout(sig); };
+  }, [on, endsAt, skipped, state?.status, fans]);
 
-  useEffect(() => { if (state?.status === 'finished') { stadiumSound.crowdLevel(0.1); } }, [state?.status]);
+  // Anpfiff: Einlaufmusik ausblenden, Playlist starten
+  useEffect(() => {
+    if (state?.status === 'running' && on && !begun.current) {
+      begun.current = true;
+      walkoutTrack.current?.stop(1.2);
+      walkoutTrack.current = null;
+      setLine(null);
+      mixer.ducking(1, 1.5);
+      sound.begin();
+    }
+    if (state?.status === 'finished') sound.finish();
+  }, [state?.status, on, sound]);
 
   return {
-    on, needsUnlock, line, unlock,
-    mute: () => { stadiumSound.stopAll(); stadiumSound.crowdLevel(0); setOn(false); prefs.sound = false; },
-    stopMusic: () => { music.current?.stop(); setLine(null); },
+    sound, on, needsUnlock, line,
+    unlock: async () => { const ok = await start(); if (ok && state?.status === 'running' && !begun.current) { begun.current = true; sound.begin(); } },
+    mute: () => { walkoutTrack.current?.stop(0.3); sound.stop(0.4); setOn(false); prefs.sound = false; begun.current = false; },
+    stopMusic: () => { walkoutTrack.current?.stop(0.6); walkoutTrack.current = null; setLine(null); mixer.ducking(1); },
   };
+}
+
+/** Lautstärke je Soundkategorie */
+function MixerPanel({ onClose }: { onClose: () => void }) {
+  const [v, setV] = useState(() => mixer.getVolumes());
+  return (
+    <div className="absolute bottom-14 right-3 z-20 w-64 rounded-xl border border-olive-600 bg-ink/95 p-3 text-sm shadow-xl">
+      <div className="mb-2 flex items-center justify-between"><span className="display font-bold uppercase">Ton</span><button type="button" onClick={onClose} aria-label="Schließen">✕</button></div>
+      {CHANNELS.map((c) => (
+        <label key={c.key} className="mb-1 block">
+          <span className="text-xs text-cream-dim">{c.label}</span>
+          <input type="range" min={0} max={1} step={0.05} value={v[c.key]} className="w-full accent-[var(--fd-accent)]"
+            onChange={(e) => { const x = Number(e.target.value); mixer.setVolume(c.key, x); setV((o) => ({ ...o, [c.key]: x })); }} />
+        </label>
+      ))}
+    </div>
+  );
 }
 // Einlaufdauer: gleiche Konstante wie im Match-Server
 void WALKOUT_MS;

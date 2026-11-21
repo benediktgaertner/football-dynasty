@@ -27,7 +27,7 @@ select tests.assert(public.fd_dev_after_match(:'ffx') = 0, 'Testspiele bringen k
 
 -- Zusatztraining: XP sofort, −20 Fitness, max. eine Einheit je Woche
 select p.id as tp, p.fitness as tfit from public.players p join public.player_attributes pa0 on pa0.player_id = p.id and pa0.kind = 'outfield' where p.club_id = :'host_club' and p.fitness >= 20
-  and p.main_position <> 'GK' -- Technik-Training wirkt bei Feldspielern deutlich auf die Gesamtstärke
+  and p.main_position::text in ('ST', 'CF', 'CAM', 'CM', 'LW', 'RW', 'LM', 'RM') -- Technik-Training wirkt bei Offensivspielern deutlich auf die Gesamtstärke
   and not exists (select 1 from public.training_sessions t where t.player_id = p.id and t.season_id = :'season' and t.week_no = :'week') order by p.age, p.id limit 1 \gset
 set role authenticated;
 select tests.login(:'host');

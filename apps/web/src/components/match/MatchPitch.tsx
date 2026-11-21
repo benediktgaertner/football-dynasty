@@ -3,7 +3,8 @@ import { useEffect, useRef } from 'react';
 import type { MatchClient, RosterTeam, StadiumView, Weather } from '../../lib/matchClient';
 import { renderChoreoLayer, renderFanLayers, renderStadiumLayer, stadiumMargin } from '../../lib/stadiumArt';
 import { autoFanCulture, awayFlagSpots, drawFlag, flagSpots, renderAwayBanner, renderChoreoDesign, renderUltrasLayer, type FlagSpot } from '../../lib/fanArt';
-import type { FlagDesign, UltraGroup } from '../../lib/matchClient';
+import type { FlagDesign, MatchEvent, UltraGroup } from '../../lib/matchClient';
+import type { MatchSound } from '../../lib/fanAudio';
 
 /** Dauer der Einlaufzeremonie (muss zum Match-Server passen: WALKOUT_MS) */
 export const WALKOUT_MS = 20_000;
@@ -37,7 +38,9 @@ interface Puff { x: number; y: number; r: number; a: number; vx: number; vy: num
  * Versatz; Spur je Ballart (flach, hoch, Flanke, Schuss). Standards: Einblendung, Mauer, Positionierung.
  * Stadion: Ränge nach Kapazität, weiße Sitze, Fans in Bewegung, Choreografie, Banner, Pyrotechnik.
  */
-export function MatchPitch({ client, teams, homeColor, awayColor, highlight, stadium, walkoutEndsAt = null, walkoutSkipped = false }: {
+export function MatchPitch({ client, teams, homeColor, awayColor, highlight, stadium, walkoutEndsAt = null, walkoutSkipped = false, sound = null }: {
+  /** Stadionton: erhält die gerade sichtbaren Ereignisse (gleicher Tick wie die Darstellung) */
+  sound?: MatchSound | null;
   stadium?: StadiumView | null;
   /** Anpfiff nach der Einlaufzeremonie (lokale Uhr); null = kein Einlauf */
   walkoutEndsAt?: number | null;
@@ -90,6 +93,11 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
     const important = !!atmo?.choreo;
     let layerKey = '';
     let raf = 0;
+    // Ereignisse im Takt der Darstellung (Ton + Einblendungen am Spieler), jedes genau einmal
+    const evState = { idx: -1, lastKind: null as string | null, out: false, lastT: performance.now() };
+    const overlays: Array<{ kind: string; id: string | null; name: string; until: number; start: number }> = [];
+    const homeGkId = teams.home.players.find((p) => p.position === 'GK')?.id ?? null;
+    const OVERLAY = new Set(['yellow', 'second_yellow', 'red', 'injury', 'offside', 'goal']);
     let drops: Drop[] = [];
     const smoke: Puff[] = [];
     let lastT = performance.now();
@@ -223,6 +231,38 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
       if (!st) { drawWeather(); drawPyro(); return; }
       if (inWalkout) { drawWalkout([...st.players].map(([id, [x, y]]) => [id, x, y] as [string, number, number]), 1 - (walkoutEndsAt! - Date.now()) / WALKOUT_MS); drawWeather(); drawPyro(); return; }
       const sp = st.setPiece;
+      {
+        const evs = client.state.events as MatchEvent[];
+        const nowMs = performance.now();
+        const dt = Math.min(0.25, (nowMs - evState.lastT) / 1000); evState.lastT = nowMs;
+        if (evState.idx < 0) { const i = evs.findIndex((e) => e.tick > st.tick); evState.idx = i < 0 ? evs.length : i; }
+        const [bx0, by0, bz0] = st.ball;
+        while (evState.idx < evs.length && evs[evState.idx]!.tick <= st.tick) {
+          const e = evs[evState.idx++]!;
+          if (st.minute - e.minute > 1) continue; // übersprungene Passage: nicht nachholen
+          if (OVERLAY.has(e.type)) overlays.push({ kind: e.type, id: e.playerId ?? null, name: e.playerId ? (info.get(e.playerId)?.name ?? '') : '', start: nowMs, until: nowMs + (e.type === 'goal' ? 2200 : 1700) });
+          const sideNet = (bx0 < 1.6 || bx0 > L - 1.6) && Math.abs(by0 - W / 2) > 3.7 && Math.abs(by0 - W / 2) < 6.5 && bz0 < 2.5;
+          sound?.event(e as { tick: number; type: string; side: 'home' | 'away' | null; xg?: number }, { homeScore: st.score[0], awayScore: st.score[1], minute: st.minute, ballOutsideNet: sideNet });
+        }
+        if (sound) {
+          const k = st.ballKind ?? null;
+          if (k && k !== evState.lastKind && k !== 'set_piece') sound.kick(k === 'shot' ? 'shot' : 'pass');
+          evState.lastKind = k;
+          const out = bx0 < -0.4 || bx0 > L + 0.4 || by0 < -0.4 || by0 > W + 0.4;
+          if (out && !evState.out) sound.outOfPlay();
+          evState.out = out;
+          // Druck der Heimmannschaft: Ballbesitz und Nähe zum gegnerischen Tor, Strafraum = höchste Stufe
+          let pressure = 0.15;
+          const car = st.carrier ? info.get(st.carrier) : null;
+          if (car?.side === 'home') {
+            const gk = homeGkId ? st.players.get(homeGkId) : undefined;
+            const goalX = gk && gk[0] > L / 2 ? 0 : L;
+            const d = Math.abs(bx0 - goalX);
+            pressure = d < 16.5 && Math.abs(by0 - W / 2) < 20 ? 1 : Math.max(0.2, 1 - d / 65);
+          } else if (car?.side === 'away') pressure = 0.05;
+          sound.frame(dt, pressure);
+        }
+      }
       const sinceCut = performance.now() - client.cutAt;
       if (sinceCut < 50) trail.length = 0;
       const [bx, by, bz] = st.ball;
@@ -295,6 +335,15 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
         ctx.beginPath(); ctx.roundRect(X(x) - w / 2, ly - 0.95 * s, w, 1.9 * s, 0.5 * s); ctx.fill();
         ctx.fillStyle = '#f5f7fa';
         ctx.fillText(name, X(x), ly + 0.05 * s);
+      }
+      // Einblendungen am Spieler (Karte, Verletzung, Abseits, Tor) – ca. 1,7 s, klein über dem Spieler
+      for (let i = overlays.length - 1; i >= 0; i--) {
+        const o = overlays[i]!;
+        const nowO = performance.now();
+        if (nowO > o.until) { overlays.splice(i, 1); continue; }
+        const pos = (o.id && st.players.get(o.id)) || [bx, by];
+        const a = Math.max(0, Math.min(1, (nowO - o.start) / 150, (o.until - nowO) / 250));
+        drawOverlay(o.kind, o.name, X(pos[0]), Y(pos[1]) - r - 2.6 * s, a);
       }
       drawWeather();
       drawPyro();
@@ -392,6 +441,41 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
         ctx.restore();
       }
 
+      function drawOverlay(kind: string, name: string, cx: number, cy: number, alpha: number) {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        const u = s;
+        if (kind === 'yellow' || kind === 'red') {
+          ctx.fillStyle = kind === 'yellow' ? '#ffd400' : '#e1261c';
+          ctx.beginPath(); ctx.roundRect(cx - 0.75 * u, cy - 1.05 * u, 1.5 * u, 2.1 * u, 0.25 * u); ctx.fill();
+          ctx.lineWidth = 0.12 * u; ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.stroke();
+        } else if (kind === 'second_yellow') {
+          ctx.fillStyle = '#ffd400'; ctx.beginPath(); ctx.roundRect(cx - 1.25 * u, cy - 1.05 * u, 1.5 * u, 2.1 * u, 0.25 * u); ctx.fill();
+          ctx.fillStyle = '#e1261c'; ctx.beginPath(); ctx.roundRect(cx - 0.25 * u, cy - 0.85 * u, 1.5 * u, 2.1 * u, 0.25 * u); ctx.fill();
+        } else if (kind === 'injury') {
+          ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(cx, cy, 1.2 * u, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#d7262b'; ctx.fillRect(cx - 0.25 * u, cy - 0.8 * u, 0.5 * u, 1.6 * u); ctx.fillRect(cx - 0.8 * u, cy - 0.25 * u, 1.6 * u, 0.5 * u);
+        } else if (kind === 'offside') {
+          ctx.strokeStyle = '#f2f2f2'; ctx.lineWidth = 0.22 * u; ctx.beginPath(); ctx.moveTo(cx - 0.6 * u, cy + 1.1 * u); ctx.lineTo(cx - 0.6 * u, cy - 1.1 * u); ctx.stroke();
+          for (let k = 0; k < 4; k++) for (let j = 0; j < 3; j++) { ctx.fillStyle = (k + j) % 2 ? '#ffd400' : '#e1261c'; ctx.fillRect(cx - 0.5 * u + k * 0.35 * u, cy - 1.1 * u + j * 0.35 * u, 0.36 * u, 0.36 * u); }
+        } else if (kind === 'goal') {
+          ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(cx, cy, 1.1 * u, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(cx, cy, 0.42 * u, 0, Math.PI * 2); ctx.fill();
+        }
+        const label = kind === 'offside' ? `Abseits${name ? ' · ' + name : ''}` : kind === 'goal' ? `TOR · ${name}` : name;
+        if (label) {
+          ctx.font = `700 ${Math.round(1.45 * u)}px "Barlow", system-ui, sans-serif`;
+          ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+          const w = ctx.measureText(label).width + 0.9 * u;
+          const lx = cx + 1.6 * u;
+          ctx.fillStyle = kind === 'goal' ? 'rgba(255,210,74,0.92)' : 'rgba(12,14,18,0.82)';
+          ctx.beginPath(); ctx.roundRect(lx, cy - 0.95 * u, w, 1.9 * u, 0.5 * u); ctx.fill();
+          ctx.fillStyle = kind === 'goal' ? '#111' : '#f5f7fa';
+          ctx.fillText(label, lx + 0.45 * u, cy + 0.05 * u);
+        }
+        ctx.restore();
+      }
+
       function drawWeather() {
         if (reduced) return;
         const area = canvas.width * canvas.height;
@@ -452,6 +536,6 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
     };
     draw();
     return () => cancelAnimationFrame(raf);
-  }, [client, teams, homeColor, awayColor, highlight, stadium, walkoutEndsAt, walkoutSkipped]);
+  }, [client, teams, homeColor, awayColor, highlight, stadium, walkoutEndsAt, walkoutSkipped, sound]);
   return <canvas ref={ref} className="block h-full w-full rounded-xl" aria-label="Spielfeld mit Live-Positionen" />;
 }

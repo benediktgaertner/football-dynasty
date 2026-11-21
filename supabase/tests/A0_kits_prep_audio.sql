@@ -97,6 +97,8 @@ begin
     i := i + 1;
   end loop;
 end $$;
+select ((public.fd_current_slot(:'world')).state = 'pending' and (select count(*) from public.fd_prep_clubs(:'world')) >= 1) as can_prep \gset
+\if :can_prep
 select public.fd_start_prep(:'world');
 select tests.assert((public.fd_current_slot(:'world')).state = 'prep', 'Vorbereitung gestartet');
 select f.id as pfx, (f.home_club_id = :'host_club') as host_home from public.fixtures f
@@ -124,5 +126,10 @@ select tests.assert((public.fd_current_slot(:'world')).state = 'live', 'Frist ab
 set role service_role;
 select tests.assert((public.admin_match_setup(:'pfx') -> 'home' ->> 'kitVariant') is not null, 'Match-Setup liefert die Trikotwahl');
 select tests.assert((public.admin_match_setup(:'pfx') -> 'stadium' -> 'fans' -> 'away' ->> 'name') is not null, 'Gästefans im Match-Setup');
+select tests.assert(jsonb_typeof(public.admin_match_setup(:'pfx') -> 'stadium' -> 'fans' -> 'away' -> 'chants') = 'array', 'Gästegesänge im Match-Setup (0032)');
+select tests.assert(not exists (select 1 from jsonb_array_elements(public.admin_match_setup(:'pfx') -> 'stadium' -> 'fans' -> 'audio' -> 'chants') x where not (x ? 'signature')), 'Gesänge mit Signatur-Kennzeichen (Playlist ohne Signatur)');
 reset role;
 select tests.finish_slot(:'world');
+\else
+select 'Hinweis: kein Termin mit menschlichem Spiel mehr in dieser Testsaison – Vorbereitung bereits in 50_season geprüft' as hinweis;
+\endif

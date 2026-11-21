@@ -102,3 +102,8 @@ Keine Schlüssel nötig, keine laufenden Kosten: Musik entsteht im Browser oder 
 1. **Supabase:** SQL Editor → New query → `football_dynasty_update_0031.sql` → Run. Die Datei ist wiederholbar und repariert die Storage-Policies.
 2. **GitHub/Netlify:** Zip-Inhalt ins Repository kopieren und pushen.
 3. **Fly.io:** Ein Deploy ist nicht nötig, der Match-Server liest die Trikots aus der Datenbank.
+
+## Update 0032 (Stadionatmosphäre)
+1. **Supabase:** SQL Editor → New query → `football_dynasty_update_0032.sql` → Run (wiederholbar).
+2. **GitHub/Netlify:** Zip-Inhalt ins Repository kopieren und pushen.
+3. **Fly.io:** kein Deploy nötig.

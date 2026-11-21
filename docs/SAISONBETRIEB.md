@@ -113,3 +113,27 @@ Balancing nach den Änderungen (N = 400 je Unterschied): 0 OVR 34,5/34,3/31,3 ·
   - Haben alle bestätigt, startet der Termin, danach folgt der bisherige Einlauf.
   - Spätestens nach 2 Minuten startet der Termin automatisch. Auslöser ist der Match-Server-Sweep oder ein beliebiger Manager per `prep_tick`, der Spieltag blockiert also nie.
   - Termine ohne eigenes Spiel eines Menschen überspringen die Vorbereitung. Der Host kann wie bisher sofort starten.
+
+## Update 0032: Stadionatmosphäre und Ereignisse auf dem Spielfeld
+- **Zentraler Mixer** (`apps/web/src/lib/audioMixer.ts`, Web Audio):
+  - Kanäle: Kulisse, Reaktionen, Pfiffe & Ball, Fangesänge, Hymnen & Torhymnen. Jeder Kanal hat einen eigenen Regler (🎚 im Spiel), die Einstellungen bleiben im Browser gespeichert.
+  - Ein Begrenzer verhindert Übersteuern. Ducking senkt die Kulisse bei Hymnen, Pfiffe bleiben immer hörbar.
+  - Räumlich: Heimfans links, Gäste rechts.
+- **Kulisse:** Der Pegel richtet sich nach Zuschauerzahl, Auslastung und Spielbedeutung. Er steigt bei Heimangriffen und deutlich im Strafraum sowie in knappen Schlussphasen. Nach Höhepunkten sinkt er langsam auf das Grundniveau zurück.
+- **Reaktionen und Effekte:**
+  - Torjubel (Heim laut, Gäste klein), „Ooooh“ bei vergebenen Großchancen und Aluminium, Pfiffe und Rufe bei Fouls des Gegners, Raunen nach Gegentoren.
+  - Schiedsrichterpfiff bei Anpfiff, Halbzeit, Foul, Abseits, Elfmeter und Spielende. Bei Ecken und Ausbällen pfeift es dezent.
+  - Dazu Aluminium, Netz (Tor), Außennetz ohne Jubel und Ballkontakt.
+  - Alle Effekte werden im Browser synthetisiert: keine fremden Dateien, keine Lizenzen, keine Kosten.
+- **Synchron:** Ton und Symbole lösen über den Tick des gerade dargestellten Bildes aus. Jedes Ereignis wirkt genau einmal, und übersprungene Passagen werden nicht nachgeholt.
+- **MP3:**
+  - Jede Datei wird einmal geladen und dekodiert und dann zwischengespeichert. Die Lautheit wird automatisch angeglichen (RMS).
+  - Ein- und Ausblenden sind weich, es läuft höchstens ein regulärer Fangesang gleichzeitig.
+- **Fangesänge** (`apps/web/src/lib/fanAudio.ts`):
+  - Alle regulären Gesänge (ohne Signatur-Gesang und Torhymne) bilden eine zufällige Playlist.
+  - Zwischen den Gesängen liegen 3–8 Sekunden Pause, ohne direkte Wiederholung. In Druckphasen beginnen Gesänge eher.
+  - Die Gästefans singen gelegentlich und leiser im Gästeblock.
+  - Hymne und Signatur-Gesang gibt es nur beim Einlauf. Die Torhymne (Gesang mit Situation „Tor“) läuft nur beim Tor des eigenen Vereins, danach geht es mit der Playlist weiter.
+- **Außerhalb des Spiels:** Nach dem Abpfiff (Schlusspfiff, dann Ausblenden) oder beim Verlassen der Seite wird alles sanft ausgeblendet und der AudioContext pausiert. Im Menü ist kein Ton zu hören. Beim nächsten Spiel startet der Mixer sauber neu.
+- **Einblendungen am Spieler:** Gelb, Gelb-Rot, Rot, Verletzung (Kreuz), Abseits (Fahne), Tor (Torschütze), jeweils etwa 1,7 Sekunden klein neben dem Spieler.
+- **Datenbank (0032):** Das Match-Setup liefert jetzt alle Gesänge mit Signatur-Kennzeichen und die Gesänge der Gäste. Das wird einmal je Spiel gelesen, während der Partie gibt es keine Abfragen.

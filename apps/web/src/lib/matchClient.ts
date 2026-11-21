@@ -73,10 +73,10 @@ export interface StandArea { x: number; y: number; w: number; h: number }
 export type StandBlock = 'home_curve' | 'main_stand' | 'back_stand' | 'corner_left' | 'corner_right';
 export interface UltraGroup { id: string; name: string; colors: string[]; banner?: string; block?: StandBlock; area?: StandArea | null; flags?: number; flag?: FlagDesign | null }
 export interface ChoreoDesign { pattern: 'stripes' | 'blocks' | 'checker' | 'wave' | 'gradient' | 'rays' | 'mosaic'; colors: string[]; text?: string; motif?: 'none' | 'star' | 'heart' | 'crown' | 'crest' | 'lion' | 'eagle' | 'anchor' | 'castle'; block?: 'home_curve' | 'main_stand' | 'back_stand' | 'all'; name?: string }
-export interface AudioRef { id: string; name: string; source: 'upload'; path: string | null; volume: number; situation?: string | null }
+export interface AudioRef { id: string; name: string; source: 'upload'; path: string | null; volume: number; situation?: string | null; signature?: boolean }
 export interface FanClub { id: string; name: string; short: string; control: 'human' | 'ai'; colors: [string | null, string | null] }
 export interface FanView { flags: FlagDesign[]; ultras: UltraGroup[]; choreo: ChoreoDesign | null; audio: { anthem: AudioRef | null; signature: AudioRef | null; chants: AudioRef[] }; walkout: boolean;
-  home_club?: FanClub; away?: FanClub & { flags: FlagDesign[]; ultra: UltraGroup | null } }
+  home_club?: FanClub; away?: FanClub & { flags: FlagDesign[]; ultra: UltraGroup | null; chants?: Array<AudioRef & { signature?: boolean }> } }
 export interface StadiumDesign { style?: 'classic' | 'modern' | 'arena' | 'traditional'; stand?: string; seat?: string; accent?: string; club_colors?: boolean; roof?: boolean }
 
 export class MatchClient {
@@ -227,7 +227,7 @@ export class MatchClient {
   }
 
   /** Interpolierter Zustand ~100 ms in der Vergangenheit (zwischen zwei Snapshots). */
-  interpolated(now = performance.now()): { ball: [number, number, number]; carrier: string | null; players: Map<string, [number, number]>; minute: number; score: [number, number]; setPiece: Snapshot['setPiece'] | null; ballKind: Snapshot['ballKind'] | null } | null {
+  interpolated(now = performance.now()): { tick: number; ball: [number, number, number]; carrier: string | null; players: Map<string, [number, number]>; minute: number; score: [number, number]; setPiece: Snapshot['setPiece'] | null; ballKind: Snapshot['ballKind'] | null } | null {
     const b = this.buffer;
     if (b.length === 0) return null;
     const renderAt = now - 150;
@@ -245,7 +245,7 @@ export class MatchClient {
     }
     const za = a.s.ball[2] ?? 0, zc = c.s.ball[2] ?? 0;
     const near = k < 0.5 ? a.s : c.s;
-    return { ball: [a.s.ball[0] + (c.s.ball[0] - a.s.ball[0]) * k, a.s.ball[1] + (c.s.ball[1] - a.s.ball[1]) * k, za + (zc - za) * k], carrier: near.carrier ?? null, players,
+    return { tick: near.tick, ball: [a.s.ball[0] + (c.s.ball[0] - a.s.ball[0]) * k, a.s.ball[1] + (c.s.ball[1] - a.s.ball[1]) * k, za + (zc - za) * k], carrier: near.carrier ?? null, players,
       minute: near.minute, score: near.score, setPiece: near.setPiece ?? null, ballKind: near.ballKind ?? null };
   }
 }
