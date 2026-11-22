@@ -260,6 +260,69 @@ async function rest(req: IncomingMessage, res: ServerResponse, url: URL) {
   }
 }
 
+// ------------------------------------------------------------------ Storage (Ausschnitt der Storage-REST-API)
+// Objekte liegen im Speicher; die Rechte prüft die echte Tabelle storage.objects mit RLS (Policies aus den Migrationen).
+const blobs = new Map<string, Buffer>();
+async function raw(req: IncomingMessage): Promise<Buffer> {
+  const parts: Buffer[] = [];
+  for await (const c of req) parts.push(c as Buffer);
+  return Buffer.concat(parts);
+}
+const storageErr = (res: ServerResponse, status: number, message: string) => send(res, status, { statusCode: String(status), error: status === 403 ? 'Unauthorized' : 'Error', message });
+async function storage(req: IncomingMessage, res: ServerResponse, url: URL) {
+  const rest = decodeURIComponent(url.pathname.replace('/storage/v1/', ''));
+  // signierte URL abrufen (ohne Anmeldung, Token prüft Pfad und Ablauf)
+  let m = /^object\/sign\/([^/]+)\/(.+)$/.exec(rest);
+  if (req.method === 'GET' && m) {
+    const c = verify(url.searchParams.get('token') ?? '');
+    if (!c || c.url !== `${m[1]}/${m[2]}`) return storageErr(res, 400, 'InvalidSignature');
+    const b = blobs.get(`${m[1]}/${m[2]}`);
+    if (!b) return storageErr(res, 404, 'Object not found');
+    res.writeHead(200, { 'content-type': 'audio/mpeg', 'content-length': String(b.length) });
+    return res.end(b);
+  }
+  const claims = claimsOf(req);
+  if (!claims) return storageErr(res, 401, 'Invalid JWT');
+  // mehrere signierte URLs (createSignedUrls) – nur für Objekte, die der Benutzer lesen darf
+  m = /^object\/sign\/([^/]+)$/.exec(rest);
+  if (req.method === 'POST' && m) {
+    const bucket = m[1]!;
+    const b = await body(req) as { paths: string[]; expiresIn: number };
+    const visible = new Set((await asRole(claims, (c) => c.query('select name from storage.objects where bucket_id = $1 and name = any($2::text[])', [bucket, b.paths]))).rows.map((r) => r.name as string));
+    const exp = Math.floor(Date.now() / 1000) + Number(b.expiresIn ?? 60);
+    return send(res, 200, b.paths.map((p) => visible.has(p)
+      ? { path: p, signedURL: `/object/sign/${bucket}/${p}?token=${sign({ url: `${bucket}/${p}`, exp })}`, error: null }
+      : { path: p, signedURL: null, error: 'Either the object does not exist or you do not have access to it' }));
+  }
+  m = /^object\/([^/]+)\/(.+)$/.exec(rest);
+  if ((req.method === 'POST' || req.method === 'PUT') && m) {
+    const [bucket, name] = [m[1]!, m[2]!];
+    const data = await raw(req);
+    const bk = (await q<any>('select * from storage.buckets where id = $1', [bucket]))[0];
+    if (!bk) return storageErr(res, 404, 'Bucket not found');
+    if (bk.file_size_limit && data.length > Number(bk.file_size_limit)) return storageErr(res, 413, 'The object exceeded the maximum allowed size');
+    const type = String(req.headers['content-type'] ?? '');
+    if (bk.allowed_mime_types?.length && !bk.allowed_mime_types.includes(type)) return storageErr(res, 415, `mime type ${type} is not supported`);
+    try {
+      await asRole(claims, (c) => c.query('insert into storage.objects(bucket_id, name, owner) values ($1, $2, $3)', [bucket, name, claims.sub]));
+    } catch (e) {
+      const msg = (e as Error).message;
+      return storageErr(res, /row-level security/.test(msg) ? 403 : /duplicate/.test(msg) ? 409 : 400, msg);
+    }
+    blobs.set(`${bucket}/${name}`, data);
+    return send(res, 200, { Key: `${bucket}/${name}`, Id: randomUUID() });
+  }
+  m = /^object\/([^/]+)$/.exec(rest);
+  if (req.method === 'DELETE' && m) {
+    const bucket = m[1]!;
+    const b = await body(req) as { prefixes: string[] };
+    const del = (await asRole(claims, (c) => c.query('delete from storage.objects where bucket_id = $1 and name = any($2::text[]) returning name', [bucket, b.prefixes]))).rows.map((r) => r.name as string);
+    for (const n of del) blobs.delete(`${bucket}/${n}`);
+    return send(res, 200, del.map((name) => ({ name, bucket_id: bucket })));
+  }
+  return storageErr(res, 404, `nicht unterstützt: ${req.method} ${rest}`);
+}
+
 // ------------------------------------------------------------------ Testhilfen (/__test)
 async function testApi(req: IncomingMessage, res: ServerResponse, url: URL) {
   const path = url.pathname.replace('/__test/', '');
@@ -312,7 +375,7 @@ createServer((req, res) => {
   res.setHeader('access-control-expose-headers', '*');
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
   const url = new URL(req.url ?? '/', `http://127.0.0.1:${PORT}`);
-  const h = url.pathname.startsWith('/auth/v1') ? auth : url.pathname.startsWith('/rest/v1') ? rest : url.pathname.startsWith('/__test/') ? testApi : null;
+  const h = url.pathname.startsWith('/auth/v1') ? auth : url.pathname.startsWith('/rest/v1') ? rest : url.pathname.startsWith('/storage/v1/') ? storage : url.pathname.startsWith('/__test/') ? testApi : null;
   if (!h) return send(res, 404, { message: 'not found' });
   h(req, res, url).catch((e) => { console.error(e); send(res, 500, { message: String(e) }); });
 }).listen(PORT, '127.0.0.1', () => console.log(`Supabase-Testersatz auf http://127.0.0.1:${PORT}`));

@@ -10,25 +10,29 @@ begin;
 -- Nutzenmodell: starke Spieler sind für tiefere Ligen deutlich teurer
 select tests.assert(public.fd_fa_elite_penalty(82, 2) = 10 and public.fd_fa_elite_penalty(82, 3) = 20 and public.fd_fa_elite_penalty(70, 3) = 0 and public.fd_fa_elite_penalty(76, 2) = 0, 'Elite-Abzug: ab 76 OVR, je Liga unter der ersten');
 update public.transfer_windows set next_matchday_from = 1, next_matchday_to = 34 where season_id = :'season' and window_no = 2;
-select e.club_id as club_a from public.competition_entries e join public.competitions co on co.id = e.competition_id join public.clubs c on c.id = e.club_id
-  join public.fd_table(co.id) t on t.club_id = e.club_id
-  where co.season_id = :'season' and co.kind = 'league' and co.tier = 1 and c.control = 'ai' order by t.pos, e.club_id limit 1 \gset
-select e.club_id as club_b from public.competition_entries e join public.competitions co on co.id = e.competition_id join public.clubs c on c.id = e.club_id
-  join public.fd_table(co.id) t on t.club_id = e.club_id
-  where co.season_id = :'season' and co.kind = 'league' and co.tier = 2 and c.control = 'ai'
-    and not exists (select 1 from public.competition_entries e2 join public.competitions c2 on c2.id = e2.competition_id
-                    where e2.club_id = e.club_id and c2.kind = 'league' and c2.tier = 1)
-  order by t.pos, e.club_id limit 1 \gset
-update public.clubs set reputation = 60 where id in (:'club_a', :'club_b');
-select f.player_id as fa from public.free_agents f join public.players p on p.id = f.player_id where f.world_id = :'world' and p.club_id is null order by p.id limit 1 \gset
-update public.players set overall = 82, age = 25, main_position = 'CM' where id = :'fa';
-update public.free_agents set annual_salary = 1000000, min_club_reputation = 0 where player_id = :'fa';
--- Gehaltsfaktor, den der Zweitligist braucht, um gleichzuziehen (gleiche Laufzeit)
-select exp((public.fd_fa_utility(:'fa', :'club_a', 1000000, 3) - public.fd_fa_utility(:'fa', :'club_b', 1000000, 3)) / (40 * public.fd_fa_money_pref(:'fa', 25))) as ratio82 \gset
-update public.players set overall = 70 where id = :'fa';
-select exp((public.fd_fa_utility(:'fa', :'club_a', 1000000, 3) - public.fd_fa_utility(:'fa', :'club_b', 1000000, 3)) / (40 * public.fd_fa_money_pref(:'fa', 25))) as ratio70 \gset
-select tests.assert(:ratio82 >= 1.5, 'Zweitligist braucht für einen 82er mindestens +50 % Gehalt (Faktor ' || round(:ratio82::numeric, 2) || ')');
-select tests.assert(:ratio82 > :ratio70, 'Abstand bei 82 OVR größer als bei 70 OVR (' || round(:ratio82::numeric, 2) || ' vs. ' || round(:ratio70::numeric, 2) || ')');
+-- Vergleich über die Ligen statt zweier Einzelvereine (nach 0039 hängt die Einsatzchance bei einem einzelnen Spitzenklub
+-- stark vom Kader ab): 20 vereinslose Spieler als 25-jährige zentrale Mittelfeldspieler, Durchschnittsnutzen aller
+-- KI-Vereine der 1. bzw. 2. Liga, gleiches Gehalt und gleiche Laufzeit ⇒ Gehaltsfaktor, den die 2. Liga zum Gleichziehen braucht.
+create temp table g3_fa on commit drop as
+  select f.player_id from public.free_agents f join public.players p on p.id = f.player_id where f.world_id = :'world' and p.club_id is null order by p.id limit 20;
+update public.free_agents set annual_salary = 1000000, min_club_reputation = 0 where player_id in (select player_id from g3_fa);
+create temp table g3_l on commit drop as
+  select co.tier, e.club_id from public.competition_entries e join public.competitions co on co.id = e.competition_id join public.clubs c on c.id = e.club_id
+  where co.season_id = :'season' and co.kind = 'league' and co.tier in (1, 2) and c.control = 'ai';
+create or replace function pg_temp.g3_ratio() returns table(avg_f numeric, min_f numeric) language sql as $f$
+  with r as (select f.player_id,
+      (select avg(public.fd_fa_utility(f.player_id, l.club_id, 1000000, 3)) from g3_l l where l.tier = 1) ua,
+      (select avg(public.fd_fa_utility(f.player_id, l.club_id, 1000000, 3)) from g3_l l where l.tier = 2) ub,
+      public.fd_fa_money_pref(f.player_id, 25) m from g3_fa f)
+  select round(avg(exp((ua - ub) / (40 * m))), 2), round(min(exp((ua - ub) / (40 * m))), 2) from r;
+$f$;
+update public.players set overall = 82, age = 25, main_position = 'CM' where id in (select player_id from g3_fa);
+select avg_f as ratio82, min_f as min82 from pg_temp.g3_ratio() \gset
+update public.players set overall = 70 where id in (select player_id from g3_fa);
+select avg_f as ratio70 from pg_temp.g3_ratio() \gset
+select tests.assert(:ratio82 >= 1.5, 'Zweitligist braucht für einen 82er im Schnitt mindestens +50 % Gehalt (Faktor ' || :ratio82 || ')');
+select tests.assert(:min82 >= 1.25, 'auch im ungünstigsten Fall mindestens +25 % (Faktor ' || :min82 || ')');
+select tests.assert(:ratio82 > :ratio70, 'Abstand bei 82 OVR größer als bei 70 OVR (' || :ratio82 || ' vs. ' || :ratio70 || ')');
 
 -- Kappung: großer Pool ⇒ keine neuen Free Agents
 select public.fd_fa_market_cap(:'world') as cap \gset
@@ -51,7 +55,9 @@ select tests.assert(:na::numeric / :nt >= 0.6 and :nd::numeric / :nt <= 0.01, 'h
 update public.career_worlds set current_slot = (select ordinal from public.season_slots where season_id = :'season' and kind = 'season_end') where id = :'world';
 create temporary table fd_g3_elite on commit drop as
 select pc.player_id from public.player_contracts pc join public.players p on p.id = pc.player_id join public.clubs c on c.id = p.club_id
-where pc.world_id = :'world' and pc.active and c.control = 'ai' and pc.end_season_year <= :year and p.overall between 60 and 80 order by pc.player_id limit 15;
+where pc.world_id = :'world' and pc.active and c.control = 'ai' and pc.end_season_year <= :year and p.overall between 60 and 80
+  and p.age <= 30 -- keine Karriereenden (sonst kein Vertrag möglich)
+order by pc.player_id limit 15;
 update public.players set overall = 88 where id in (select player_id from fd_g3_elite);
 -- Snapshots vorher
 select count(*) as fa_before from public.free_agents where world_id = :'world' \gset

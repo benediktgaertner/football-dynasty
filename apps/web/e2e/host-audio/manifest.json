@@ -1,0 +1,82 @@
+{
+  "note": "Testersatz f\u00fcr die vom Liga-Host hochgeladenen KI-Dateien (world_ai_audio)",
+  "files": [
+    {
+      "id": "ai_host_boo_1",
+      "category": "boo",
+      "name": "boo_1.mp3",
+      "url": "/e2e/host-audio/boo_1.mp3",
+      "duration": 3.03
+    },
+    {
+      "id": "ai_host_boo_2",
+      "category": "boo",
+      "name": "boo_2.mp3",
+      "url": "/e2e/host-audio/boo_2.mp3",
+      "duration": 3.03
+    },
+    {
+      "id": "ai_host_boo_lang",
+      "category": "boo",
+      "name": "boo_lang.mp3",
+      "url": "/e2e/host-audio/boo_lang.mp3",
+      "duration": 9.95
+    },
+    {
+      "id": "ai_host_chant_1",
+      "category": "chant",
+      "name": "chant_1.mp3",
+      "url": "/e2e/host-audio/chant_1.mp3",
+      "duration": 7.03
+    },
+    {
+      "id": "ai_host_chant_2",
+      "category": "chant",
+      "name": "chant_2.mp3",
+      "url": "/e2e/host-audio/chant_2.mp3",
+      "duration": 7.03
+    },
+    {
+      "id": "ai_host_chant_3",
+      "category": "chant",
+      "name": "chant_3.mp3",
+      "url": "/e2e/host-audio/chant_3.mp3",
+      "duration": 7.03
+    },
+    {
+      "id": "ai_host_chant_4",
+      "category": "chant",
+      "name": "chant_4.mp3",
+      "url": "/e2e/host-audio/chant_4.mp3",
+      "duration": 7.03
+    },
+    {
+      "id": "ai_host_chant_5",
+      "category": "chant",
+      "name": "chant_5.mp3",
+      "url": "/e2e/host-audio/chant_5.mp3",
+      "duration": 7.03
+    },
+    {
+      "id": "ai_host_chant_6",
+      "category": "chant",
+      "name": "chant_6.mp3",
+      "url": "/e2e/host-audio/chant_6.mp3",
+      "duration": 7.03
+    },
+    {
+      "id": "ai_host_goal_1",
+      "category": "goal",
+      "name": "goal_1.mp3",
+      "url": "/e2e/host-audio/goal_1.mp3",
+      "duration": 6.03
+    },
+    {
+      "id": "ai_host_goal_2",
+      "category": "goal",
+      "name": "goal_2.mp3",
+      "url": "/e2e/host-audio/goal_2.mp3",
+      "duration": 6.03
+    }
+  ]
+}

@@ -10,6 +10,7 @@ import { MatchClient, type MatchState } from '../src/lib/matchClient';
 import { MatchPitch } from '../src/components/match/MatchPitch';
 import { WalkoutOverlay, useMatchAudio } from '../src/pages/Match';
 import { mixer } from '../src/lib/audioMixer';
+import type { HostAudioFile } from '../src/lib/fanAudio';
 import { ConnectionBanner } from '../src/components/match/ConnectionBanner';
 
 const q = new URLSearchParams(location.search);
@@ -22,7 +23,9 @@ function App() {
   const client = useMemo(() => new MatchClient(server, fixture, { token: async () => token }), []);
   useEffect(() => { void client.connect(); return () => client.close(); }, [client]);
   const state = useSyncExternalStore((f) => client.subscribe(f), () => client.state) as MatchState;
-  const sound = useMatchAudio(state, client, fixture, (p) => `/e2e/${p}`, q.get('crowd') ?? '/e2e/crowd-test/manifest.json', Number(q.get('ts') ?? 1));
+  // KI-Dateien der Liga: Testersatz für world_ai_audio (?host=…; host=none ⇒ Liga ohne hochgeladene Dateien)
+  const hostAudio = useMemo(() => (q.get('host') === 'none' ? Promise.resolve([]) : fetch(q.get('host') ?? '/e2e/host-audio/manifest.json').then((r) => r.json()).then((m: { files: HostAudioFile[] }) => m.files)), []);
+  const sound = useMatchAudio(state, client, fixture, (p) => `/e2e/${p}`, q.get('crowd') ?? '/e2e/crowd-test/manifest.json', Number(q.get('ts') ?? 1), { hostAudio });
   const [voted, setVoted] = useState(false);
   useEffect(() => {
     const w = window as unknown as Record<string, unknown>;

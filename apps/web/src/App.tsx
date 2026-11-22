@@ -20,6 +20,8 @@ import { Europe } from './pages/Europe';
 import { FanCulture } from './pages/FanCulture';
 import { Transfers } from './pages/Transfers';
 import { Contracts } from './pages/Contracts';
+import { LeagueStart } from './pages/LeagueStart';
+import { LeagueSettings } from './pages/LeagueSettings';
 import { Finance } from './pages/Finance';
 import { Home } from './pages/Home';
 import { Lobby } from './pages/Lobby';
@@ -59,6 +61,8 @@ function RoutedInner() {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/konto" element={<Account />} />
+      <Route path="/w/:worldId/start" element={<LeagueStart />} />
+      <Route path="/w/:worldId/einstellungen" element={<LeagueSettings />} />
       <Route path="/w/:worldId" element={<Lobby />} />
       <Route path="/w/:worldId/verein" element={<ClubEditor />} />
       <Route path="/w/:worldId/draft" element={<Draft />} />

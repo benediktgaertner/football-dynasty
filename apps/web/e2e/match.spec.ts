@@ -239,7 +239,7 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
 
   test('KI-Vereine ohne Upload: nur die KI-Fangesänge – Teilmenge je Partie, keine direkte Wiederholung', async ({ page }) => {
     const aiReq = new Set<string>();
-    page.on('request', (r) => { if (/\/chants\/ai\/.*\.mp3/.test(r.url())) aiReq.add(r.url()); });
+    page.on('request', (r) => { if (/\/host-audio\/chant_.*\.mp3/.test(r.url())) aiReq.add(r.url()); });
     await start(page, 'home-noanthem-ai', undefined, '&ts=0.3');
     const rec = await record(page, 25_000);
     const s = rec[rec.length - 1]!.s;
@@ -398,6 +398,8 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
       const m = await mix(page);
       const goalClip = m.history.filter((x: any) => x.category === 'goal');
       expect(goalClip.length).toBe(1);
+      expect(goalClip[0].id).toMatch(/^ai_host_goal_/); // zufälliger Torjubel aus den Host-Dateien der Liga
+      expect(goalClip[0].side).toBe(side);
       // Crowd-Reaktion „Gegentor“ der Heimfans (Pfeifen/Ah/Oh/Uh) bzw. „Eigenes Tor“ geschichtet über den Jubel
       if (side === 'away') expect((m.history as any[]).some((h) => ['whistle', 'aah', 'ooh', 'uuh'].includes(h.category))).toBe(true);
       // während des Jubels keine Fangesänge
@@ -410,16 +412,29 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
     });
   }
 
-  test('echte Stadionaufnahmen (Produktion): alle Kategorien vorhanden, Rauschen und Reaktionen spielen', async ({ page }) => {
+  test('Produktion: fest eingebaut nur Stadionrauschen; Pfiffe/Torjubel/Gesänge ausschließlich aus den Host-Dateien der Liga', async ({ page }) => {
     await start(page, 'home-noanthem-ai', undefined, `&ts=0.3&crowd=${encodeURIComponent('/audio/crowd/manifest.json')}`);
     const rec = await record(page, 25_000);
     const m = rec[rec.length - 1]!.m;
-    expect(m.missing).toEqual(['boo']); // Buhrufe fehlen noch (Ersatz: echtes Pfeifen)
     expect(m.ambienceSample).toBe(true);
-    const cats = new Set((m.history as any[]).map((h) => h.category));
-    expect(cats.has('ambience')).toBe(true);
-    expect([...cats].some((c) => ['clap', 'whistle', 'aah', 'ooh', 'uuh', 'attack', 'chance'].includes(c))).toBe(true);
-    for (const h of m.history as any[]) if (h.category !== 'chant') expect(h.id).not.toMatch(/_test_/);
+    expect(m.library.ambience).toBeGreaterThan(0);
+    // keine fest eingebauten KI-Reaktionen mehr
+    for (const c of ['clap', 'attack', 'chance', 'whistle', 'concede', 'aah', 'ooh', 'uuh', 'applause', 'boo']) expect(m.library[c]).toBe(0);
+    // Host-Dateien (Testersatz) bilden Pfiffe und Torjubel
+    expect(m.library.pfiff).toBe(3); expect(m.library.pfeifkonzert).toBe(1); expect(m.library.goal).toBe(2);
+    const s = await snd(page);
+    for (const side of ['home', 'away'] as const) for (const id of s.songs[side]) expect(id).toMatch(/^ai_host_chant_/);
+    for (const h of m.history as any[]) if (h.category !== 'ambience') expect(String(h.id)).toMatch(/^ai_host_|^up-/);
+  });
+
+  test('Liga ohne Host-Dateien: normale Stadion-Grundatmosphäre, keine KI-Gesänge, keine Ersatzklänge', async ({ page }) => {
+    await start(page, 'home-noanthem-ai', undefined, `&ts=0.3&host=none&crowd=${encodeURIComponent('/audio/crowd/manifest.json')}`);
+    await page.waitForTimeout(12_000);
+    const m = await mix(page);
+    const s = await snd(page);
+    expect(m.ambienceSample).toBe(true);
+    expect(s.songs.home).toEqual([]); expect(s.songs.away).toEqual([]);
+    expect((m.history as any[]).filter((x) => x.category !== 'ambience')).toEqual([]);
   });
 
   test('ohne Aufnahmen: fehlende Kategorien gemeldet, keine Ersatzgesänge', async ({ page }) => {
@@ -430,11 +445,11 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
     await page.waitForFunction(() => (window as any).__fd.state().status === 'running');
     await page.waitForTimeout(8000);
     const m = await mix(page);
-    expect(m.missing.length).toBe(14);
+    expect(m.missing).toEqual(['ambience', 'clap', 'attack', 'chance', 'whistle', 'concede', 'aah', 'ooh', 'uuh', 'applause', 'boo']); // goal/pfiff/pfeifkonzert: Host-Dateien
     expect(m.ambienceSample).toBe(false);
-    // keine Bibliotheksreaktionen ohne Dateien; gesungen wird nur aus dem KI-Pool
-    expect((m.history as any[]).filter((x) => x.category !== 'chant')).toEqual([]);
-    for (const u of m.chants as string[]) expect(u).toMatch(/\/audio\/chants\/ai\//);
+    // keine festen Bibliotheksreaktionen ohne Dateien; gesungen wird nur aus dem Host-Pool der Liga
+    expect((m.history as any[]).filter((x) => x.category !== 'chant' && !String(x.id).startsWith('ai_host_'))).toEqual([]);
+    for (const u of m.chants as string[]) expect(u).toMatch(/\/e2e\/host-audio\/chant_/);
   });
 });
 
@@ -576,7 +591,7 @@ test.describe('Pfeifkonzerte der Heimfans (Unmut-Modell, eigene Aufnahmen)', () 
     const m = await mix(page);
     const w = homeWhistles(m);
     expect(w.length).toBeGreaterThan(0);
-    for (const h of w) expect(h.side).toBe('home');
+    for (const h of w) { expect(h.side).toBe('home'); expect(h.id).toMatch(/^ai_host_boo_/); } // Host-Datei „Pfiffe“
     expect(m.duck.home).toBeLessThan(0.95); // Heimgesänge während des Pfeifens reduziert
   });
 

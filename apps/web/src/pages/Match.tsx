@@ -8,7 +8,8 @@ import { fanApi } from '../lib/fanApi';
 import { prefs } from '../lib/stadiumSound';
 import { CHANNELS, mixer, type Track } from '../lib/audioMixer';
 import { crowdStatus } from '../lib/crowdLibrary';
-import { MatchSound, type ChantRef } from '../lib/fanAudio';
+import { MatchSound, type ChantRef, type HostAudioFile } from '../lib/fanAudio';
+import { worldAudioApi } from '../lib/worldAudioApi';
 import type { AudioRef, MatchState } from '../lib/matchClient';
 import { LiveBoard } from '../components/match/LiveBoard';
 import { ConnectionBanner } from '../components/match/ConnectionBanner';
@@ -53,7 +54,7 @@ export function Match() {
     // „Einlauf immer überspringen“: eigene Stimme automatisch abgeben (Manager, einmal je Einlauf)
     if (prefs.alwaysSkip && !voted && state?.status === 'waiting' && state.walkoutEndsAt && (state.role === 'home' || state.role === 'away')) skipWalkout();
   }, [state?.status, state?.walkoutEndsAt, state?.role, voted, skipWalkout]);
-  const sound = useMatchAudio(state, client, fixtureId);
+  const sound = useMatchAudio(state, client, fixtureId, undefined, undefined, undefined, { worldId });
   const [mixerOpen, setMixerOpen] = useState(false);
 
   if (!configured) {
@@ -423,8 +424,13 @@ export function WalkoutOverlay({ state, voted, onSkip, sound }: { state: MatchSt
  * Einlauf → Hymne des Heimvereins, danach Signatur-Fangesang; im Spiel Kulisse, Reaktionen und
  * zufällige Fangesänge über den zentralen Mixer. Verlassen der Seite oder Abpfiff ⇒ sanft aus.
  */
-export function useMatchAudio(state: MatchState | null, client: MatchClient | null, fixtureId: string, urlFor: (path: string) => string = (p) => fanApi.publicUrl(p), crowdManifest?: string, soundTimeScale?: number) {
-  const sound = useMemo(() => new MatchSound(urlFor, crowdManifest, { seed: fixtureId, timeScale: soundTimeScale }), [fixtureId]); // eslint-disable-line react-hooks/exhaustive-deps
+export function useMatchAudio(state: MatchState | null, client: MatchClient | null, fixtureId: string, urlFor: (path: string) => string = (p) => fanApi.publicUrl(p), crowdManifest?: string, soundTimeScale?: number,
+  ai: { worldId?: string; hostAudio?: Promise<HostAudioFile[]>; chantPool?: string } = {}) {
+  // KI-Audiodateien der Liga (vom Host verwaltet): einmal je Partie laden – keine Neuauswahl bei Re-Render/Reconnect
+  const sound = useMemo(() => new MatchSound(urlFor, crowdManifest, {
+    seed: fixtureId, timeScale: soundTimeScale, chantPool: ai.chantPool,
+    hostAudio: ai.hostAudio ?? (ai.worldId ? worldAudioApi.forMatch(ai.worldId).catch(() => []) : undefined),
+  }), [fixtureId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [on, setOn] = useState(false);
   const [needsUnlock, setNeedsUnlock] = useState(false);
   const [line, setLine] = useState<string | null>(null);
@@ -524,9 +530,11 @@ export function useMatchAudio(state: MatchState | null, client: MatchClient | nu
 /** Lautstärke je Spur; fehlende Stadionaufnahmen werden offen genannt (kein Ersatzklang) */
 function MixerPanel({ onClose }: { onClose: () => void }) {
   const [v, setV] = useState(() => mixer.getVolumes());
+  // fest eingebaut ist nur das Stadionrauschen; Fangesänge, Pfiffe und Torjubel der KI-Vereine kommen vom Liga-Host
   const status = crowdStatus(mixer.library);
-  const missing = status.filter((c) => c.missing);
-  const thin = status.filter((c) => c.thin);
+  const missing = status.filter((c) => c.missing && c.key === 'ambience');
+  const thin: typeof status = [];
+  const n = (k: string) => status.find((c) => c.key === k)?.count ?? 0;
   return (
     <div className="absolute bottom-14 right-3 z-20 w-72 rounded-xl border border-olive-600 bg-ink/95 p-3 text-sm shadow-xl" data-testid="mixer-panel">
       <div className="mb-2 flex items-center justify-between"><span className="display font-bold uppercase">Ton</span><button type="button" onClick={onClose} aria-label="Schließen">✕</button></div>
@@ -537,6 +545,10 @@ function MixerPanel({ onClose }: { onClose: () => void }) {
             onChange={(e) => { const x = Number(e.target.value); mixer.setVolume(c.key, x); setV((o) => ({ ...o, [c.key]: x })); }} />
         </label>
       ))}
+      <p className="mt-2 border-t border-olive-700 pt-2 text-xs text-cream-dim" data-testid="host-audio-status">
+        KI-Sounds der Liga (vom Host verwaltet): Pfiffe {n('pfiff')} · Torjubel {n('goal')}
+        {n('pfiff') + n('goal') === 0 ? ' – noch keine hochgeladen, es läuft die Stadion-Grundatmosphäre.' : ''}
+      </p>
       {(missing.length > 0 || thin.length > 0) && (
         <div className="mt-2 border-t border-olive-700 pt-2 text-xs text-cream-dim" data-testid="crowd-missing">
           {missing.length > 0 && <p><b>Fehlende Stadionaufnahmen</b> (stumm, kein Ersatzklang): {missing.map((c) => c.label).join(', ')}{missing.some((c) => c.key === 'ambience') ? ' – Rauschen: gefiltertes Ersatzrauschen' : ''}</p>}

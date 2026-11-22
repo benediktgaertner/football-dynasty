@@ -123,7 +123,7 @@ export function Home() {
         <ul className="grid gap-3 sm:grid-cols-2">
           {worlds?.map((w) => (
             <li key={w.world_id}>
-              <Link to={`/w/${w.world_id}`} className="flex items-center justify-between rounded-2xl border border-olive-700 bg-olive-900/70 px-5 py-4 transition hover:border-gold/60">
+              <Link to={`/w/${w.world_id}/start`} data-testid="world-link" className="flex items-center justify-between rounded-2xl border border-olive-700 bg-olive-900/70 px-5 py-4 transition hover:border-gold/60">
                 <div>
                   <div className="display text-2xl font-bold">{w.name}</div>
                   <div className="text-sm text-cream-dim">

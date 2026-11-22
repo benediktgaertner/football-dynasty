@@ -245,13 +245,10 @@ describe('V2 überlädt nicht', () => {
 
 describe('KI-Fangesangpool: Auswahl je Partie (aiMatchSubset)', async () => {
   const { aiMatchSubset } = await import('./fanMood');
-  const { readFileSync } = await import('node:fs');
-  const pool = (JSON.parse(readFileSync(new URL('../../public/audio/chants/ai/manifest.json', import.meta.url), 'utf8')).files as Array<{ id: string; mood: string; file: string }>);
-  it('Pool: 14 Gesänge, alle Dateien vorhanden, keine doppelten IDs/Dateien', () => {
-    expect(pool.length).toBe(17);
+  // Pool wie vom Liga-Host hochgeladen (Fangesänge sind seit 0041 Host-Dateien; Spottgesänge nur noch in alten Pools)
+  const pool = Array.from({ length: 17 }, (_, i) => ({ id: `host-${String(i).padStart(2, '0')}`, mood: i < 2 ? 'taunt' : 'support', file: `f${i}.mp3` }));
+  it('Pool: eindeutige IDs', () => {
     expect(new Set(pool.map((p) => p.id)).size).toBe(17);
-    expect(new Set(pool.map((p) => p.file)).size).toBe(17);
-    for (const p of pool) expect(readFileSync(new URL(`../../public/audio/chants/ai/${p.file}`, import.meta.url)).length).toBeGreaterThan(50_000);
   });
   it('2–4 verschiedene Gesänge, mindestens 2 ohne Spott, gleiche Partie ⇒ gleiche Auswahl (Reconnect)', () => {
     const sizes = new Set<number>();

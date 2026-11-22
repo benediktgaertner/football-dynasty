@@ -7,6 +7,10 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
+/** öffentliche Projekt-URL und Anon-Key (für Uploads mit Fortschrittsanzeige) – nie ein Service-Role-Key */
+export const supabaseUrl = url ?? '';
+export const supabaseAnonKey = anonKey ?? '';
+
 export const missingEnv: string[] = [
   ...(url ? [] : ['VITE_SUPABASE_URL']),
   ...(anonKey ? [] : ['VITE_SUPABASE_ANON_KEY']),

@@ -49,6 +49,8 @@ export const DISAPPROVAL = {
   gapCause: 45,
   /** höchstens so viele Pfeifreaktionen je 10 Spielminuten Audiozeit (600 s) */
   maxPer10Min: 5,
+  /** normales Spiel: ungefähr 0–3 Pfeifreaktionen; mehr nur bei negativem Verlauf (D ≥ 0,5) oder schweren Entscheidungen */
+  normalMatch: 3,
   /** Abbau der aufgestauten Unzufriedenheit je Sekunde (Richtung Grundwert aus dem Spielstand) */
   decay: 1 / 300,
   /** Anstieg Richtung Spielstand-Grundwert je Sekunde (schlechter Stand verärgert schnell) */
@@ -60,7 +62,7 @@ export const DISAPPROVAL = {
 /** Grundwahrscheinlichkeit je Ursache und ob sie „schwer“ ist (Schiedsrichter-/Fouleinfluss) */
 const BASE: Record<DisapprovalCause, { p: number; severe?: boolean; referee?: boolean }> = {
   hard_foul: { p: 0.85, severe: true, referee: true },
-  foul: { p: 0.06, referee: true },
+  foul: { p: 0.04, referee: true },
   foul_series: { p: 0.5, referee: true },
   card_home: { p: 0.55, referee: true },
   red_home: { p: 0.92, severe: true, referee: true },
@@ -92,6 +94,7 @@ export class HomeDisapproval {
   private lastLong = -1e9;
   private lastCause = new Map<DisapprovalCause, number>();
   private plays: number[] = [];
+  private total = 0;
   private awayFouls: number[] = [];
   private awayDanger: number[] = [];
   private homeDanger: number[] = [];
@@ -214,12 +217,13 @@ export class HomeDisapproval {
     const since = c.t - this.lastPlay;
     if (since < (b.severe ? DISAPPROVAL.gapSevere : DISAPPROVAL.gap) || c.t - (this.lastCause.get(cause) ?? -1e9) < (b.severe ? DISAPPROVAL.gapSevere : DISAPPROVAL.gapCause)) d.reason = 'cooldown';
     else if (this.plays.length >= DISAPPROVAL.maxPer10Min && !b.severe) d.reason = 'limit';
+    else if (this.total >= DISAPPROVAL.normalMatch && this.D < 0.5 && !b.severe) d.reason = 'limit';
     else if (this.rnd() >= p) d.reason = 'chance';
     else {
       // langes Konzert nur mit genügend Abstand, sonst kurzer Pfiff
       if (d.length === 'long' && c.t - this.lastLong < DISAPPROVAL.gapLong) d.length = 'short';
       d.play = true;
-      this.lastPlay = c.t; this.plays.push(c.t); this.lastCause.set(cause, c.t);
+      this.lastPlay = c.t; this.plays.push(c.t); this.total++; this.lastCause.set(cause, c.t);
       if (d.length === 'long') this.lastLong = c.t;
     }
     this.log.push(d);

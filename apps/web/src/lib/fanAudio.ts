@@ -16,7 +16,7 @@
  */
 import { mixer, type Track } from './audioMixer';
 import { CrowdEnvelope, situationOf, type PlayState, type Situation } from './crowdModel';
-import { loadCrowdLibrary, type CrowdCategory } from './crowdLibrary';
+import { buildLibrary, loadCrowdLibrary, type CrowdCategory, type CrowdFile, type CrowdLibrary } from './crowdLibrary';
 import { HomeDisapproval, type Disapproval } from './homeDisapproval';
 import { EVENTS, FanScheduler, MoodTrend, PARAMS, aiMatchSubset, levelToIntensity, matchSubset, pickEventReaction, type CrowdRule, type CrowdTrigger, type MoodRow, type MoodValues, type ReactionKind } from './fanMood';
 import type { AudioRef } from './matchClient';
@@ -65,11 +65,45 @@ export function loadChantPool(manifestUrl: string): Promise<Song[]> {
 }
 
 const DEFAULT_MANIFEST = '/audio/crowd/manifest.json';
-const DEFAULT_POOL = '/audio/chants/ai/manifest.json';
+
+/**
+ * Vom Liga-Host verwaltete KI-Audiodatei (Tabelle world_ai_audio, Storage „world-audio“, signierte URL).
+ * chant = Fangesang der KI-Vereine, boo = Pfiffe/Buhrufe der Heimfans, goal = Torjubel.
+ */
+export interface HostAudioFile { id: string; category: 'chant' | 'boo' | 'goal'; name: string; url: string; duration: number }
+
+/** Host-Dateien als Stadionaufnahmen: Pfiffe ⇒ pfiff (kurz geschnitten) und – ab 6 s – pfeifkonzert; Torjubel ⇒ goal */
+export function hostCrowdFiles(files: HostAudioFile[]): CrowdFile[] {
+  const out: CrowdFile[] = [];
+  for (const f of files) {
+    if (!(f.duration > 0) || !f.url) continue;
+    if (f.category === 'boo') {
+      out.push({ id: `${f.id}:kurz`, category: 'pfiff', file: f.url, duration: f.duration, credit: f.name });
+      if (f.duration >= 6) out.push({ id: `${f.id}:lang`, category: 'pfeifkonzert', file: f.url, duration: f.duration, credit: f.name });
+    } else if (f.category === 'goal') out.push({ id: f.id, category: 'goal', file: f.url, duration: f.duration, credit: f.name });
+  }
+  return out;
+}
+
+/** feste Bibliothek (Stadionrauschen) + Host-Dateien; Kategorien des Hosts ersetzen gleichnamige feste Aufnahmen */
+export function mergeHostLibrary(lib: CrowdLibrary, files: HostAudioFile[]): CrowdLibrary {
+  const host = hostCrowdFiles(files);
+  const cats = new Set(host.map((f) => f.category));
+  return buildLibrary(lib.base, [...lib.files.filter((f) => !cats.has(f.category)), ...host]);
+}
+
+/** KI-Fangesangpool aus den Host-Dateien (gleiche Reihenfolge auf allen Geräten ⇒ gleiche Auswahl je Partie) */
+export function hostChantPool(files: HostAudioFile[]): Song[] {
+  return files.filter((f) => f.category === 'chant' && f.url).sort((a, b) => a.id.localeCompare(b.id))
+    .map((f) => ({ id: f.id, url: f.url, volume: 0.85, mood: 'support' as const, title: f.name }));
+}
 
 export interface MatchSoundOptions {
   /** gleiche Teilmenge der Gesänge auf allen Geräten (z. B. Partie-ID) */
   seed?: string;
+  /** KI-Audiodateien der Liga (vom Host verwaltet); ohne Dateien bleibt nur die Stadion-Grundatmosphäre */
+  hostAudio?: Promise<HostAudioFile[]>;
+  /** nur Tests: statischer Gesangspool statt Host-Dateien */
   chantPool?: string;
   /** nur Tests: Auswahlfenster verkürzen (1 = 8–12 s) */
   timeScale?: number;
@@ -133,8 +167,10 @@ export class MatchSound {
     this.homeGoal = goalHymns(home); this.awayGoal = goalHymns(away);
     for (const c of [...this.homeGoal, ...this.awayGoal]) void mixer.load(this.url(c.path!));
     const seed = this.opts.seed ?? String(Math.random());
-    const lib = loadCrowdLibrary(this.manifest).then((l) => { mixer.setLibrary(l); });
-    const pool = loadChantPool(this.opts.chantPool ?? DEFAULT_POOL).then((ai) => {
+    const host = (this.opts.hostAudio ?? Promise.resolve([] as HostAudioFile[])).catch(() => [] as HostAudioFile[]);
+    const lib = Promise.all([loadCrowdLibrary(this.manifest), host]).then(([l, h]) => { mixer.setLibrary(mergeHostLibrary(l, h)); });
+    const aiPool = this.opts.chantPool ? loadChantPool(this.opts.chantPool) : host.then(hostChantPool);
+    const pool = aiPool.then((ai) => {
       for (const side of ['home', 'away'] as const) {
         const own: Song[] = this.uploads[side].map((c) => ({ id: c.id, url: this.url(c.path!), volume: c.volume, mood: 'upload', title: c.name }));
         // eigene Uploads: wie bisher; KI-Fanlager: 2–4 Gesänge aus dem ganzen KI-Pool, möglichst ohne die des Gegners

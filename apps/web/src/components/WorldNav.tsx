@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { useWorldTheme } from '../lib/theme';
 
 const ITEMS = [
+  { to: 'start', label: 'Liga-Menü' },
   { to: 'spieltag', label: 'Dashboard' },
   { to: 'team', label: 'Team' },
   { to: 'entwicklung', label: 'Entwicklung' },

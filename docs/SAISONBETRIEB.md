@@ -381,3 +381,17 @@ Grundlage ist `docs/Football_Dynasty_Fanstimmung_Audio_Matrix_V2.xlsx`. Sie wird
   - Cooldowns: 14 s zwischen Pfeifreaktionen (schwere Entscheidungen 6 s), 45 s je Ursache, 50 s zwischen langen Konzerten, höchstens 5 je 10 Minuten.
   - Während eines Pfiffs werden Heimgesänge auf 50 % (Konzert 25 %) geduckt, Gästegesänge kaum; neue Heimgesänge erst danach.
 - Tests im Browser: Harness-Parameter `dis=always` (jede erlaubte Reaktion wird gespielt) und `events=off` (nur eingespeiste Testereignisse).
+
+## Liga-Einstellungen & zentrale KI-Stadionatmosphäre (Migration 0041)
+- Liga öffnen (Startdashboard) ⇒ `/w/<welt>/start`: „Liga betreten“ für alle, „Liga-Einstellungen“ nur für den gespeicherten Host
+  (`career_worlds.host_user_id`, geprüft in `world_ai_audio_settings` / `fd_is_world_host`).
+- `/w/<welt>/einstellungen` → „KI-Stadionatmosphäre“: drei Kategorien (Fangesänge, Buhrufe & Pfeifkonzerte, Torjubel), MP3 per
+  Drag-and-drop/Dateiauswahl, mehrere gleichzeitig, Fortschritt, Dauer, Probehören, Entfernen, bis 40 Dateien je Kategorie, je 15 MB.
+- Speicher: privater Bucket `world-audio`, Pfad `<welt>/<chant|boo|goal>/<uuid>.mp3`; Tabelle `world_ai_audio`.
+  Schreiben nur Host (RPC + Storage-Policy), Lesen alle Mitglieder (signierte URLs, 6 h). Keine öffentlichen Schreibrechte.
+- Wiedergabe (Browser, kein Audio über Fly): je Partie einmal geladen; KI-Vereine (und Vereine ohne eigene Gesänge) singen 2–4
+  zufällige Host-Gesänge, Pfiffe der Heimfans über das Unmut-Modell (≈ 0–3 je normalem Spiel), Torjubel zufällig aus den Host-Dateien.
+  Menschliche Vereine behalten Hymnen, Torhymnen und eigene Gesänge.
+- Fest eingebaut ist nur noch das Stadionrauschen (`public/audio/crowd`, Kategorie ambience). Frühere eingebaute KI-Gesänge und
+  -Reaktionen sind aus der aktiven Konfiguration entfernt: `assets/audio-startpaket/` (zum Hochladen durch den Host) und
+  `assets/audio-crowd-archiv/` (alte Reaktionsaufnahmen, nicht mehr ausgeliefert).
