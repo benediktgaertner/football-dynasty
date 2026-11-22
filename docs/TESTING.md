@@ -120,3 +120,16 @@ npm run build
 ## Login-Tests
 - DB: `E0_accounts.sql` (in `scripts/test-db.sh`).
 - Browser: `npm run e2e:auth -w @fd/web` – lokale PostgreSQL + `apps/web/e2e/auth/mockSupabase.ts` (Nachbildung von Supabase Auth/REST, nur Tests). Pflichtfälle 1–6, siehe LOGIN.md.
+
+## Audit-Befehle (neu)
+
+```bash
+npm run audit          # Builds, Typecheck, Vitest, DB-Suite, Login-E2E, Vereinsseiten-E2E (ohne die lange Match-E2E)
+npm run test:balance   # Balancing-Statistik der Engine (feste Seeds, FD_STAT_N=60 Partien je Szenario, ca. 1 Min.)
+npm run test:longrun   # DB-Suite + Langzeittest Z0 (LONGRUN_SEASONS=10, ca. 2,5 Min.); gibt eine Tabelle je Saison aus
+npm run e2e -w @fd/web # Match/Audio/Verbindungsabbruch (ca. 9 Min.); Chrome: PW_CHROME=/opt/pw-browsers/chromium
+```
+
+Voraussetzung für die DB-Suite: `npm run build -w @fd/shared -w @fd/engine -w @fd/match-server` (macht `npm run audit` selbst).
+Ein hängengebliebener Test-Postgres (z. B. nach `KEEP_DB=1`) blockiert den Port 54329 → `pkill -u postgres postgres`.
+Bekannt: einzelne zufallsabhängige DB-Tests (G3, C0, G2) schlagen selten ohne Codeursache fehl – siehe FOOTBALL_DYNASTY_AUDIT.md.

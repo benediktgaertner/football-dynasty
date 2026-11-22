@@ -56,7 +56,7 @@ update public.career_worlds set current_slot = (select ordinal from public.seaso
 create temporary table fd_g3_elite on commit drop as
 select pc.player_id from public.player_contracts pc join public.players p on p.id = pc.player_id join public.clubs c on c.id = p.club_id
 where pc.world_id = :'world' and pc.active and c.control = 'ai' and pc.end_season_year <= :year and p.overall between 60 and 80
-  and p.age <= 30 -- keine Karriereenden (sonst kein Vertrag möglich)
+  and p.age <= 30 and not p.temporary -- keine Karriereenden, keine temporären Ersatzspieler (werden zum Saisonende entfernt)
 order by pc.player_id limit 15;
 update public.players set overall = 88 where id in (select player_id from fd_g3_elite);
 -- Snapshots vorher
@@ -67,6 +67,7 @@ create temporary table fd_g3_ct on commit drop as select pc.id, pc.player_id, pc
 select count(*) as signed_before from public.transfers where world_id = :'world' and kind = 'free_agent' \gset
 select count(*) as players_before from public.players where world_id = :'world' \gset
 
+select tests.assert((select count(*) from fd_g3_elite) >= 8, 'genug auslaufende Testspieler vorhanden (' || (select count(*) from fd_g3_elite) || ')');
 select public.fd_begin_slot(:'world');
 select tests.assert((select status from public.career_worlds where id = :'world') = 'preseason', 'Saisonwechsel durchgeführt');
 select count(*) as new_fa from public.fd_fa_market_players where season_id = :'season' \gset
@@ -78,7 +79,7 @@ select tests.assert(not exists (select 1 from public.fd_fa_market_players m wher
 select tests.assert(not exists (select 1 from fd_g3_elite e join public.players p on p.id = e.player_id where p.club_id is null)
   and not exists (select 1 from fd_g3_elite e join public.free_agents f on f.player_id = e.player_id), 'auslaufende Spieler über 82 OVR verlängern immer (kein Free Agent)');
 select tests.assert(not exists (select 1 from fd_g3_elite e join public.player_contracts pc on pc.player_id = e.player_id and pc.active where pc.end_season_year <= :year)
-  and (select count(*) from fd_g3_elite e join public.player_contracts pc on pc.player_id = e.player_id and pc.active) = 15, 'alle 15 haben einen neuen aktiven Vertrag');
+  and (select count(*) from fd_g3_elite e join public.player_contracts pc on pc.player_id = e.player_id and pc.active) = (select count(*) from fd_g3_elite), 'alle ' || (select count(*) from fd_g3_elite) || ' haben einen neuen aktiven Vertrag ' || coalesce((select string_agg(p.age || 'J/' || p.overall || '/ret=' || p.retired || '/tmp=' || p.temporary || '/club=' || coalesce(p.club_id::text, 'null') || '/ct=' || (select count(*) from public.player_contracts q where q.player_id = e.player_id and q.active) || '/end=' || coalesce((select max(q.end_season_year) from public.player_contracts q where q.player_id = e.player_id and q.active)::text, '-'), '; ') from fd_g3_elite e join public.players p on p.id = e.player_id where not exists (select 1 from public.player_contracts q where q.player_id = e.player_id and q.active and q.end_season_year > :year)), '') || ' | abgelaufen: ' || coalesce((select string_agg(p.age || 'J/ovr' || p.overall || '/end' || q.end_season_year || '/y' || :year || '/club=' || coalesce(p.club_id::text,'null'), '; ') from fd_g3_elite e join public.players p on p.id = e.player_id join public.player_contracts q on q.player_id = e.player_id and q.active where q.end_season_year <= :year), '-'));
 select tests.assert(not exists (select 1 from public.fd_fa_market_players m join public.players p on p.id = m.player_id where m.season_id = :'season' and p.club_id is not null), 'neue Free Agents sind vereinslos');
 select tests.assert(not exists (select 1 from public.fd_fa_market_players m join public.free_agents f on f.player_id = m.player_id where m.season_id = :'season' group by m.season_id, m.player_id having count(*) > 1)
   and (select count(*) from public.fd_fa_market_players m join public.free_agents f on f.player_id = m.player_id where m.season_id = :'season') = :new_fa, 'jeder neue Free Agent genau einmal im Pool');
