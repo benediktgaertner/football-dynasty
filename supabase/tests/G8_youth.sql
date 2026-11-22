@@ -7,12 +7,12 @@ select c.id as hclub from public.clubs c where c.world_id = :'world' and c.manag
 select c.id as aiclub from public.clubs c where c.world_id = :'world' and c.control = 'ai' and not c.amateur and c.association_code = (select country_code from public.career_worlds where id = :'world') order by c.id limit 1 \gset
 select current_season_id as season from public.career_worlds where id = :'world' \gset
 
--- Karriereende: 38-Jähriger eines KI-Vereins (ältester) endet sicher, 20-Jähriger nie
-update public.players set age = 39 where id = (select id from public.players where club_id = :'aiclub' and main_position <> 'GK' order by id limit 1);
-select id as oldp from public.players where club_id = :'aiclub' and age = 39 limit 1 \gset
+-- Karriereende: 45-Jähriger eines KI-Vereins endet sicher, 20-Jähriger nie
+update public.players set age = 45 where id = (select id from public.players where club_id = :'aiclub' and main_position <> 'GK' order by id limit 1);
+select id as oldp from public.players where club_id = :'aiclub' and age = 45 limit 1 \gset
 select count(*) as n_ai_before from public.players where club_id = :'aiclub' and not retired \gset
 select public.fd_youth_season_change(:'world', :'season') as res \gset
-select tests.assert((select retired from public.players where id = :'oldp'), 'Karriereende: 39-Jähriger tritt zurück');
+select tests.assert((select retired from public.players where id = :'oldp'), 'Karriereende: 45-Jähriger tritt sicher zurück');
 select tests.assert((select club_id is null from public.players where id = :'oldp') and not exists (select 1 from public.player_contracts where player_id = :'oldp' and active), 'Rentner: kein Verein, kein aktiver Vertrag');
 select tests.assert(exists (select 1 from public.transfers where player_id = :'oldp' and kind = 'retirement'), 'Karriereende wird protokolliert');
 select tests.assert(not exists (select 1 from public.players p join public.clubs c on c.id = p.club_id where p.world_id = :'world' and not c.amateur and p.age <= 30 and p.retired), 'keine jungen Rentner');
@@ -27,6 +27,14 @@ select public.fd_youth_season_change(:'world', :'season') as res2 \gset
 select tests.assert(exists (select 1 from public.players p join public.player_contracts k on k.player_id = p.id and k.active where p.club_id = :'aiclub' and p.age <= 18), 'Jugend wurde in den Profikader übernommen (Vertrag aktiv)');
 select tests.assert(not exists (select 1 from public.players p join public.clubs c on c.id = p.club_id where p.world_id = :'world' and not c.amateur and not p.temporary and not p.retired
   and not exists (select 1 from public.player_contracts k where k.player_id = p.id and k.active) and p.age <= 19), 'übernommene Spieler haben Verträge');
+
+-- Entwicklung: nach weiteren Jahrgängen sind 18-Jährige der KI-Vereine im Mittel bei OVR 66–78
+select public.fd_youth_season_change(:'world', :'season');
+select public.fd_youth_season_change(:'world', :'season');
+select avg(p.overall) as avg18, count(*) as n18 from public.players p join public.clubs c on c.id = p.club_id
+  where c.world_id = :'world' and c.control = 'ai' and c.association_code = (select country_code from public.career_worlds where id = :'world') and p.age = 18 \gset
+select tests.assert(:n18 >= 5 and :avg18 between 66 and 78, 'KI-Jugend mit 18: Ø-OVR ' || round(:avg18::numeric, 1) || ' (' || :n18 || ' Spieler)');
+select tests.assert(not exists (select 1 from public.youth_players where age = 16 and overall > 50), '16-Jährige starten unter OVR 50');
 
 -- Menschlicher Verein: Ausbau nur in der Vorbereitung, Kosten, Rechte
 set role authenticated;
