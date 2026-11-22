@@ -295,7 +295,7 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
   });
 
   test('0:4 in der 60. Minute: Heimgesänge nahezu aus, Pfiffe, Gästeblock aktiv', async ({ page }) => {
-    await start(page, 'home-noanthem-ai', undefined, '&ts=0.25');
+    await start(page, 'home-noanthem-ai', undefined, '&ts=0.25&dis=always');
     await page.waitForTimeout(3000);
     await page.evaluate(() => (window as any).__fd.force({ minute: 60, homeScore: 0, awayScore: 4 }));
     await page.waitForTimeout(20_000); // Stimmungsnachlauf 8 s: Heimkurve sofort still, Gästeblock steigt mit
@@ -307,13 +307,15 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
     const after = (s.played as any[]).slice(p0);
     const homeChants = after.filter((p) => p.kind === 'chant' && p.side === 'home').length;
     const awayChants = after.filter((p) => p.kind === 'chant' && p.side === 'away').length;
-    const whistles = after.filter((p) => p.kind === 'reaction' && p.side === 'home' && p.reaction === 'whistle').length;
+    // Pfiffe der Heimfans (Unmut-Modell, eigene Aufnahmen) seit dem Rückstand – mit Cooldown, kein Dauerpfeifen
+    const whistles = (s.played as any[]).filter((p) => p.kind === 'reaction' && p.side === 'home' && (p.reaction === 'pfiff' || p.reaction === 'pfeifkonzert') && p.minute >= 60).length;
     const homeCheer = after.filter((p) => p.kind === 'reaction' && p.side === 'home' && p.reaction === 'clap').length;
     console.log({ homeChants, awayChants, whistles, mood: s.mood });
     expect(s.mood.row).toMatch(/^(S066|S067|S068|S069|S070)$/); // Mitte, Heim −3 oder mehr
     expect(s.mood.homeChant).toBe(0);
     expect(homeChants).toBe(0); // V2: 0 % Heimgesang bei ≥ 3 Toren Rückstand ab Minute 60
-    expect(whistles).toBeGreaterThanOrEqual(3); // Pfeifkonzert (Crowd-Reaktion C092)
+    expect(whistles).toBeGreaterThanOrEqual(2); // Pfeifkonzert sofort (E21) und weiterer Unmut
+    expect(whistles).toBeLessThanOrEqual(5); // höchstens 5 je 10 Minuten
     expect(whistles).toBeGreaterThan(homeCheer);
     // Gästeblock singt hörbar: Anteil der Zeit mit laufendem Gästegesang (längere KI-Gesänge bis 24 s ⇒ Anzahl der Starts allein ist kein gutes Maß)
     const awayCover = rec.filter((r) => r.m.tracks.away.some((t: string) => t.startsWith('chant:'))).length / rec.length;
@@ -328,8 +330,10 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
     const avgH = tail.reduce((a, r) => a + r.m.crowd[0], 0) / tail.length, avgA = tail.reduce((a, r) => a + r.m.crowd[1], 0) / tail.length;
     expect(avgH).toBeLessThan(0.42);
     expect(avgA).toBeGreaterThan(avgH);
-    // Pfiffe als Aufnahme (Kategorie whistle) auf der Heimseite
-    expect((rec[rec.length - 1]!.m.history as any[]).some((h) => h.category === 'whistle')).toBe(true);
+    // Pfiffe als Aufnahme der neuen Kategorien auf der Heimseite, kein altes Pfiff-Material für die Heimkurve
+    const hist = rec[rec.length - 1]!.m.history as any[];
+    expect(hist.some((h) => h.category === 'pfiff' || h.category === 'pfeifkonzert')).toBe(true);
+    expect(hist.filter((h) => h.category === 'whistle' && h.channel === 'events' && h.side === 'home')).toEqual([]);
   });
 
   test('Heimspiel mit eigenen MP3: Heimverein singt seine Uploads, KI-Gäste die KI-Fangesänge', async ({ page }) => {
@@ -426,7 +430,7 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
     await page.waitForFunction(() => (window as any).__fd.state().status === 'running');
     await page.waitForTimeout(8000);
     const m = await mix(page);
-    expect(m.missing.length).toBe(12);
+    expect(m.missing.length).toBe(14);
     expect(m.ambienceSample).toBe(false);
     // keine Bibliotheksreaktionen ohne Dateien; gesungen wird nur aus dem KI-Pool
     expect((m.history as any[]).filter((x) => x.category !== 'chant')).toEqual([]);
@@ -530,5 +534,108 @@ test.describe('Verbindungsabbruch im Multiplayer', () => {
     await expectSameEvents(home, away);
     const [ch, ca] = [await conn(home), await conn(away)];
     expect(ch.score).toEqual(ca.score);
+  });
+});
+
+test.describe('Pfeifkonzerte der Heimfans (Unmut-Modell, eigene Aufnahmen)', () => {
+  const start = async (page: Page, extra = '') => {
+    await open(page, fx('home-noanthem-ai'), undefined, `&ts=0.3${extra}`);
+    await waitWalkout(page);
+    await page.getByTestId('skip-walkout').click();
+    await page.waitForFunction(() => (window as any).__fd.state().status === 'running');
+  };
+  const force = (page: Page, f: { minute: number; homeScore: number; awayScore: number }) => page.evaluate((x) => (window as any).__fd.force(x), f);
+  const inject = (page: Page, events: Array<{ type: string; side: 'home' | 'away' | null }>, ctx: { homeScore: number; awayScore: number; minute: number }) =>
+    page.evaluate(([evs, c]) => { const tick = 900000 + Math.floor(Math.random() * 99999); for (const e of evs) (window as any).__fd.inject({ tick, ...e }, c); }, [events, ctx] as const);
+  const dis = async (page: Page) => (await snd(page)).disapproval as Array<{ cause: string; play: boolean; length: string; intensity: number; reason?: string; t: number }>;
+  const homeWhistles = (m: any) => (m.history as any[]).filter((h) => (h.category === 'pfiff' || h.category === 'pfeifkonzert'));
+  /** warten, bis keine Pfeifreaktion aus dem laufenden Spiel mehr im Cooldown liegt; liefert die aktuelle Audiozeit */
+  const quiet = async (page: Page) => {
+    for (let i = 0; i < 40; i++) {
+      const s = await snd(page);
+      const last = (s.disapproval as any[]).filter((x) => x.play).at(-1);
+      const now = (s.played as any[]).at(-1)?.t ?? 0;
+      const t = await page.evaluate(() => (window as any).__fd.soundTime?.() ?? null);
+      const cur = t ?? now;
+      if (!last || cur - last.t > 15) return cur;
+      await page.waitForTimeout(1000);
+    }
+    return 0;
+  };
+
+  test('hartes Foul des Gastes bei Heimführung ⇒ Heimfans pfeifen (neue Aufnahme), Gesänge kurz reduziert', async ({ page }) => {
+    await start(page, '&dis=always&events=off');
+    const ctx = { minute: 30, homeScore: 2, awayScore: 0 };
+    await force(page, ctx);
+    await page.waitForTimeout(1500);
+    const t0 = await quiet(page);
+    await inject(page, [{ type: 'foul', side: 'away' }, { type: 'yellow', side: 'away' }], ctx);
+    await page.waitForTimeout(800);
+    const d = (await dis(page)).filter((x) => x.t >= t0);
+    expect(d.some((x) => x.cause === 'hard_foul' && x.play)).toBe(true);
+    const m = await mix(page);
+    const w = homeWhistles(m);
+    expect(w.length).toBeGreaterThan(0);
+    for (const h of w) expect(h.side).toBe('home');
+    expect(m.duck.home).toBeLessThan(0.95); // Heimgesänge während des Pfeifens reduziert
+  });
+
+  test('Foul des Heimteams ⇒ keine Pfiffe der Heimfans; Gästefans protestieren wie bisher', async ({ page }) => {
+    await start(page, '&dis=always&events=off');
+    const ctx = { minute: 30, homeScore: 0, awayScore: 0 };
+    await force(page, ctx);
+    await page.waitForTimeout(1000);
+    const t0 = await quiet(page);
+    const n0 = (await dis(page)).length;
+    await inject(page, [{ type: 'foul', side: 'home' }], ctx);
+    await page.waitForTimeout(1000);
+    expect((await dis(page)).slice(n0).filter((x) => x.t >= t0 && x.cause.includes('foul'))).toEqual([]);
+  });
+
+  test('Elfmeter und Rote Karte gegen Heim ⇒ Pfiffe; Cooldown verhindert Überlagerung', async ({ page }) => {
+    await start(page, '&dis=always&events=off');
+    const ctx = { minute: 50, homeScore: 1, awayScore: 1 };
+    await force(page, ctx);
+    await page.waitForTimeout(1000);
+    const t0 = await quiet(page);
+    await inject(page, [{ type: 'foul', side: 'home' }, { type: 'penalty', side: 'away' }], ctx);
+    await page.waitForTimeout(500);
+    await inject(page, [{ type: 'red', side: 'home' }], ctx); // gleich danach: schwer, aber < 6 s ⇒ Cooldown
+    await page.waitForTimeout(800);
+    const d = (await dis(page)).filter((x) => x.t >= t0);
+    expect(d.find((x) => x.cause === 'penalty_against')?.play).toBe(true);
+    expect(d.find((x) => x.cause === 'red_home')?.reason).toBe('cooldown');
+    const plays = d.filter((x) => x.play);
+    for (let i = 1; i < plays.length; i++) expect(plays[i]!.t - plays[i - 1]!.t).toBeGreaterThanOrEqual(6);
+    expect(plays.length).toBe(1); // genau eine Pfeifreaktion
+  });
+
+  test('0:0 – normales Spiel mit Ballverlusten ⇒ keine Pfiffe', async ({ page }) => {
+    await start(page);
+    await force(page, { minute: 20, homeScore: 0, awayScore: 0 });
+    await page.waitForTimeout(25_000);
+    const d = await dis(page);
+    // Fehler/Ballverluste/Gefahr bei 0:0 lösen keine Pfiffe aus (nur Schiedsrichter-/Foulszenen dürfen)
+    expect(d.filter((x) => x.play && ['ball_loss', 'deficit', 'conceded', 'missed_chance', 'halftime'].includes(x.cause))).toEqual([]);
+    expect(d.filter((x) => x.cause === 'ball_loss')).toEqual([]);
+  });
+
+  test('0:3 in der 75. Minute ⇒ Unmut mit Pfiffen/Pfeifkonzert, aber begrenzt; Gästeblock singt weiter', async ({ page }) => {
+    await start(page);
+    await force(page, { minute: 75, homeScore: 0, awayScore: 3 });
+    await page.waitForTimeout(60_000);
+    const s = await snd(page);
+    const d = s.disapproval as Array<{ cause: string; play: boolean; t: number }>;
+    const plays = d.filter((x) => x.play);
+    console.log({ plays: plays.map((x) => x.cause), D: s.D });
+    expect(plays.length).toBeGreaterThanOrEqual(1);
+    expect(plays.length).toBeLessThanOrEqual(5);
+    for (let i = 1; i < plays.length; i++) expect(plays[i]!.t - plays[i - 1]!.t).toBeGreaterThanOrEqual(6);
+    expect(s.D).toBeGreaterThan(0.5);
+    const chants = (s.played as any[]).filter((p) => p.kind === 'chant');
+    expect(chants.filter((c) => c.side === 'home' && c.minute >= 75)).toEqual([]); // keine Heimgesänge bei 0:3 spät
+    expect(chants.some((c) => c.side === 'away')).toBe(true);
+    // Gästefans nutzen keine Pfiff-Aufnahmen der Heimkurve
+    expect(homeWhistles(await mix(page)).every((h: any) => h.side === 'home')).toBe(true);
   });
 });

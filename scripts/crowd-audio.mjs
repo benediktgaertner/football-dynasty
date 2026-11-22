@@ -45,6 +45,9 @@ const CATS = {
   // Major-Update: freier Applaus und Buhrufe
   applause: [1.5, 6, -20, 0.6, 2],
   boo: [1.5, 6, -20, 0.6, 2],
+  // Pfeifkonzerte der Heimfans (erzeugt mit scripts/whistle-cuts.py – nach einem Neuaufbau hier erneut ausführen)
+  pfiff: [2, 6, -21, 0.7, 2],
+  pfeifkonzert: [6, 20, -21, 1.4, 2],
 };
 const AUDIO = new Set(['.wav', '.flac', '.mp3', '.ogg', '.m4a', '.aif', '.aiff']);
 

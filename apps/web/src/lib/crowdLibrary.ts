@@ -7,7 +7,8 @@
  * Bewusst KEINE Fangesänge in der Bibliothek: Gesänge kommen ausschließlich aus den MP3-Uploads der Vereine.
  */
 export type CrowdCategory =
-  | 'ambience' | 'clap' | 'attack' | 'chance' | 'whistle' | 'concede' | 'goal' | 'aah' | 'ooh' | 'uuh' | 'applause' | 'boo';
+  | 'ambience' | 'clap' | 'attack' | 'chance' | 'whistle' | 'concede' | 'goal' | 'aah' | 'ooh' | 'uuh' | 'applause' | 'boo'
+  | 'pfiff' | 'pfeifkonzert';
 
 export interface CrowdFile {
   id: string;
@@ -42,6 +43,9 @@ export const CROWD_CATEGORIES: Array<{ key: CrowdCategory; label: string; min: n
   { key: 'uuh', label: 'Tiefes „Uh“ / Raunen', min: 2, seconds: [0.6, 2], hint: 'tiefes Raunen, Erschrecken' },
   { key: 'applause', label: 'Applaus', min: 2, seconds: [1.5, 6], hint: 'freier Beifall nach guter Aktion (nicht rhythmisch)' },
   { key: 'boo', label: 'Buhrufe', min: 2, seconds: [1.5, 6], hint: '„Buuuh“ gegen die eigene Mannschaft bzw. den Gegner (keine Pfiffe)' },
+  // Unmut der Heimfans (homeDisapproval.ts) – ausschließlich diese Aufnahmen
+  { key: 'pfiff', label: 'Pfiffe der Heimfans (kurz)', min: 2, seconds: [2, 6], hint: 'kurzer Pfiff/Buhruf nach Foul, Karte, Fehler' },
+  { key: 'pfeifkonzert', label: 'Pfeifkonzert der Heimfans (lang)', min: 2, seconds: [6, 20], hint: 'anhaltendes Pfeifkonzert bei großem Unmut' },
 ];
 
 /** Crowd-Reaktionen der Matrix V2 → Kategorien (bei fehlender Datei nächstverwandte echte Aufnahme) */

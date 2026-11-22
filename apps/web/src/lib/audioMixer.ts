@@ -49,7 +49,7 @@ type Side = 'home' | 'away';
 
 /** Lautstärke je Kategorie (nach Lautheitsangleich) */
 const CAT_VOL: Record<CrowdCategory, number> = {
-  ambience: 0.75, clap: 0.7, attack: 0.75, chance: 0.85, whistle: 0.6, concede: 0.55, goal: 1, aah: 0.8, ooh: 0.85, uuh: 0.8, applause: 0.75, boo: 0.7,
+  ambience: 0.75, clap: 0.7, attack: 0.75, chance: 0.85, whistle: 0.6, concede: 0.55, goal: 1, aah: 0.8, ooh: 0.85, uuh: 0.8, applause: 0.75, boo: 0.7, pfiff: 0.62, pfeifkonzert: 0.6,
 };
 
 export interface PlayOpts {
@@ -106,7 +106,7 @@ export class StadiumMixer {
   /** laufende Dateien (Diagnose: welche Aufnahme läuft auf welcher Spur) */
   private playing = new Set<{ url: string; channel: Channel; id?: string; category?: string; side?: Side }>();
   /** Verlauf gespielter Aufnahmen (Diagnose/Tests: keine identischen Wiederholungen) */
-  history: Array<{ id: string; channel: Channel; category?: string; t: number }> = [];
+  history: Array<{ id: string; channel: Channel; category?: string; side?: Side; t: number }> = [];
   /** Anzahl ausgelöster Torjubel (Diagnose/Tests) */
   roars = 0;
   /** zählt Starts; verspätete Abschaltungen eines alten Spiels betreffen kein neues */
@@ -368,8 +368,8 @@ export class StadiumMixer {
     return this.play(this.urlOf(f), {
       channel: 'events', side, id: f.id, category: cat, at: o.at,
       volume: (o.volume ?? 1) * CAT_VOL[cat] * (f.gain ?? 1) * (away ? Math.min(PARAMS.awayCapPercent / 100, 0.75 * this.awayScale) : 1) * Math.min(1.3, this.base * 1.6),
-      maxSec: o.maxSec, celebrate: o.celebrate, fadeIn: cat === 'goal' || cat === 'chance' || cat === 'ooh' || cat === 'aah' || cat === 'uuh' ? 0.04 : 0.2,
-      fadeOut: Math.min(0.8, (o.maxSec ?? 3) * 0.35),
+      maxSec: o.maxSec, celebrate: o.celebrate, fadeIn: cat === 'goal' || cat === 'chance' || cat === 'ooh' || cat === 'aah' || cat === 'uuh' ? 0.04 : cat === 'pfeifkonzert' ? 0.7 : 0.2,
+      fadeOut: cat === 'pfeifkonzert' ? 1.6 : Math.min(0.8, (o.maxSec ?? 3) * 0.35),
       rate: 0.97 + Math.random() * 0.06,
     });
   }
@@ -515,7 +515,7 @@ export class StadiumMixer {
   private track(src: AudioBufferSourceNode, entry: { url: string; channel: Channel; id?: string; category?: string; side?: Side }, at: number) {
     this.sources.add(src);
     this.playing.add(entry);
-    if (entry.id) this.history.push({ id: entry.id, channel: entry.channel, category: entry.category, t: at });
+    if (entry.id) this.history.push({ id: entry.id, channel: entry.channel, category: entry.category, side: entry.side, t: at });
     if (this.history.length > 600) this.history.splice(0, 300);
     src.onended = () => { this.sources.delete(src); this.playing.delete(entry); };
     return entry;

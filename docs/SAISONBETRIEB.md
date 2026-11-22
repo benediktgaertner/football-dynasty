@@ -367,3 +367,17 @@ Grundlage ist `docs/Football_Dynasty_Fanstimmung_Audio_Matrix_V2.xlsx`. Sie wird
   (gleich auf allen Geräten und nach Reconnect). KI gegen KI: Gästeblock ohne die Gesänge des Heimblocks.
 - Vereine mit eigenen Uploads: unverändert (eigene Gesänge, bisherige Teilmenge). Häufigkeit, Pausen, Übergänge, Lautstärke: unverändert.
 - Neue Datei hinzufügen: normalisieren, ins Verzeichnis legen, Eintrag im Manifest (id `ai_…`, mood `support` oder `taunt`).
+
+## Pfeifkonzerte der Heimfans (November 2026)
+- Aufnahmen: `apps/web/public/audio/crowd/pfiff/` (10 kurze, 3–4 s) und `pfeifkonzert/` (5 lange, 7–16 s), erzeugt mit
+  `python3 scripts/whistle-cuts.py <Ordner mit Pfeiffen_alle_*.mp3> apps/web/public/audio/crowd` (−21 LUFS wie die übrigen Pfiffe).
+  Nach einem Neuaufbau mit `crowd-audio.mjs` dieses Skript erneut ausführen. Quelle: Sounddogs.com, Nutzung vom Inhaber bestätigt.
+- Logik: `apps/web/src/lib/homeDisapproval.ts` (reine Logik, Tests in `homeDisapproval.test.ts`), angebunden in `fanAudio.ts`.
+  - Schiedsrichter/Gegner (unabhängig vom Spielstand): hartes Foul des Gastes (Karte/Verletzung/Elfmeter in derselben Szene) 85 %,
+    Foulserie (≥ 3 Gästefouls in 5 min) 50 %, einzelnes Foul 6 %, Gelb gegen Heim 55 %, Rot gegen Heim 92 %, Elfmeter gegen Heim 90 %, Abseits gegen Heim 10 %.
+  - Schwache Heimleistung (abhängig von Spielstand, Minute, aufgestauter Unzufriedenheit D 0…1): Gefahr in Serie, Gegentor nach Ballverlust
+    in der eigenen Hälfte, Gegentor zum 0:2/0:3…, Ballverluste nur bei Rückstand und D > 0,45, anhaltender Rückstand (Prüfung alle 20 s), lange schwache Phase.
+  - Fouls des Heimteams lösen bei den Heimfans nie Pfiffe aus. Gästefans: unverändert.
+  - Cooldowns: 14 s zwischen Pfeifreaktionen (schwere Entscheidungen 6 s), 45 s je Ursache, 50 s zwischen langen Konzerten, höchstens 5 je 10 Minuten.
+  - Während eines Pfiffs werden Heimgesänge auf 50 % (Konzert 25 %) geduckt, Gästegesänge kaum; neue Heimgesänge erst danach.
+- Tests im Browser: Harness-Parameter `dis=always` (jede erlaubte Reaktion wird gespielt) und `events=off` (nur eingespeiste Testereignisse).

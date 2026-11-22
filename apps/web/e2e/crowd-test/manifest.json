@@ -241,6 +241,46 @@
       "credit": "Testsignal (generiert)",
       "license": "TEST – nur automatische Tests",
       "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "pfiff_test_pfiff_1",
+      "category": "pfiff",
+      "file": "pfiff/pfiff_test_pfiff_1.mp3",
+      "duration": 3.03,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "pfeifkonzert_test_1",
+      "category": "pfeifkonzert",
+      "file": "pfeifkonzert/pfeifkonzert_test_1.mp3",
+      "duration": 9.95,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "pfiff_test_pfiff_2",
+      "category": "pfiff",
+      "file": "pfiff/pfiff_test_pfiff_2.mp3",
+      "duration": 3.03,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "pfeifkonzert_test_2",
+      "category": "pfeifkonzert",
+      "file": "pfeifkonzert/pfeifkonzert_test_2.mp3",
+      "duration": 9.95,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
     }
   ]
 }

@@ -26,6 +26,8 @@ function App() {
   const [voted, setVoted] = useState(false);
   useEffect(() => {
     const w = window as unknown as Record<string, unknown>;
+    if (q.get('dis') === 'always') sound.sound.disapproval.setRandom(() => 0);
+    if (q.get('events') === 'off') sound.sound.ignoreMatchEvents = true;
     w.__fd = {
       state: () => ({ status: client.state.status, walkoutEndsAt: client.state.walkoutEndsAt, walkoutStartedAt: client.state.walkoutStartedAt,
         skip: client.state.walkoutSkip, events: (client.state.events as Array<{ type: string; side: string | null; tick: number }>).map((e) => ({ type: e.type, side: e.side, tick: e.tick })) }),
@@ -33,7 +35,10 @@ function App() {
       sound: () => ({ situation: sound.sound.situation, home: sound.sound.envelope.home, away: sound.sound.envelope.away, busy: sound.sound.envelope.busy,
         songs: { home: sound.sound.songs.home.map((x) => x.id), away: sound.sound.songs.away.map((x) => x.id) },
         played: sound.sound.played.slice(), mood: sound.sound.mood ? { ...sound.sound.mood, row: sound.sound.mood.row.id } : null,
-        decisions: sound.sound.scheduler.log.slice() }),
+        decisions: sound.sound.scheduler.log.slice(), disapproval: sound.sound.disapproval.log.slice(), D: sound.sound.disapproval.D }),
+      /** Testereignis direkt an die Stadionakustik (z. B. hartes Foul, Elfmeter) – ohne Einfluss auf das Spiel */
+      soundTime: () => sound.sound.time,
+      inject: (e: { tick: number; type: string; side: 'home' | 'away' | null; xg?: number }, ctx: { homeScore: number; awayScore: number; minute: number }) => sound.sound.event(e, { ...ctx, ballOutsideNet: false }, 'test'),
       force: (f: { minute?: number; homeScore?: number; awayScore?: number } | null) => { sound.sound.forceState = f; },
       pitch: () => (window as unknown as { __fdPitch?: unknown }).__fdPitch ?? null,
       leave: () => { root.unmount(); },
