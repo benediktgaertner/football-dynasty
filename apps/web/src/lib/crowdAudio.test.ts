@@ -231,3 +231,68 @@ describe('Auswahl ohne Wiederholung', () => {
     expect(CROWD_CATEGORIES.map((c) => c.key)).toEqual(['ambience', 'clap', 'attack', 'chance', 'whistle', 'concede', 'goal']);
   });
 });
+
+describe.skipIf(!wa)('Übergänge der Fangesänge (Offline-Rendering)', () => {
+  type M = InstanceType<typeof import('./audioMixer').StadiumMixer>;
+  async function setup(sec: number, withAmb = false) {
+    const { StadiumMixer } = await import('./audioMixer');
+    const ctx = new wa!.OfflineAudioContext(2, SR * sec, SR);
+    const m: M = new StadiumMixer();
+    m.attach(ctx as unknown as BaseAudioContext, { attendance: 30000, capacity: 35000, importance: 0.5 });
+    const files: CrowdFile[] = withAmb ? [lib('ambience', 'a1', 30), lib('ambience', 'a2', 30)] : [];
+    useLibrary(m, ctx, files);
+    // Gesang (Prüfsignal, 6 s gleichmäßig) wie eine KI-MP3 aus dem Pool
+    const b = ctx.createBuffer(2, SR * 6, SR) as unknown as AudioBuffer;
+    for (let ch = 0; ch < 2; ch++) { const d = b.getChannelData(ch); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * 0.3; }
+    m.preload('/chant.mp3', b);
+    m.setCrowd(0.5, 0.2, 0);
+    return { ctx, m };
+  }
+  const both = (b: AudioBuffer, t0: number, t1: number) => (rmsDb(b, 0, t0, t1) + rmsDb(b, 1, t0, t1)) / 2;
+
+  it('Gesang blendet 0,7–1,2 s ein und am natürlichen Dateiende 1,5 s aus (kein harter Schnitt)', async () => {
+    const { ctx, m } = await setup(7);
+    m.setVolume('ambience', 0);
+    await m.play('/chant.mp3', { channel: 'home', at: 0, fadeIn: 0.9, endFade: 1.5, category: 'chant' });
+    const b = await ctx.startRendering() as unknown as AudioBuffer;
+    const mid = both(b, 2, 3);
+    expect(mid - both(b, 0, 0.1)).toBeGreaterThan(15); // Anfang leise
+    expect(Math.abs(both(b, 1.0, 1.4) - mid)).toBeLessThan(2); // nach ≈ 1 s voll da
+    expect(Math.abs(both(b, 4.0, 4.4) - mid)).toBeLessThan(1.5); // bis kurz vor Schluss unverändert
+    expect(mid - both(b, 5.8, 5.95)).toBeGreaterThan(10); // Ausblendung zum Dateiende
+    // keine Sprünge: Pegel je 50 ms ändert sich höchstens um 4 dB
+    for (let t = 0.2; t < 5.6; t += 0.05) expect(Math.abs(both(b, t, t + 0.05) - both(b, t + 0.05, t + 0.1))).toBeLessThan(4);
+  }, 60_000);
+
+  it('Stadionrauschen wird während eines Gesangs leicht abgesenkt (≈ −1,7 dB) und kehrt sanft zurück', async () => {
+    const render = async (on: boolean) => {
+      const { ctx, m } = await setup(10, true);
+      for (let t = 0; t < 10; t += 0.1) m.setCrowd(0.5, 0.2, t);
+      if (on) m.chanting(true);
+      const b = await ctx.startRendering() as unknown as AudioBuffer;
+      return both(b, 4, 6);
+    };
+    const diff = (await render(false)) - (await render(true));
+    expect(diff).toBeGreaterThan(0.8);
+    expect(diff).toBeLessThan(3);
+  }, 120_000);
+
+  it('Großchance duckt den Gesang rasch (0,2 s) und blendet weich zurück; Tor unterbricht in 0,25 s', async () => {
+    const { ctx, m } = await setup(6);
+    m.setVolume('ambience', 0);
+    await m.play('/chant.mp3', { channel: 'home', at: 0, fadeIn: 0.05, category: 'chant' });
+    m.duckChants('home', 0.3, { attack: 0.2, hold: 1.0, release: 1.2 });
+    const b = await ctx.startRendering() as unknown as AudioBuffer;
+    const full = both(b, 3.5, 4.5);
+    expect(full - both(b, 0.4, 1.1)).toBeGreaterThan(8); // geduckt
+    expect(Math.abs(both(b, 3.5, 4.0) - both(b, 4.5, 5.0))).toBeLessThan(1); // wieder voll
+    for (let t = 0.1; t < 3; t += 0.05) expect(Math.abs(both(b, t, t + 0.05) - both(b, t + 0.05, t + 0.1))).toBeLessThan(4);
+
+    const s2 = await setup(3);
+    s2.m.setVolume('ambience', 0);
+    const tr = await s2.m.play('/chant.mp3', { channel: 'home', at: 0, fadeIn: 0.05, category: 'chant' });
+    tr!.stop(0.25);
+    const b2 = await s2.ctx.startRendering() as unknown as AudioBuffer;
+    expect(both(b2, 0.6, 1.0)).toBeLessThan(both(b2, 0.03, 0.08) - 30);
+  }, 60_000);
+});

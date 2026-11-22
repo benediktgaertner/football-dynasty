@@ -21,7 +21,7 @@ function App() {
   const client = useMemo(() => new MatchClient(server, fixture, { token: async () => token }), []);
   useEffect(() => { void client.connect(); return () => client.close(); }, [client]);
   const state = useSyncExternalStore((f) => client.subscribe(f), () => client.state) as MatchState;
-  const sound = useMatchAudio(state, client, fixture, (p) => `/e2e/${p}`, q.get('crowd') ?? '/e2e/crowd-test/manifest.json');
+  const sound = useMatchAudio(state, client, fixture, (p) => `/e2e/${p}`, q.get('crowd') ?? '/e2e/crowd-test/manifest.json', Number(q.get('ts') ?? 1));
   const [voted, setVoted] = useState(false);
   useEffect(() => {
     const w = window as unknown as Record<string, unknown>;
@@ -29,7 +29,11 @@ function App() {
       state: () => ({ status: client.state.status, walkoutEndsAt: client.state.walkoutEndsAt, walkoutStartedAt: client.state.walkoutStartedAt,
         skip: client.state.walkoutSkip, events: (client.state.events as Array<{ type: string; side: string | null; tick: number }>).map((e) => ({ type: e.type, side: e.side, tick: e.tick })) }),
       mixer: () => mixer.debug(),
-      sound: () => ({ situation: sound.sound.situation, home: sound.sound.envelope.home, away: sound.sound.envelope.away, busy: sound.sound.envelope.busy }),
+      sound: () => ({ situation: sound.sound.situation, home: sound.sound.envelope.home, away: sound.sound.envelope.away, busy: sound.sound.envelope.busy,
+        songs: { home: sound.sound.songs.home.map((x) => x.id), away: sound.sound.songs.away.map((x) => x.id) },
+        played: sound.sound.played.slice(), mood: sound.sound.mood ? { ...sound.sound.mood, row: sound.sound.mood.row.id } : null,
+        decisions: sound.sound.scheduler.log.slice() }),
+      force: (f: { minute?: number; homeScore?: number; awayScore?: number } | null) => { sound.sound.forceState = f; },
       pitch: () => (window as unknown as { __fdPitch?: unknown }).__fdPitch ?? null,
       leave: () => { root.unmount(); },
     };

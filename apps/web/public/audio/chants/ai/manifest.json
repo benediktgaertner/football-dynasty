@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "credit": "Benedikt Gärtner (erstellt mit Suno), bereitgestellt für Football Dynasty",
+  "files": [
+    { "id": "ai_die_ganze_kurve", "title": "Die ganze Kurve", "file": "die_ganze_kurve.mp3", "duration": 17.4, "mood": "support" },
+    { "id": "ai_kurve_ist_hellwach", "title": "Uns're Kurve ist hellwach", "file": "kurve_ist_hellwach.mp3", "duration": 19.41, "mood": "support" },
+    { "id": "ai_ooooh_la_la_uuuuh", "title": "Ooooh La-La Uuuuh", "file": "ooooh_la_la_uuuuh.mp3", "duration": 16.95, "mood": "support" },
+    { "id": "ai_ooooh_uuuuh_hey", "title": "Ooooh Uuuuh Hey", "file": "ooooh_uuuuh_hey.mp3", "duration": 19.02, "mood": "support" },
+    { "id": "ai_euer_block_bleibt_stumm", "title": "Euer Block bleibt stumm", "file": "euer_block_bleibt_stumm.mp3", "duration": 14.76, "mood": "taunt" }
+  ]
+}

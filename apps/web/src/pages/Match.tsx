@@ -407,8 +407,8 @@ export function WalkoutOverlay({ state, voted, onSkip, sound }: { state: MatchSt
  * Einlauf → Hymne des Heimvereins, danach Signatur-Fangesang; im Spiel Kulisse, Reaktionen und
  * zufällige Fangesänge über den zentralen Mixer. Verlassen der Seite oder Abpfiff ⇒ sanft aus.
  */
-export function useMatchAudio(state: MatchState | null, client: MatchClient | null, fixtureId: string, urlFor: (path: string) => string = (p) => fanApi.publicUrl(p), crowdManifest?: string) {
-  const sound = useMemo(() => new MatchSound(urlFor, crowdManifest), [fixtureId]); // eslint-disable-line react-hooks/exhaustive-deps
+export function useMatchAudio(state: MatchState | null, client: MatchClient | null, fixtureId: string, urlFor: (path: string) => string = (p) => fanApi.publicUrl(p), crowdManifest?: string, soundTimeScale?: number) {
+  const sound = useMemo(() => new MatchSound(urlFor, crowdManifest, { seed: fixtureId, timeScale: soundTimeScale }), [fixtureId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [on, setOn] = useState(false);
   const [needsUnlock, setNeedsUnlock] = useState(false);
   const [line, setLine] = useState<string | null>(null);

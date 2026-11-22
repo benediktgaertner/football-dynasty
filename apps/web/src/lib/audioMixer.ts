@@ -62,7 +62,9 @@ export interface PlayOpts {
   /** Ereignisspur: Seite (Heim links/präsent, Gäste rechts/entfernt) */
   side?: Side;
   id?: string;
-  category?: CrowdCategory | 'upload';
+  category?: CrowdCategory | 'upload' | 'chant';
+  /** am natürlichen Dateiende ausblenden (Sekunden) – R09 */
+  endFade?: number;
 }
 
 export class StadiumMixer {
@@ -78,6 +80,10 @@ export class StadiumMixer {
   private input: Partial<Record<'ambience' | 'home' | 'away' | 'eventsHome' | 'eventsAway', AudioNode>> = {};
   /** Intensitätsgesteuerte Pegel je Spur */
   private lvl: Partial<Record<'ambience' | 'home' | 'away', GainNode>> = {};
+  /** Ducking der Fangesänge je Seite (Ereignisse haben Vorrang) und leichte Absenkung des Rauschens beim Singen */
+  private duckSide: Partial<Record<Side, GainNode>> = {};
+  private ambDuck: GainNode | null = null;
+  private chantingOn = false;
   private noise: AudioBuffer | null = null;
   private bedMaster: GainNode | null = null;
   private bedHome: { g: GainNode; f: BiquadFilterNode } | null = null;
@@ -151,19 +157,23 @@ export class StadiumMixer {
 
     // Stadionrauschen
     this.lvl.ambience = ctx.createGain(); this.lvl.ambience.gain.value = 0;
-    this.lvl.ambience.connect(this.bus.ambience!);
+    this.ambDuck = ctx.createGain(); this.ambDuck.gain.value = 1;
+    this.lvl.ambience.connect(this.ambDuck).connect(this.bus.ambience!);
+    this.chantingOn = false;
     this.input.ambience = this.lvl.ambience;
     // Heimfans: präsent, links/mittig
     this.lvl.home = ctx.createGain(); this.lvl.home.gain.value = 0.6;
     const hp = ctx.createStereoPanner(); hp.pan.value = -0.25;
-    this.lvl.home.connect(hp).connect(this.bus.home!);
+    this.duckSide.home = ctx.createGain();
+    this.lvl.home.connect(this.duckSide.home).connect(hp).connect(this.bus.home!);
     send(this.lvl.home, 0.12);
     this.input.home = this.lvl.home;
     // Gästefans: rechts, entfernt (Höhen gedämpft, mehr Hall)
     this.lvl.away = ctx.createGain(); this.lvl.away.gain.value = 0.3;
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3600; lp.Q.value = 0.5;
     const ap = ctx.createStereoPanner(); ap.pan.value = 0.7;
-    this.lvl.away.connect(lp).connect(ap).connect(this.bus.away!);
+    this.duckSide.away = ctx.createGain();
+    this.lvl.away.connect(this.duckSide.away).connect(lp).connect(ap).connect(this.bus.away!);
     send(lp, 0.35);
     this.input.away = this.lvl.away;
     // Ereignisse je Seite
@@ -289,6 +299,35 @@ export class StadiumMixer {
     }
   }
 
+  /**
+   * Laufenden Gesang einer Seite rasch ducken (R10: 0,15–0,35 s), kurz halten, dann weich zurück.
+   * depth 0…1 (Restpegel); für Tore wird der Gesang stattdessen gestoppt.
+   */
+  duckChants(side: Side | 'both', depth: number, o: { attack?: number; hold?: number; release?: number } = {}) {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const a = o.attack ?? 0.25, h = o.hold ?? 1.5, r = o.release ?? 1.2;
+    for (const sd of side === 'both' ? (['home', 'away'] as const) : [side]) {
+      const g = this.duckSide[sd]?.gain;
+      if (!g) continue;
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(g.value, now);
+      g.linearRampToValueAtTime(Math.max(0.05, Math.min(1, depth)), now + a);
+      g.setValueAtTime(Math.max(0.05, Math.min(1, depth)), now + a + h);
+      g.linearRampToValueAtTime(1, now + a + h + r);
+    }
+  }
+
+  /** R08/R09: Während Fangesängen das Stadionrauschen leicht absenken (≈ −1,7 dB), danach sanft zurück */
+  chanting(on: boolean) {
+    if (!this.ctx || !this.ambDuck || on === this.chantingOn) return;
+    this.chantingOn = on;
+    const g = this.ambDuck.gain, now = this.ctx.currentTime;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(on ? 0.82 : 1, now + (on ? 1 : 1.8));
+  }
+
   /** Lautstärkefaktor der Gästefans (Gästeblock) – für Gesänge */
   get awayLevel(): number { return this.awayScale; }
 
@@ -358,6 +397,7 @@ export class StadiumMixer {
       chants: [...by('home'), ...by('away')],
       tracks: { ambience: ids('ambience'), home: ids('home'), away: ids('away'), events: ids('events') },
       ambienceSample: this.ambSample, missing: this.missing(),
+      duck: { home: this.duckSide.home?.gain.value ?? 1, away: this.duckSide.away?.gain.value ?? 1, ambience: this.ambDuck?.gain.value ?? 1 },
       history: this.history.slice(-60),
       library: Object.fromEntries(CROWD_CATEGORIES.map((c) => [c.key, this.lib.byCategory.get(c.key)?.length ?? 0])),
     };
@@ -488,7 +528,9 @@ export class StadiumMixer {
     const lvl = Math.max(0.001, Math.min(2.5, data.norm * (o.volume ?? 0.85)));
     const at = o.at ?? ctx.currentTime + 0.02;
     const fi = Math.max(0.02, o.fadeIn ?? 0.8);
-    g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(lvl, at + fi);
+    // längere Blenden linear (gleichmäßig hörbar), kurze Einsätze exponentiell (knackfrei, direkt)
+    if (fi >= 0.3) { g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(lvl, at + fi); }
+    else { g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(lvl, at + fi); }
     let dest = this.destOf(o);
     if (o.pan) { const p = ctx.createStereoPanner(); p.pan.value = o.pan; p.connect(dest); dest = p; }
     src.connect(g).connect(dest);
@@ -517,12 +559,13 @@ export class StadiumMixer {
     if (o.celebrate) this.celebration.push(handle);
     const rest = (data.buffer.duration - offset) / rate;
     const len = Math.min(rest, o.maxSec ?? rest);
-    const fo = o.fadeOut ?? 1.5;
-    if (len < rest) {
+    const fo = len < rest ? o.fadeOut ?? 1.5 : Math.min(o.endFade ?? 0, len / 3);
+    if (len < rest || fo > 0) {
       // Ende geplant ausblenden (kein harter Schnitt)
       const endAt = at + len;
       g.gain.setValueAtTime(lvl, Math.max(at + fi, endAt - fo));
-      g.gain.exponentialRampToValueAtTime(0.0001, endAt);
+      if (fo >= 0.5) g.gain.linearRampToValueAtTime(0, endAt);
+      else g.gain.exponentialRampToValueAtTime(0.0001, endAt);
       try { src.stop(endAt + 0.05); } catch { /* */ }
     }
     return { stop, ended, url };
@@ -549,6 +592,7 @@ export class StadiumMixer {
       if (!this.running && !this.offline && 'suspend' in ctx) void (ctx as AudioContext).suspend().catch(() => undefined);
     }, fade * 1000 + 100);
     this.out = null; this.duck = null; this.bus = {}; this.input = {}; this.lvl = {}; this.bedMaster = null;
+    this.duckSide = {}; this.ambDuck = null; this.chantingOn = false;
     this.ambSample = false; this.ambId = null; this.ambNext = 0;
   }
 }

@@ -12,3 +12,7 @@ coverage/
 assets/crowd-raw/**/*.wav
 assets/crowd-raw/**/*.flac
 assets/crowd-raw/**/*.aif*
+
+# Claude Code: lokaler Zustand des Build-Test-Fix-Loops und persönliche Einstellungen
+.claude/state/
+.claude/settings.local.json
