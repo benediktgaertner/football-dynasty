@@ -1,21 +1,126 @@
 {
   "version": 2,
-  "credit": "Benedikt Gärtner (erstellt mit Suno), bereitgestellt für Football Dynasty",
+  "credit": "Benedikt Gärtner (erstellt mit Suno); Stadiongesang 1–3: Sounddogs.com, Nutzungsrecht vom Projektinhaber bestätigt (22.11.2026)",
   "loudness": "alle Dateien ca. -18,5 LUFS (scripts/chant-normalize.py), damit das Lautstärkeverhältnis gleich bleibt",
   "files": [
-    { "id": "ai_die_ganze_kurve", "title": "Die ganze Kurve", "file": "die_ganze_kurve.mp3", "duration": 17.4, "mood": "support" },
-    { "id": "ai_kurve_ist_hellwach", "title": "Uns're Kurve ist hellwach", "file": "kurve_ist_hellwach.mp3", "duration": 19.41, "mood": "support" },
-    { "id": "ai_ooooh_la_la_uuuuh", "title": "Ooooh La-La Uuuuh", "file": "ooooh_la_la_uuuuh.mp3", "duration": 16.95, "mood": "support" },
-    { "id": "ai_ooooh_uuuuh_hey", "title": "Ooooh Uuuuh Hey", "file": "ooooh_uuuuh_hey.mp3", "duration": 19.02, "mood": "support" },
-    { "id": "ai_euer_block_bleibt_stumm", "title": "Euer Block bleibt stumm", "file": "euer_block_bleibt_stumm.mp3", "duration": 14.76, "mood": "taunt" },
-    { "id": "ai_ooooh_la_la_uuuuh_2", "title": "Ooooh La-La Uuuuh (Version 2)", "file": "ooooh_la_la_uuuuh_2.mp3", "duration": 12.9, "mood": "support" },
-    { "id": "ai_ooooh_la_la_uuuuh_kurz", "title": "Ooooh La-La Uuuuh (kurz)", "file": "ooooh_la_la_uuuuh_kurz.mp3", "duration": 7.97, "mood": "support" },
-    { "id": "ai_ooooh_la_la_uuuuh_3", "title": "Ooooh La-La Uuuuh (Version 3)", "file": "ooooh_la_la_uuuuh_3.mp3", "duration": 11.6, "mood": "support" },
-    { "id": "ai_terrace_melody", "title": "Terrace Melody", "file": "terrace_melody.mp3", "duration": 20.32, "mood": "support" },
-    { "id": "ai_oooooh_ooh_oooooooh", "title": "Oooooh – Ooh – Oooooooh", "file": "oooooh_ooh_oooooooh.mp3", "duration": 19.7, "mood": "support" },
-    { "id": "ai_wir_sind_noch_da", "title": "Wir sind noch da", "file": "wir_sind_noch_da.mp3", "duration": 14.47, "mood": "support" },
-    { "id": "ai_das_wird_nichts", "title": "Das wird nichts", "file": "das_wird_nichts.mp3", "duration": 23.98, "mood": "taunt" },
-    { "id": "ai_das_wird_nichts_2", "title": "Das wird nichts (Version 2)", "file": "das_wird_nichts_2.mp3", "duration": 21.79, "mood": "taunt" },
-    { "id": "ai_das_wird_nichts_3", "title": "Das wird nichts (Version 3)", "file": "das_wird_nichts_3.mp3", "duration": 14.47, "mood": "taunt" }
+    {
+      "id": "ai_die_ganze_kurve",
+      "title": "Die ganze Kurve",
+      "file": "die_ganze_kurve.mp3",
+      "duration": 17.4,
+      "mood": "support"
+    },
+    {
+      "id": "ai_kurve_ist_hellwach",
+      "title": "Uns're Kurve ist hellwach",
+      "file": "kurve_ist_hellwach.mp3",
+      "duration": 19.41,
+      "mood": "support"
+    },
+    {
+      "id": "ai_ooooh_la_la_uuuuh",
+      "title": "Ooooh La-La Uuuuh",
+      "file": "ooooh_la_la_uuuuh.mp3",
+      "duration": 16.95,
+      "mood": "support"
+    },
+    {
+      "id": "ai_ooooh_uuuuh_hey",
+      "title": "Ooooh Uuuuh Hey",
+      "file": "ooooh_uuuuh_hey.mp3",
+      "duration": 19.02,
+      "mood": "support"
+    },
+    {
+      "id": "ai_euer_block_bleibt_stumm",
+      "title": "Euer Block bleibt stumm",
+      "file": "euer_block_bleibt_stumm.mp3",
+      "duration": 14.76,
+      "mood": "taunt"
+    },
+    {
+      "id": "ai_ooooh_la_la_uuuuh_2",
+      "title": "Ooooh La-La Uuuuh (Version 2)",
+      "file": "ooooh_la_la_uuuuh_2.mp3",
+      "duration": 12.9,
+      "mood": "support"
+    },
+    {
+      "id": "ai_ooooh_la_la_uuuuh_kurz",
+      "title": "Ooooh La-La Uuuuh (kurz)",
+      "file": "ooooh_la_la_uuuuh_kurz.mp3",
+      "duration": 7.97,
+      "mood": "support"
+    },
+    {
+      "id": "ai_ooooh_la_la_uuuuh_3",
+      "title": "Ooooh La-La Uuuuh (Version 3)",
+      "file": "ooooh_la_la_uuuuh_3.mp3",
+      "duration": 11.6,
+      "mood": "support"
+    },
+    {
+      "id": "ai_terrace_melody",
+      "title": "Terrace Melody",
+      "file": "terrace_melody.mp3",
+      "duration": 20.32,
+      "mood": "support"
+    },
+    {
+      "id": "ai_oooooh_ooh_oooooooh",
+      "title": "Oooooh – Ooh – Oooooooh",
+      "file": "oooooh_ooh_oooooooh.mp3",
+      "duration": 19.7,
+      "mood": "support"
+    },
+    {
+      "id": "ai_wir_sind_noch_da",
+      "title": "Wir sind noch da",
+      "file": "wir_sind_noch_da.mp3",
+      "duration": 14.47,
+      "mood": "support"
+    },
+    {
+      "id": "ai_das_wird_nichts",
+      "title": "Das wird nichts",
+      "file": "das_wird_nichts.mp3",
+      "duration": 23.98,
+      "mood": "taunt"
+    },
+    {
+      "id": "ai_das_wird_nichts_2",
+      "title": "Das wird nichts (Version 2)",
+      "file": "das_wird_nichts_2.mp3",
+      "duration": 21.79,
+      "mood": "taunt"
+    },
+    {
+      "id": "ai_das_wird_nichts_3",
+      "title": "Das wird nichts (Version 3)",
+      "file": "das_wird_nichts_3.mp3",
+      "duration": 14.47,
+      "mood": "taunt"
+    },
+    {
+      "id": "ai_stadion_gesang_1",
+      "title": "Stadiongesang 1",
+      "file": "stadion_gesang_1.mp3",
+      "duration": 9.38,
+      "mood": "support"
+    },
+    {
+      "id": "ai_stadion_gesang_2",
+      "title": "Stadiongesang 2",
+      "file": "stadion_gesang_2.mp3",
+      "duration": 17.88,
+      "mood": "support"
+    },
+    {
+      "id": "ai_stadion_gesang_3",
+      "title": "Stadiongesang 3",
+      "file": "stadion_gesang_3.mp3",
+      "duration": 20.28,
+      "mood": "support"
+    }
   ]
 }

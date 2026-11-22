@@ -248,9 +248,9 @@ describe('KI-Fangesangpool: Auswahl je Partie (aiMatchSubset)', async () => {
   const { readFileSync } = await import('node:fs');
   const pool = (JSON.parse(readFileSync(new URL('../../public/audio/chants/ai/manifest.json', import.meta.url), 'utf8')).files as Array<{ id: string; mood: string; file: string }>);
   it('Pool: 14 Gesänge, alle Dateien vorhanden, keine doppelten IDs/Dateien', () => {
-    expect(pool.length).toBe(14);
-    expect(new Set(pool.map((p) => p.id)).size).toBe(14);
-    expect(new Set(pool.map((p) => p.file)).size).toBe(14);
+    expect(pool.length).toBe(17);
+    expect(new Set(pool.map((p) => p.id)).size).toBe(17);
+    expect(new Set(pool.map((p) => p.file)).size).toBe(17);
     for (const p of pool) expect(readFileSync(new URL(`../../public/audio/chants/ai/${p.file}`, import.meta.url)).length).toBeGreaterThan(50_000);
   });
   it('2–4 verschiedene Gesänge, mindestens 2 ohne Spott, gleiche Partie ⇒ gleiche Auswahl (Reconnect)', () => {
@@ -280,7 +280,7 @@ describe('KI-Fangesangpool: Auswahl je Partie (aiMatchSubset)', async () => {
       for (const id of s) used.set(id, (used.get(id) ?? 0) + 1);
       same += s.filter((x) => prev.includes(x)).length / s.length; prev = s;
     }
-    expect(used.size).toBe(14);
+    expect(used.size).toBe(17);
     for (const n of used.values()) expect(n).toBeGreaterThan(30); // jeder Gesang regelmäßig dabei
     expect(same / 399).toBeLessThan(0.35); // im Schnitt < 35 % Überschneidung mit der vorherigen Partie
   });
