@@ -7,9 +7,9 @@
  *
  * KI-Fans klingen ausschließlich über ECHTE Stadionaufnahmen (crowdLibrary, /audio/crowd/manifest.json):
  * - Stadionrauschen: lange Aufnahmen, abwechselnd mit gleichleistungs-Überblendung (keine Schleifennaht).
- * - Heim-/Gästefans: Gesänge, Klatschen, Sprechchöre (Aufnahmen bzw. hochgeladene MP3 der Vereine).
+ * - Heim-/Gästefans: ausschließlich hochgeladene MP3-Gesänge der jeweiligen Vereine (KI-Vereine ohne Upload: keine Gesänge).
  *   Gästeblock: leiser, rechts, dumpfer und hallender (Entfernung).
- * - Ereignisse: Torjubel, Aufschrei, Pfiffe, Enttäuschung – als Aufnahmen, über die anderen Spuren geschichtet.
+ * - Ereignisse: Torjubel, Aufschrei, Pfiffe, Enttäuschung, Klatschen, Anfeuerung – Aufnahmen, über die anderen Spuren geschichtet.
  * Fehlt eine Kategorie, bleibt sie stumm und wird als fehlend gemeldet (missing()). Es gibt KEINE künstlichen
  * Chöre, Melodien oder Musikschleifen. Nur wenn gar keine Rauschaufnahme vorliegt, läuft ein leises,
  * gefiltertes Ersatzrauschen (als „Ersatz“ gekennzeichnet). Schiedsrichterpfiff, Netz, Aluminium und
@@ -48,7 +48,7 @@ type Side = 'home' | 'away';
 
 /** Lautstärke je Kategorie (nach Lautheitsangleich) */
 const CAT_VOL: Record<CrowdCategory, number> = {
-  ambience: 0.75, clap: 0.7, chant_short: 0.85, chant_sung: 0.8, attack: 0.75, chance: 0.85, whistle: 0.6, concede: 0.55, goal: 1,
+  ambience: 0.75, clap: 0.7, attack: 0.75, chance: 0.85, whistle: 0.6, concede: 0.55, goal: 1,
 };
 
 export interface PlayOpts {

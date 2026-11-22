@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-11-21T17:48:09.768Z",
+  "generated": "2026-11-21T18:13:22.431Z",
   "files": [
     {
       "id": "ambience_test_ambience_1",
@@ -37,46 +37,6 @@
       "category": "clap",
       "file": "clap/clap_test_clap_2.mp3",
       "duration": 8.05,
-      "gain": 1,
-      "credit": "Testsignal (generiert)",
-      "license": "TEST – nur automatische Tests",
-      "source": "scripts/crowd-audio.mjs"
-    },
-    {
-      "id": "chant_short_test_chant_short_1",
-      "category": "chant_short",
-      "file": "chant_short/chant_short_test_chant_short_1.mp3",
-      "duration": 4.05,
-      "gain": 1,
-      "credit": "Testsignal (generiert)",
-      "license": "TEST – nur automatische Tests",
-      "source": "scripts/crowd-audio.mjs"
-    },
-    {
-      "id": "chant_short_test_chant_short_2",
-      "category": "chant_short",
-      "file": "chant_short/chant_short_test_chant_short_2.mp3",
-      "duration": 4.05,
-      "gain": 1,
-      "credit": "Testsignal (generiert)",
-      "license": "TEST – nur automatische Tests",
-      "source": "scripts/crowd-audio.mjs"
-    },
-    {
-      "id": "chant_sung_test_chant_sung_1",
-      "category": "chant_sung",
-      "file": "chant_sung/chant_sung_test_chant_sung_1.mp3",
-      "duration": 20.04,
-      "gain": 1,
-      "credit": "Testsignal (generiert)",
-      "license": "TEST – nur automatische Tests",
-      "source": "scripts/crowd-audio.mjs"
-    },
-    {
-      "id": "chant_sung_test_chant_sung_2",
-      "category": "chant_sung",
-      "file": "chant_sung/chant_sung_test_chant_sung_2.mp3",
-      "duration": 20.04,
       "gain": 1,
       "credit": "Testsignal (generiert)",
       "license": "TEST – nur automatische Tests",

@@ -1,6 +1,6 @@
 # Stadionaufnahmen für die KI-Fans
 
-Die KI-Fans klingen nur über echte, lizenzierte Aufnahmen. Fehlt eine Kategorie, bleibt sie stumm. Im Spiel nennt das Tonmenü (🎚) die fehlenden Kategorien.
+Die KI-Fans klingen nur über echte, lizenzierte Aufnahmen. **Fangesänge gehören nicht in diese Bibliothek:** Gesänge kommen ausschließlich aus den MP3-Uploads der Vereine (Stadioneditor). KI-Vereine ohne Upload singen nicht. Fehlt eine Kategorie, bleibt sie stumm. Im Spiel nennt das Tonmenü (🎚) die fehlenden Kategorien.
 
 ## Benötigte Dateien
 
@@ -10,12 +10,10 @@ Mindestens die genannte Anzahl, besser mehr (mehr Abwechslung). Zielformat der R
 |---|---|---|---|
 | `ambience/` | volles Stadion im laufenden Spiel: Gemurmel, vereinzelte Rufe, entferntes Singen | 3 | 1–4 min |
 | `clap/` | rhythmisches Klatschen der Kurve (gern mit „Hey“-Rufen) | 3 | 6–30 s |
-| `chant_short/` | kurze, laute Sprechchöre (z. B. „Auf geht’s …“, Vereinsrufe), keine Instrumente | 4 | 3–12 s |
-| `chant_sung/` | melodischer Dauergesang der Kurve, nur Fanstimmen (höchstens dezente Trommel) | 3 | 15–60 s |
 | `attack/` | anschwellendes Antreiben bei einem Angriff | 3 | 2–8 s |
 | `chance/` | Aufschrei / „Ooooh“ nach Großchance oder Parade | 3 | 2–5 s |
 | `whistle/` | Pfeifkonzert und Buhrufe gegen den Gegner | 3 | 2–8 s |
-| `concede/` | Stöhnen und Raunen nach Gegentor, dann Stille | 2 | 2–6 s |
+| `concede/` | Stöhnen/Raunen nach Gegentor oder knapp vergebener Chance | 2 | 2–6 s |
 | `goal/` | Torjubel ab dem Moment des Tores | 3 | 4–10 s |
 
 Zu jeder Datei gehört eine Lizenzangabe, gleichnamig als `.json`:
@@ -53,7 +51,7 @@ Die Ordner `apps/web/public/audio/crowd/` und `CREDITS.md` werden committet. CRE
 
 ## Geeignete Quellen (Lizenz vor Verwendung jeweils prüfen)
 
-- **Freesound, Nutzer paulw2k:** Aufnahmen aus Brentford, CC BY 4.0. Beispiele: 196461 „Football-crowd-GOAL“ (goal), 196284 Gesang/Freistoß (chant_sung, ambience), 196462 Gesang nach Foul (chant_sung, whistle), 196463 Jubel/Buhrufe/Pfiffe (whistle, chance).
+- **Freesound, Nutzer paulw2k:** Aufnahmen aus Brentford, CC BY 4.0. Beispiele: 196461 „Football-crowd-GOAL“ (goal), 196284 Gesang/Freistoß (ambience), 196462 Gesang nach Foul (whistle), 196463 Jubel/Buhrufe/Pfiffe (whistle, chance).
 - **Gregor Quendel, „Free Crowd Cheering Sounds“ (itch.io):** CC BY 4.0, enthält rhythmischen Jubel und Ambience (clap, ambience).
 - **Freesound allgemein:** Suche nach „football crowd“, „stadium chant“ oder „ultras“, Filter auf CC0 oder CC BY. Bei Feldaufnahmen aus Bundesliga-Stadien (z. B. 189821/189823) muss die Lizenz einzeln geprüft werden.
 - **Kostenpflichtige Pakete** (einmal kaufen, keine laufenden Kosten): rawambience (itch.io) „Stadium Ambience“, Artlist/Soundbat „Soccer Stadium Ambiance“, Motion Array.

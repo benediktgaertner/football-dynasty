@@ -116,6 +116,6 @@ export class CrowdEnvelope {
 export function chantRate(side: 'home' | 'away', sit: Situation): number {
   const own = side === 'home' ? sit.startsWith('home') : sit.startsWith('away');
   const attack = own && (sit.endsWith('attack') || sit.endsWith('box'));
-  const base = side === 'home' ? 0.22 : 0.07;
+  const base = side === 'home' ? 0.22 : 0.1;
   return base * (attack ? 2.2 : own ? 1.5 : sit === 'finale' ? 1.4 : 0.8);
 }

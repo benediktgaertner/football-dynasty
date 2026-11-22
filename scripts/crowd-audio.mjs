@@ -11,7 +11,7 @@
  *   { "credit": "paulw2k (freesound.org)", "license": "CC BY 4.0", "source": "https://freesound.org/s/196461/" }
  * oder gesammelt in assets/crowd-raw/sources.json: { "goal/brentford_goal.wav": { …wie oben… } }
  *
- * Kategorien: ambience clap chant_short chant_sung attack chance whistle concede goal
+ * Kategorien: ambience clap attack chance whistle concede goal (keine Fangesänge – die kommen nur als Vereins-Upload)
  * Verarbeitung: Trittschall-Hochpass, Stille am Anfang entfernen, Länge begrenzen, Lautheit (EBU R128)
  * je Kategorie angleichen, True-Peak-Begrenzung (−1,5 dBTP), weiche Ein-/Ausblendung, MP3 44,1 kHz Stereo.
  * Ergebnis: <OUT>/<kategorie>/<name>.mp3, <OUT>/manifest.json, <OUT>/CREDITS.md (Namensnennung für CC BY).
@@ -33,8 +33,6 @@ const OUT = resolve(pos[1] ?? join(root, 'apps/web/public/audio/crowd'));
 const CATS = {
   ambience: [30, 240, -23, 3, 3],
   clap: [6, 30, -20, 0.8, 3],
-  chant_short: [3, 12, -19, 0.4, 4],
-  chant_sung: [15, 60, -20, 2, 3],
   attack: [2, 8, -19, 0.5, 3],
   chance: [2, 5, -18, 0.6, 3],
   whistle: [2, 8, -21, 0.5, 3],
@@ -130,7 +128,7 @@ for (const cat of Object.keys(CATS)) {
     const dst = join(OUT, rel);
     const len = Math.min(maxS, inDur);
     // Ereignisse beginnen direkt mit der Reaktion: Stille am Anfang entfernen; lange Aufnahmen behalten ihren Einstieg
-    const trimStart = cat === 'ambience' || cat === 'chant_sung' ? '' : 'silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.05,';
+    const trimStart = cat === 'ambience' ? '' : 'silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.05,';
     const fadeIn = cat === 'goal' || cat === 'chance' ? 0.02 : Math.min(1, fade);
     const chain = (trim) => [
       'highpass=f=55',

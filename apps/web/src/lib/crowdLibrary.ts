@@ -4,9 +4,10 @@
  * Die Dateien werden mit `node scripts/crowd-audio.mjs` aus Rohaufnahmen erzeugt (Lautheit normalisiert,
  * Stille entfernt, Ein-/Ausblendung, MP3) und in manifest.json eingetragen – inklusive Lizenz und Urheber.
  * Fehlt eine Kategorie, wird sie NICHT synthetisch ersetzt, sondern als fehlend gemeldet (crowdStatus).
+ * Bewusst KEINE Fangesänge in der Bibliothek: Gesänge kommen ausschließlich aus den MP3-Uploads der Vereine.
  */
 export type CrowdCategory =
-  | 'ambience' | 'clap' | 'chant_short' | 'chant_sung' | 'attack' | 'chance' | 'whistle' | 'concede' | 'goal';
+  | 'ambience' | 'clap' | 'attack' | 'chance' | 'whistle' | 'concede' | 'goal';
 
 export interface CrowdFile {
   id: string;
@@ -31,12 +32,10 @@ export interface CrowdLibrary {
 export const CROWD_CATEGORIES: Array<{ key: CrowdCategory; label: string; min: number; seconds: [number, number]; hint: string }> = [
   { key: 'ambience', label: 'Allgemeines Stadionrauschen', min: 3, seconds: [30, 240], hint: 'volles Stadion, Gemurmel, vereinzelte Rufe, keine Durchsagen/Musik' },
   { key: 'clap', label: 'Rhythmisches Klatschen', min: 3, seconds: [6, 30], hint: 'gemeinsames Klatschen der Kurve, gern mit Rufen' },
-  { key: 'chant_short', label: 'Kurze, laute Sprechchöre', min: 4, seconds: [3, 12], hint: 'z. B. Vereinsname-Rufe, „Auf geht’s“, ohne Instrumente' },
-  { key: 'chant_sung', label: 'Melodischer Dauergesang (nur Fans)', min: 3, seconds: [15, 60], hint: 'Kurve singt gemeinsam, höchstens dezente Trommel' },
   { key: 'attack', label: 'Anfeuerung bei Angriffen', min: 3, seconds: [2, 8], hint: 'anschwellendes Rufen/Antreiben' },
   { key: 'chance', label: 'Aufschrei bei Großchancen', min: 3, seconds: [2, 5], hint: '„Ooooh“, Aufschrei nach knapp vorbei/Parade' },
   { key: 'whistle', label: 'Pfiffe gegen den Gegner', min: 3, seconds: [2, 8], hint: 'gellendes Pfeifkonzert, Buhrufe' },
-  { key: 'concede', label: 'Enttäuschung bei Gegentoren', min: 2, seconds: [2, 6], hint: 'Stöhnen, kurzes Raunen, dann Stille' },
+  { key: 'concede', label: 'Enttäuschung (Gegentor, vergebene Chance)', min: 2, seconds: [2, 6], hint: 'Stöhnen, kurzes Raunen, dann Stille' },
   { key: 'goal', label: 'Torjubel', min: 3, seconds: [4, 10], hint: 'explosiver Jubel direkt ab dem Tor' },
 ];
 

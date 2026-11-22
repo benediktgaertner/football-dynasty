@@ -279,3 +279,22 @@ Ersetzt die Abschnitte zu `synthChant.ts`, generischen Gesängen und synthetisch
   - Offline-Rendering (`crowdAudio.test.ts`): Überblendung ohne Pegelloch, Heim dominiert, Gäste hörbar und rechts, Auswärtstor im Gästeblock deutlich lauter, kein Übersteuern, keine Ersatzklänge ohne Dateien, Auswahl ohne Wiederholung.
   - Playwright (`match.spec.ts`, „KI-Fankurve“): Heimspiel, ruhige Phasen gegen Angriffe, Auswärtsspiel mit hochgeladenem Gästegesang, Heimtor, Auswärtstor, leere Bibliothek.
   - Die Tests nutzen eindeutig gekennzeichnete **Testsignale** (gefiltertes Rauschen) unter `apps/web/e2e/crowd-test/`. Diese werden nicht ausgeliefert.
+
+## Update (ohne SQL): keine KI-Fangesänge mehr, Gesänge nur als MP3-Upload
+
+- **Entfernt:** Sprechchöre und Kurvengesang aus der Bibliothek (Kategorien `chant_short` und `chant_sung`), die zugehörige Auswahl `chantWeights` und die Gesangsschleife für Vereine ohne Upload. Es gibt keine generierten oder künstlichen Gesänge mehr.
+- **Gesänge:** Es werden ausschließlich hochgeladene MP3 des jeweiligen Vereins abgespielt.
+  - Heimverein auf der Heimspur, Gastverein auf der Gästespur.
+  - Die Auswahl ist zufällig, ohne direkte Wiederholung und mit Pausen.
+  - KI-Vereine ohne Upload singen nicht.
+- **Erhalten:**
+  - dynamisches Stadionrauschen
+  - kurzer Torjubel
+  - Aufschrei bei Großchancen
+  - Raunen bei vergebenen Chancen und Gegentoren (`concede`)
+  - Pfiffe bei Fouls und Karten
+  - Anfeuerung bei Angriffen
+  - Netz, Aluminium und Ball
+- **Rhythmisches Klatschen** ist jetzt eine situative Reaktion statt eines Gesangs: Es setzt bei einer Ecke der eigenen Mannschaft, nach mehr als 10 s eigenem Ballbesitz (Heim) und in der knappen Schlussphase ein. Danach gilt eine Sperrzeit von 25 s, für die Gäste von 50 s.
+- **Gästeblock** mit Upload singt etwas häufiger als bisher (Grundrate 0,10 statt 0,07 je Sekunde).
+- **Tests:** Playwright prüft KI ohne Uploads (keine Gesangsspur), Heimspiel mit Heim-Upload (nur Heimverein), Auswärtsspiel mit Gäste-Upload (nur Gastverein), ruhige Phasen, Tore und eine leere Bibliothek. Alle 18 Tests sind grün.
