@@ -209,5 +209,10 @@ if [ "${FULL_EUROPE:-0}" = "1" ]; then
   MS="$(grep -o 'Time: [0-9.]* ms' <<<"$OUT" | tail -1)"
   echo "  Amateurvereine anlegen (Saisonstart) → $MS, neu: $(run -tAc "select count(*) from public.clubs where world_id = '$WORLD' and amateur") Vereine mit $(run -tAc "select count(*) from public.players p join public.clubs c on c.id = p.club_id where c.world_id = '$WORLD' and c.amateur") Spielern"
 fi
+# Optional (LONGRUN=1, Saisonen via LONGRUN_SEASONS, Standard 10): Langzeittest
+if [ "${LONGRUN:-0}" = "1" ]; then
+  check "Z0_longrun.sql" -v world="$WORLD" -v seasons="${LONGRUN_SEASONS:-10}" -f "$ROOT/supabase/tests/Z0_longrun.sql"
+  run -c "select n, season_year as jahr, players spieler, free_agents fa, round(avg_ovr_l1,2) ovr_l1, round(avg_ovr_all,2) ovr_alle, round(avg_age,2) alter, round(avg_salary) gehalt, neg_balance_clubs neg_konten, min_balance, max_balance, min_squad, ec_winners, slots termine, secs sek from tests.longrun order by n" || true
+fi
 [ "${KEEP_DB:-0}" = "1" ] && echo "WORLD=$WORLD" || rm -rf "$PDIR"
 exit $status

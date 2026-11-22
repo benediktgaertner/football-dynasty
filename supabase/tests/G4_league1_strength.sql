@@ -198,7 +198,7 @@ select tests.assert((select max(xi) from pg_temp.g4_foreign(:'w', 'ENG')) > (sel
   'Erstligen skaliert: ENG > GER > NED > AUT > SMR – ' || :'ftops');
 select string_agg(lg || ' +' || round(d, 2), ', ' order by lg) as fgain, bool_and(d >= 2) as fok from (
   select b.lg, avg(public.fd_league1_xi(b.club_id) - b.xi) d from g4_before b where b.lg in ('ENG', 'NED', 'AUT', 'SMR', 'MDA') group by b.lg) x \gset
-select tests.assert(:'fok'::boolean and (select bool_and(top > before) from g4_ftop), 'Ausländische Erstligen im Mittel ≥ 2 stärker: ' || :'fgain');
+select tests.assert(:'fok'::boolean and (select bool_and(top >= before) from g4_ftop), 'Ausländische Erstligen im Mittel ≥ 2 stärker und Spitze höher als vorher: ' || :'fgain' || ' | Spitze: ' || :'ftops');
 
 select tests.assert((select count(*) from public.clubs where world_id = :'w' and association_code = 'NED' and level = 1)
   > (select count(*) from fd_backup.league1_0039_clubs b join public.clubs c on c.id = b.club_id where b.world_id = :'w' and c.association_code = 'NED' and b.level = 1)

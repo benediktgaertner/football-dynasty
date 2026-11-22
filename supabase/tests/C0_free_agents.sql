@@ -89,10 +89,17 @@ update public.finances set balance = 400000000 where club_id = (select id from p
 delete from public.transfers where season_id = :'season' and kind = 'free_agent' and to_club_id = (select id from public.clubs where world_id = :'world' and manager_user_id = :'host');
 set role authenticated;
 select tests.login(:'host');
-select (public.fa_offer(:'fa2', 600000, 3) -> 'board') as b1 \gset
-select (public.fa_offer(:'fa2', 1900000, 3) -> 'board') as b2 \gset
-select tests.assert((select (x ->> 'barometer')::int from jsonb_array_elements(:'b2'::jsonb) x where (x ->> 'mine')::boolean)
-  > (select (x ->> 'barometer')::int from jsonb_array_elements(:'b1'::jsonb) x where (x ->> 'mine')::boolean), 'besseres Angebot ⇒ höheres Barometer');
+-- Angebote relativ zur Forderung (feste Beträge sättigten bei billigen Free Agents beide bei Barometer 100 ⇒ Flake)
+reset role;
+select greatest(1000, round(annual_salary * 0.4 / 1000) * 1000) as lowo, round(annual_salary * 1.6 / 1000) * 1000 as higho from public.free_agents where player_id = :'fa2' \gset
+set role authenticated;
+select tests.login(:'host');
+select (public.fa_offer(:'fa2', :lowo, 3) -> 'board') as b1 \gset
+select (public.fa_offer(:'fa2', :higho, 3) -> 'board') as b2 \gset
+-- Barometer: nie schlechter; strikt besser, solange es nicht bei 0 (Spieler will zu diesem Verein grundsätzlich nicht) oder 100 (gesättigt) liegt
+select (select (x ->> 'barometer')::int from jsonb_array_elements(:'b1'::jsonb) x where (x ->> 'mine')::boolean) as bar1,
+       (select (x ->> 'barometer')::int from jsonb_array_elements(:'b2'::jsonb) x where (x ->> 'mine')::boolean) as bar2 \gset
+select tests.assert(:bar2 >= :bar1 and (:bar2 > :bar1 or :bar1 in (0, 100)), 'besseres Angebot ⇒ Barometer nie schlechter, steigt (' || :lowo || ' → ' || :bar1 || ', ' || :higho || ' → ' || :bar2 || ')');
 select tests.assert(jsonb_array_length(:'b2'::jsonb) = 2, 'Konkurrenzverein im Ranking sichtbar');
 select tests.assert(position('1500000' in public.fa_negotiation(:'fa2')::text) = 0, 'fremdes Gehaltsangebot nicht enthalten');
 select tests.assert((public.fa_negotiation(:'fa2') -> 'model') is not null and (public.fa_negotiation(:'fa2') ->> 'days_left')::int between 0 and 7, 'Modell für Live-Vorschau und Restzeit');
