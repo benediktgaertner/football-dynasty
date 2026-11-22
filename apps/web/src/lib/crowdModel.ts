@@ -84,7 +84,7 @@ export class CrowdEnvelope {
     const lv = kind === 'away_miss' ? ([0.5, 0.12] as const) : LEVELS[kind];
     const hold = holdSec ?? (kind === 'home_goal' ? 8 : kind === 'away_goal' ? 8 : 2.5);
     // Gegentor: Heimfans verstummen schlagartig; Heimtor: explosiver Anstieg
-    this.override = { until: this.t + hold, home: lv[0], away: lv[1], fallHome: kind === 'away_goal' ? 0.35 : kind === 'home_miss' ? 1.2 : 2 };
+    this.override = { until: this.t + hold, home: lv[0], away: lv[1], fallHome: kind === 'away_goal' ? 0.8 : kind === 'home_miss' ? 1.2 : 2 };
     if (kind === 'home_goal') this.home = Math.max(this.home, 0.92);
     if (kind === 'away_goal') this.away = Math.max(this.away, 0.5);
   }
@@ -104,7 +104,7 @@ export class CrowdEnvelope {
       if (this.t < this.override.until) { th = this.override.home; ta = this.override.away; fallH = this.override.fallHome; }
       else this.override = null;
     }
-    // schneller Anstieg (≈ 0,6 s), langsameres Abklingen (≈ 2,2 s; Verstummen nach Gegentor ≈ 0,35 s)
+    // schneller Anstieg (≈ 0,6 s), langsameres Abklingen (≈ 2,2 s; Verstummen nach Gegentor ≈ 0,8 s)
     const step = (cur: number, tgt: number, up: number, down: number) => cur + (tgt - cur) * (1 - Math.exp(-dt / (tgt > cur ? up : down)));
     this.home = step(this.home, th, 0.6, fallH);
     this.away = step(this.away, ta, 0.5, 2.5);

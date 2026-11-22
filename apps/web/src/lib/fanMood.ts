@@ -46,14 +46,22 @@ export interface AudioParams {
   fadeIn: number; fadeOut: number; goalDuck: number; goalMax: number; reactionCheckMin: number; reactionCheckMax: number; reactionGap: number;
   moodLag: number; homeChantDeficit3After60: number; awayCapPercent: number; peakLimit: number; subsetMin: number; subsetMax: number; noRepeat: number;
 }
-export const PARAMS: AudioParams = AUDIO_PARAMS;
+/**
+ * Audio-Parameter: Excel-Werte (fanMoodData) mit den Anpassungen des Audio-Balancing-Updates.
+ * Einblenden 1,5 s · natürliches Ende 2,0 s ausblenden · Pause zwischen zwei Gesängen 2,5–6 s (statt 1–3 s) ·
+ * Tore/Verletzungen: Gesang ≈ 0,6 s deutlich leiser, dann weich über 2,2 s ausblenden (kein harter Stopp).
+ * Die Gesangshäufigkeit (Matrix-Chancen, Prüffenster) bleibt unverändert.
+ */
+export const PARAMS: AudioParams = { ...AUDIO_PARAMS, fadeIn: 1.5, fadeOut: 2.0, chantPauseMin: 2.5, chantPauseMax: 6.0, goalDuck: 0.6 };
+/** Ausblendzeit eines laufenden Gesangs bei Tor/Verletzung/Rot (Sekunden) – nie ein harter Schnitt */
+export const CHANT_RELEASE = 2.2;
 
 /**
  * Major-Update: Gesangshäufigkeit insgesamt um ≈ 25 % senken (Excel-Situationslogik bleibt, nur skaliert),
  * Heim und Gäste überwiegend abwechselnd: Singt die andere Seite gerade, startet ein Gesang nur selten;
  * hat zuletzt dieselbe Seite gesungen, ist ein Wechsel wahrscheinlicher.
  */
-export const CHANT_TUNING = { scale: 0.95, whileOtherSings: 0.12, sameSideAgain: 0.55, otherSideTurn: 1.8 } as const;
+export const CHANT_TUNING = { scale: 0.95, whileOtherSings: 0.03, sameSideAgain: 0.55, otherSideTurn: 1.8 } as const;
 export const RULES: CrowdRule[] = CROWD_RULES;
 
 export interface MoodEvent { id: string; name: string; fans: string; level: number; duration: number; effect: string; note: string; priority: number }

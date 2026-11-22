@@ -40,7 +40,21 @@ export function loadVolumes(): Record<Channel, number> {
   } catch { return { ...DEFAULT_VOL }; }
 }
 
-export interface Track { stop: (fadeSec?: number) => void; ended: Promise<void>; url: string }
+export interface Track { stop: (fadeSec?: number, reason?: string) => void; ended: Promise<void>; url: string }
+
+/** Protokoll der Audioplanung (Diagnose/Tests): geplante und tatsächliche Start-/Stoppzeiten, Ducking */
+export interface AudioLogEntry {
+  ev: 'start' | 'stop' | 'duck';
+  /** Zeit im Audiokontext (s) */
+  t: number;
+  channel?: Channel; id?: string; category?: string; side?: Side;
+  /** start: geplante Dauer (s), ob die Datei bis zum natürlichen Ende läuft, Einblendzeit */
+  len?: number; natural?: boolean; fadeIn?: number;
+  /** stop: Ausblendzeit (s) und Grund (z. B. goal, injury, finish) */
+  fade?: number; reason?: string;
+  /** duck: Restpegel, Anstieg/Halten/Rückkehr (s) */
+  depth?: number; attack?: number; hold?: number; release?: number;
+}
 
 /** Ziel-Lautheit (RMS) für Aufnahmen und hochgeladene MP3 */
 const TARGET_RMS = 0.12;
@@ -84,6 +98,9 @@ export class StadiumMixer {
   /** Ducking der Fangesänge je Seite (Ereignisse haben Vorrang) und leichte Absenkung des Rauschens beim Singen */
   private duckSide: Partial<Record<Side, GainNode>> = {};
   private ambDuck: GainNode | null = null;
+  /** Modell der Ducking-Hüllkurven (Zeit, Pegel) je Seite – ersetzt das Rücklesen der Parameter */
+  private duckPts: Record<Side, Array<[number, number]>> = { home: [[0, 1]], away: [[0, 1]] };
+  private ambDuckPts: Array<[number, number]> = [[0, 1]];
   private chantingOn = false;
   private noise: AudioBuffer | null = null;
   private bedMaster: GainNode | null = null;
@@ -111,6 +128,9 @@ export class StadiumMixer {
   roars = 0;
   /** zählt Starts; verspätete Abschaltungen eines alten Spiels betreffen kein neues */
   generation = 0;
+  /** Audioprotokoll (Diagnose/Tests; die letzten ≈ 800 Einträge) */
+  readonly log: AudioLogEntry[] = [];
+  private note(e: AudioLogEntry) { this.log.push(e); if (this.log.length > 800) this.log.splice(0, 400); }
 
   get active(): boolean { return this.running && !!this.ctx && (this.offline || this.ctx.state === 'running'); }
 
@@ -161,6 +181,7 @@ export class StadiumMixer {
     this.ambDuck = ctx.createGain(); this.ambDuck.gain.value = 1;
     this.lvl.ambience.connect(this.ambDuck).connect(this.bus.ambience!);
     this.chantingOn = false;
+    this.duckPts = { home: [[0, 1]], away: [[0, 1]] }; this.ambDuckPts = [[0, 1]];
     this.input.ambience = this.lvl.ambience;
     // Heimfans: präsent, links/mittig
     this.lvl.home = ctx.createGain(); this.lvl.home.gain.value = 0.6;
@@ -250,9 +271,10 @@ export class StadiumMixer {
     this.pumpAmbience(now);
     if (Math.abs(home - this.lastCrowd[0]) < 0.004 && Math.abs(away - this.lastCrowd[1]) < 0.004) return;
     this.lastCrowd = [home, away];
-    const ramp = (p: AudioParam, v: number) => { p.linearRampToValueAtTime(v, now + 0.12); };
+    // weiche Pegelanpassung (Zeitkonstante tc): keine hörbaren Sprünge in laufenden Gesängen/der Kulisse; 3·tc ≈ 95 %
+    const ramp = (p: AudioParam, v: number, tc = 0.3) => { p.setTargetAtTime(v, now, tc); };
     const mix = Math.max(home, Math.min(1, away * 0.9 * this.awayScale));
-    if (this.lvl.ambience) ramp(this.lvl.ambience.gain, this.base * 1.3 * intensityGain(0.15 + 0.85 * mix));
+    if (this.lvl.ambience) ramp(this.lvl.ambience.gain, this.base * 1.3 * intensityGain(0.3 + 0.7 * mix), 0.45); // Grundrauschen: höchstens ≈ 21 dB Spanne, nie Stille
     if (this.lvl.home) ramp(this.lvl.home.gain, Math.min(1.4, this.base * 1.6) * 10 ** ((-12 + 12 * Math.min(1, home / 0.65)) / 20));
     // Gästeblock: höchstens 70 % des Heimpegels (Audio-Parameter), auch bei großem Gästeanteil
     if (this.lvl.away) ramp(this.lvl.away.gain, Math.min(1.4, this.base * 1.6) * Math.min(PARAMS.awayCapPercent / 100, 0.5 * this.awayScale) * 10 ** ((-12 + 12 * Math.min(1, away / 0.5)) / 20));
@@ -309,14 +331,19 @@ export class StadiumMixer {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
     const a = o.attack ?? 0.25, h = o.hold ?? 1.5, r = o.release ?? 1.2;
+    this.note({ ev: 'duck', t: now, side: side === 'both' ? undefined : side, depth, attack: a, hold: h, release: r });
     for (const sd of side === 'both' ? (['home', 'away'] as const) : [side]) {
       const g = this.duckSide[sd]?.gain;
       if (!g) continue;
+      // aktueller Pegel aus dem eigenen Modell (kein Rücklesen von AudioParam.value); ein tieferes Ducking bleibt erhalten
+      const cur = valueAt(this.duckPts[sd], now);
+      const d = Math.max(0.05, Math.min(1, depth));
+      const target = Math.min(cur, d);
+      const pts: Array<[number, number]> = [[now, cur], [now + a, target], [now + a + h, target], [now + a + h + r, 1]];
       g.cancelScheduledValues(now);
-      g.setValueAtTime(g.value, now);
-      g.linearRampToValueAtTime(Math.max(0.05, Math.min(1, depth)), now + a);
-      g.setValueAtTime(Math.max(0.05, Math.min(1, depth)), now + a + h);
-      g.linearRampToValueAtTime(1, now + a + h + r);
+      g.setValueAtTime(cur, now);
+      for (const [t, v] of pts.slice(1)) g.linearRampToValueAtTime(v, t);
+      this.duckPts[sd] = pts;
     }
   }
 
@@ -325,9 +352,12 @@ export class StadiumMixer {
     if (!this.ctx || !this.ambDuck || on === this.chantingOn) return;
     this.chantingOn = on;
     const g = this.ambDuck.gain, now = this.ctx.currentTime;
+    const cur = valueAt(this.ambDuckPts, now);
+    const pts: Array<[number, number]> = [[now, cur], [now + (on ? 1 : 1.8), on ? 0.82 : 1]];
     g.cancelScheduledValues(now);
-    g.setValueAtTime(g.value, now);
-    g.linearRampToValueAtTime(on ? 0.82 : 1, now + (on ? 1 : 1.8));
+    g.setValueAtTime(cur, now);
+    g.linearRampToValueAtTime(pts[1]![1], pts[1]![0]);
+    this.ambDuckPts = pts;
   }
 
   /** Lautstärkefaktor der Gästefans (Gästeblock) – für Gesänge */
@@ -368,8 +398,8 @@ export class StadiumMixer {
     return this.play(this.urlOf(f), {
       channel: 'events', side, id: f.id, category: cat, at: o.at,
       volume: (o.volume ?? 1) * CAT_VOL[cat] * (f.gain ?? 1) * (away ? Math.min(PARAMS.awayCapPercent / 100, 0.75 * this.awayScale) : 1) * Math.min(1.3, this.base * 1.6),
-      maxSec: o.maxSec, celebrate: o.celebrate, fadeIn: cat === 'goal' || cat === 'chance' || cat === 'ooh' || cat === 'aah' || cat === 'uuh' ? 0.04 : cat === 'pfeifkonzert' ? 0.7 : 0.2,
-      fadeOut: cat === 'pfeifkonzert' ? 1.6 : Math.min(0.8, (o.maxSec ?? 3) * 0.35),
+      maxSec: o.maxSec, celebrate: o.celebrate, fadeIn: cat === 'goal' ? 0.04 : cat === 'chance' || cat === 'ooh' || cat === 'aah' || cat === 'uuh' ? 0.12 : cat === 'pfeifkonzert' ? 0.9 : 0.3,
+      fadeOut: cat === 'pfeifkonzert' ? 2.0 : Math.min(1.4, (o.maxSec ?? 3) * 0.45),
       rate: 0.97 + Math.random() * 0.06,
     });
   }
@@ -406,6 +436,9 @@ export class StadiumMixer {
       ambienceSample: this.ambSample, missing: this.missing(),
       duck: { home: this.duckSide.home?.gain.value ?? 1, away: this.duckSide.away?.gain.value ?? 1, ambience: this.ambDuck?.gain.value ?? 1 },
       history: this.history.slice(-300),
+      log: this.log.slice(-60),
+      /** geplanter Ducking-Pegel jetzt (aus dem eigenen Modell; AudioParam.value ist ohne anliegenden Ton nicht aktuell) */
+      duckNow: { home: valueAt(this.duckPts.home, this.ctx?.currentTime ?? 0), away: valueAt(this.duckPts.away, this.ctx?.currentTime ?? 0) },
       library: Object.fromEntries(CROWD_CATEGORIES.map((c) => [c.key, this.lib.byCategory.get(c.key)?.length ?? 0])),
     };
   }
@@ -433,7 +466,8 @@ export class StadiumMixer {
     const ctx = this.ctx!;
     const t0 = ctx.currentTime + 0.01;
     const blasts: Array<[number, number]> = kind === 'final' ? [[0, 0.35], [0.5, 0.35], [1.0, 1.1]] : kind === 'half' ? [[0, 0.35], [0.5, 0.9]] : kind === 'long' ? [[0, 0.9]] : [[0, kind === 'soft' ? 0.18 : 0.28]];
-    const peak = kind === 'soft' ? 0.07 : 0.16;
+    // Pfiff deutlich hörbar, aber nicht lauter als der Torjubel/die Kulisse (Messung: vorher ≈ 12 dB über dem Publikum)
+    const peak = kind === 'soft' ? 0.05 : 0.095;
     const dest = this.bus.sfx!;
     for (const [off, dur] of blasts) {
       const at = t0 + off;
@@ -540,7 +574,10 @@ export class StadiumMixer {
     else { g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(lvl, at + fi); }
     let dest = this.destOf(o);
     if (o.pan) { const p = ctx.createStereoPanner(); p.pan.value = o.pan; p.connect(dest); dest = p; }
-    src.connect(g).connect(dest);
+    // Release-Stufe: Ausblenden wirkt als eigene Verstärkung (1 → 0, Kosinuskurve) und liest NIE den aktuellen Wert der
+    // geplanten Hüllkurve zurück (AudioParam.value ist in Safari/iPad während einer Automation unzuverlässig ⇒ Sprünge)
+    const rel = ctx.createGain(); rel.gain.value = 1;
+    src.connect(g).connect(rel).connect(dest);
     // Einstieg mitten in der Datei (z. B. später beigetretener Manager: Hymne synchron zu allen)
     const offset = Math.max(0, o.offset ?? 0);
     if (offset >= data.buffer.duration - 0.2) return null;
@@ -549,13 +586,15 @@ export class StadiumMixer {
     let done = false;
     let resolve!: () => void;
     const ended = new Promise<void>((r) => { resolve = r; });
-    const stop = (fade = 1) => {
+    const stop = (fade = 1, reason?: string) => {
       if (done) return; done = true;
+      this.note({ ev: 'stop', t: ctx.currentTime, channel: o.channel, id: o.id, category: o.category as string | undefined, side: o.side, fade, reason: reason ?? 'stop' });
       this.playing.delete(entry);
       this.celebration = this.celebration.filter((x) => x !== handle);
       const t = Math.max(ctx.currentTime, at);
-      g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), t); g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.05, fade));
-      try { src.stop(t + Math.max(0.05, fade) + 0.05); } catch { /* bereits beendet */ }
+      const f = Math.max(0.05, fade);
+      rel.gain.cancelScheduledValues(t); rel.gain.setValueAtTime(1, t); rel.gain.setValueCurveAtTime(fadeCurve(false), t, f);
+      try { src.stop(t + f + 0.05); } catch { /* bereits beendet */ }
     };
     const handle = { stop };
     src.onended = () => {
@@ -567,6 +606,7 @@ export class StadiumMixer {
     const rest = (data.buffer.duration - offset) / rate;
     const len = Math.min(rest, o.maxSec ?? rest);
     const fo = len < rest ? o.fadeOut ?? 1.5 : Math.min(o.endFade ?? 0, len / 3);
+    this.note({ ev: 'start', t: at, channel: o.channel, id: o.id, category: o.category as string | undefined, side: o.side, len, natural: len >= rest, fadeIn: fi, fade: fo });
     if (len < rest || fo > 0) {
       // Ende geplant ausblenden (kein harter Schnitt)
       const endAt = at + len;
@@ -600,8 +640,27 @@ export class StadiumMixer {
     }, fade * 1000 + 100);
     this.out = null; this.duck = null; this.bus = {}; this.input = {}; this.lvl = {}; this.bedMaster = null;
     this.duckSide = {}; this.ambDuck = null; this.chantingOn = false;
+    this.duckPts = { home: [[0, 1]], away: [[0, 1]] }; this.ambDuckPts = [[0, 1]];
     this.ambSample = false; this.ambId = null; this.ambNext = 0;
   }
+}
+
+/** Wert einer linear interpolierten Hüllkurve (Zeit, Pegel) zum Zeitpunkt t */
+function valueAt(pts: Array<[number, number]>, t: number): number {
+  if (!pts.length) return 1;
+  if (t <= pts[0]![0]) return pts[0]![1];
+  for (let i = 1; i < pts.length; i++) {
+    const [t1, v1] = pts[i]!, [t0, v0] = pts[i - 1]!;
+    if (t <= t1) return t1 === t0 ? v1 : v0 + ((v1 - v0) * (t - t0)) / (t1 - t0);
+  }
+  return pts[pts.length - 1]![1];
+}
+
+/** Ausblendkurve 1 → 0 bzw. 0 → 1 (Kosinus: weicher Anfang und weiches Ende, kein hörbarer Knick) */
+function fadeCurve(up: boolean): Float32Array<ArrayBuffer> {
+  const n = 64, c = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const x = i / (n - 1); c[i] = up ? 0.5 - 0.5 * Math.cos(Math.PI * x) : 0.5 + 0.5 * Math.cos(Math.PI * x); }
+  return c;
 }
 
 /** gleichleistungs-Blendkurve (sin/cos), damit sich überlappende Aufnahmen nicht zu einem Loch/Buckel addieren */

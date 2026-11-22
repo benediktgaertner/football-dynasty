@@ -186,7 +186,7 @@ test.describe('Torjubel', () => {
       await page.waitForFunction(() => (window as any).__fd.pitch()?.mode === 'celebration', null, { timeout: 1500 });
       await page.waitForTimeout(800);
       const during = await snd(page);
-      if (side === 'home') { expect(during.home).toBeGreaterThan(0.85); } else { expect(during.home).toBeLessThan(0.2); expect(during.away).toBeGreaterThan(0.5); }
+      if (side === 'home') { expect(during.home).toBeGreaterThan(0.85); } else { expect(during.home).toBeLessThan(0.3); expect(during.away).toBeGreaterThan(0.5); } // Heimfans verstummen nach dem Gegentor über ≈ 0,8 s (Audio-Balancing: keine plötzlichen Sprünge)
       const m1 = await mix(page);
       expect(m1.roars).toBe(1);
       // Wiederanstoß nach ≈ 4–5 s
@@ -402,8 +402,10 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
       expect(goalClip[0].side).toBe(side);
       // Crowd-Reaktion „Gegentor“ der Heimfans (Pfeifen/Ah/Oh/Uh) bzw. „Eigenes Tor“ geschichtet über den Jubel
       if (side === 'away') expect((m.history as any[]).some((h) => ['whistle', 'aah', 'ooh', 'uuh'].includes(h.category))).toBe(true);
-      // während des Jubels keine Fangesänge
-      expect(m.tracks.home).toEqual([]);
+      // während des Jubels: Gesänge werden geduckt (Audio-Balancing); das Gegentor-Lager (Heim bei Auswärtstor) verstummt, es startet kein neuer Gesang
+      if (side === 'away') expect(m.tracks.home).toEqual([]);
+      else { const ducks: number[] = []; for (let i = 0; i < 6; i++) { await page.waitForTimeout(250); ducks.push(Math.round((await mix(page)).duckNow.home * 100) / 100); } expect(Math.min(...ducks), `geplantes Ducking (Heim) je 250 ms: ${ducks.join(' ')}`).toBeLessThan(0.5); } // geplanter Pegel (Modell); AudioParam.value ist ohne anliegenden Ton nicht aktuell
+      expect(m.history.filter((x: any) => (x.channel === 'home' || x.channel === 'away') && x.t > m.history.find((g: any) => g.category === 'goal').t)).toEqual([]);
       await page.waitForFunction(() => (window as any).__fd.state().events.some((e: any, i: number, a: any[]) => e.type === 'kickoff' && e.side && a.findIndex((x: any) => x.type === 'goal') < i), null, { timeout: 8000 });
       await page.waitForTimeout(1000);
       const after = await mix(page);
@@ -592,7 +594,7 @@ test.describe('Pfeifkonzerte der Heimfans (Unmut-Modell, eigene Aufnahmen)', () 
     const w = homeWhistles(m);
     expect(w.length).toBeGreaterThan(0);
     for (const h of w) { expect(h.side).toBe('home'); expect(h.id).toMatch(/^ai_host_boo_/); } // Host-Datei „Pfiffe“
-    expect(m.duck.home).toBeLessThan(0.95); // Heimgesänge während des Pfeifens reduziert
+    expect(m.duckNow.home).toBeLessThan(0.95); // Heimgesänge während des Pfeifens reduziert (geplanter Pegel)
   });
 
   test('Foul des Heimteams ⇒ keine Pfiffe der Heimfans; Gästefans protestieren wie bisher', async ({ page }) => {

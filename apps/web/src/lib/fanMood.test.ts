@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Situation } from './crowdModel';
 import { CHANT_TUNING, EVENTS, FanScheduler, MoodTrend, PARAMS, RULES, levelToIntensity, matchSubset, moodRow, moodTargets, phaseOf, pickEventReaction, seeded, stateTrigger, subsetRange, type CrowdRule, type MoodValues } from './fanMood';
-import { MOOD_EVENTS, MOOD_ROWS } from './fanMoodData';
+import { AUDIO_PARAMS, MOOD_EVENTS, MOOD_ROWS } from './fanMoodData';
 import { pickNext } from './fanAudio';
 import V1 from './__fixtures__/fanMoodV1.json';
 
@@ -15,7 +15,13 @@ describe('Fanstimmungs-Matrix V2 (Excel → Code)', () => {
     expect(RULES).toHaveLength(120);
     expect(new Set(RULES.map((r) => `${r.trigger}|${r.side}|${r.reaction}`)).size).toBe(120);
     expect(new Set(RULES.map((r) => r.reaction))).toEqual(new Set(['clap', 'whistle', 'aah', 'ooh', 'uuh']));
-    expect(PARAMS).toMatchObject({ chantCheckMin: 5, chantCheckMax: 8, chantPauseMin: 1, chantPauseMax: 3, fadeIn: 1, fadeOut: 1.7, goalDuck: 0.22, reactionGap: 3, homeChantDeficit3After60: 0, awayCapPercent: 70, peakLimit: 0.9 });
+    // Excel-Werte unverändert in der Datenquelle …
+    expect(AUDIO_PARAMS).toMatchObject({ chantCheckMin: 5, chantCheckMax: 8, chantPauseMin: 1, chantPauseMax: 3, fadeIn: 1, fadeOut: 1.7, goalDuck: 0.22, reactionGap: 3, homeChantDeficit3After60: 0, awayCapPercent: 70, peakLimit: 0.9 });
+    // … und die wirksamen Parameter nach dem Audio-Balancing-Update: weichere Blenden, längere Pausen, Gesangshäufigkeit/Prüffenster unverändert
+    expect(PARAMS).toMatchObject({ chantCheckMin: 5, chantCheckMax: 8, chantPauseMin: 2.5, chantPauseMax: 6, fadeIn: 1.5, fadeOut: 2, goalDuck: 0.6, reactionGap: 3, homeChantDeficit3After60: 0, awayCapPercent: 70, peakLimit: 0.9 });
+    expect(PARAMS.fadeIn).toBeGreaterThanOrEqual(1); expect(PARAMS.fadeIn).toBeLessThanOrEqual(2);
+    expect(PARAMS.fadeOut).toBeGreaterThanOrEqual(1.5); expect(PARAMS.fadeOut).toBeLessThanOrEqual(2.5);
+    expect(PARAMS.goalDuck).toBeGreaterThanOrEqual(0.4); expect(PARAMS.goalDuck).toBeLessThanOrEqual(0.8);
   });
 
   it('V2 erhöht die Gesangschancen in fast allen Zuständen (Ausnahme: hoher Rückstand)', () => {

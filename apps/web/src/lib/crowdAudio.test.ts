@@ -267,22 +267,22 @@ describe.skipIf(!wa)('Übergänge der Fangesänge (Offline-Rendering)', () => {
     expect(diff).toBeLessThan(3);
   }, 120_000);
 
-  it('Großchance duckt den Gesang rasch (0,2 s) und blendet weich zurück; Tor unterbricht in 0,25 s', async () => {
+  it('Ereignis duckt den Gesang innerhalb 0,6 s (Audio-Balancing) und blendet weich zurück; Ausblenden über 1 s wird still', async () => {
     const { ctx, m } = await setup(6);
     m.setVolume('ambience', 0);
     await m.play('/chant.mp3', { channel: 'home', at: 0, fadeIn: 0.05, category: 'chant' });
-    m.duckChants('home', 0.3, { attack: 0.2, hold: 1.0, release: 1.2 });
+    m.duckChants('home', 0.3, { attack: 0.6, hold: 1.0, release: 1.5 });
     const b = await ctx.startRendering() as unknown as AudioBuffer;
-    const full = both(b, 3.5, 4.5);
-    expect(full - both(b, 0.4, 1.1)).toBeGreaterThan(8); // geduckt
-    expect(Math.abs(both(b, 3.5, 4.0) - both(b, 4.5, 5.0))).toBeLessThan(1); // wieder voll
-    for (let t = 0.1; t < 3; t += 0.05) expect(Math.abs(both(b, t, t + 0.05) - both(b, t + 0.05, t + 0.1))).toBeLessThan(4);
+    const full = both(b, 4.0, 5.0);
+    expect(full - both(b, 0.8, 1.5)).toBeGreaterThan(8); // geduckt
+    expect(Math.abs(both(b, 4.0, 4.5) - both(b, 5.0, 5.5))).toBeLessThan(1); // wieder voll
+    for (let t = 0.1; t < 3; t += 0.05) expect(Math.abs(both(b, t, t + 0.05) - both(b, t + 0.05, t + 0.1))).toBeLessThan(4); // keine Sprünge
 
-    const s2 = await setup(3);
+    const s2 = await setup(4);
     s2.m.setVolume('ambience', 0);
     const tr = await s2.m.play('/chant.mp3', { channel: 'home', at: 0, fadeIn: 0.05, category: 'chant' });
-    tr!.stop(0.25);
+    tr!.stop(1.0, 'goal');
     const b2 = await s2.ctx.startRendering() as unknown as AudioBuffer;
-    expect(both(b2, 0.6, 1.0)).toBeLessThan(both(b2, 0.03, 0.08) - 30);
+    expect(both(b2, 2.0, 2.5)).toBeLessThan(both(b2, 0.03, 0.2) - 30);
   }, 60_000);
 });

@@ -18,7 +18,7 @@ import { mixer, type Track } from './audioMixer';
 import { CrowdEnvelope, situationOf, type PlayState, type Situation } from './crowdModel';
 import { buildLibrary, loadCrowdLibrary, type CrowdCategory, type CrowdFile, type CrowdLibrary } from './crowdLibrary';
 import { HomeDisapproval, type Disapproval } from './homeDisapproval';
-import { EVENTS, FanScheduler, MoodTrend, PARAMS, aiMatchSubset, levelToIntensity, matchSubset, pickEventReaction, type CrowdRule, type CrowdTrigger, type MoodRow, type MoodValues, type ReactionKind } from './fanMood';
+import { CHANT_RELEASE, EVENTS, FanScheduler, MoodTrend, PARAMS, aiMatchSubset, levelToIntensity, matchSubset, pickEventReaction, type CrowdRule, type CrowdTrigger, type MoodRow, type MoodValues, type ReactionKind } from './fanMood';
 import type { AudioRef } from './matchClient';
 
 export interface ChantRef extends AudioRef { signature?: boolean }
@@ -148,12 +148,15 @@ export class MatchSound {
   private pendingFoul: { tick: number; t: number; hard: boolean; penalty: boolean } | null = null;
   private url: (path: string) => string;
   private manifest: string;
+  /** Zufallsstart der Partie (fest für die ganze Partie, auch ohne vorgegebene Seed) und Schlüssel der zuletzt übernommenen Gesänge */
+  private seed: string;
+  private chantKey: string | null = null;
   private opts: MatchSoundOptions;
   /** Bibliothek und Gesänge geladen (Promise für Tests) */
   ready: Promise<void> = Promise.resolve();
 
   constructor(url: (path: string) => string, manifest = DEFAULT_MANIFEST, opts: MatchSoundOptions = {}) {
-    this.url = url; this.manifest = manifest; this.opts = opts;
+    this.url = url; this.manifest = manifest; this.opts = opts; this.seed = opts.seed ?? String(Math.random());
     this.scheduler = new FanScheduler(Math.random, opts.timeScale ?? 1);
   }
 
@@ -163,10 +166,15 @@ export class MatchSound {
    * Pro Partie wird davon nur eine zufällige Teilmenge aktiv (auf allen Geräten gleich).
    */
   setChants(home: ChantRef[], away: ChantRef[], _clubs: { home?: string | null; away?: string | null } = {}) {
+    // idempotent: React-Effekte können mehrfach laufen (Zustandsaktualisierungen, Reconnect) – gleiche Eingaben ändern weder
+    // die Gesangsauswahl der Partie noch starten sie erneut Ladevorgänge
+    const key = JSON.stringify([home.map((c) => `${c.id}:${c.path}`), away.map((c) => `${c.id}:${c.path}`)]);
+    if (key === this.chantKey) return;
+    this.chantKey = key;
     this.uploads = { home: regularChants(home), away: regularChants(away) };
     this.homeGoal = goalHymns(home); this.awayGoal = goalHymns(away);
     for (const c of [...this.homeGoal, ...this.awayGoal]) void mixer.load(this.url(c.path!));
-    const seed = this.opts.seed ?? String(Math.random());
+    const seed = this.seed;
     const host = (this.opts.hostAudio ?? Promise.resolve([] as HostAudioFile[])).catch(() => [] as HostAudioFile[]);
     const lib = Promise.all([loadCrowdLibrary(this.manifest), host]).then(([l, h]) => { mixer.setLibrary(mergeHostLibrary(l, h)); });
     const aiPool = this.opts.chantPool ? loadChantPool(this.opts.chantPool) : host.then(hostChantPool);
@@ -291,7 +299,7 @@ export class MatchSound {
     if (ps.minute >= 60 && d <= -3 && !this.once.has(`E21:${d}`)) {
       this.once.add(`E21:${d}`);
       this.fx('E21', 'home', null);
-      this.silence('home', 1.2);
+      this.silence('home', CHANT_RELEASE, 'deficit');
       const c = this.homeCtx();
       if (c) this.boo(this.disapproval.deficitNow(c));
     }
@@ -319,9 +327,9 @@ export class MatchSound {
     const fadeIn = PARAMS.fadeIn;
     const p = mixer.play(song.url, { channel: side, volume: song.volume, maxSec: song.mood === 'upload' ? 40 : undefined, fadeIn, fadeOut: PARAMS.fadeOut, endFade: PARAMS.fadeOut, id: song.id, category: song.mood === 'upload' ? 'upload' : 'chant' });
     void p.then((t) => {
-      if (this.cur[side] !== placeholder) { t?.stop(0.3); return; }
+      if (this.cur[side] !== placeholder) { t?.stop(1, 'cancelled'); return; }
       if (!t) { this.cur[side] = null; return; }
-      if (this.finished || performance.now() < this.goalUntil) { t.stop(0.3); this.cur[side] = null; return; }
+      if (this.finished || performance.now() < this.goalUntil) { t.stop(1, 'cancelled'); this.cur[side] = null; return; }
       this.cur[side] = t;
       mixer.chanting(true);
       void t.ended.then(() => {
@@ -334,8 +342,8 @@ export class MatchSound {
     });
   }
 
-  private silence(side: Side, fade: number) {
-    this.cur[side]?.stop(fade);
+  private silence(side: Side, fade: number, reason = 'silence') {
+    this.cur[side]?.stop(fade, reason);
     this.cur[side] = null;
     this.curSong[side] = null;
     if (!this.cur.home && !this.cur.away) mixer.chanting(false);
@@ -351,11 +359,11 @@ export class MatchSound {
     const dur = e.duration;
     if (cat) void mixer.reaction(cat, side, { volume: e.level / 85, maxSec: Math.max(1.6, dur + 0.8), cooldownMs: 1200, celebrate: o.celebrate });
     if (e.priority <= 2) {
-      mixer.duckChants(side, 0.3, { attack: 0.2, hold: dur, release: 1.4 });
-      mixer.duckChants(side === 'home' ? 'away' : 'home', 0.6, { attack: 0.25, hold: dur, release: 1.4 });
+      mixer.duckChants(side, 0.3, { attack: 0.5, hold: dur, release: 2.0 });
+      mixer.duckChants(side === 'home' ? 'away' : 'home', 0.6, { attack: 0.55, hold: dur, release: 2.0 });
       this.eventUntil = Math.max(this.eventUntil, performance.now() + (dur + 1.5) * 1000);
     } else if (e.priority === 3) {
-      mixer.duckChants(side, 0.6, { attack: 0.3, hold: dur, release: 1.2 });
+      mixer.duckChants(side, 0.6, { attack: 0.5, hold: dur, release: 1.8 });
     }
     if (o.block) this.blockUntil[side] = Math.max(this.blockUntil[side], this.t + o.block);
   }
@@ -458,7 +466,7 @@ export class MatchSound {
         break;
       // E23: Verletzung – besorgtes Murmeln, kein fröhlicher Gesang während der Behandlung
       case 'injury':
-        if (side) { this.silence(side, 1.2); this.fx('E23', side, 'concede', { block: 20 }); }
+        if (side) { this.silence(side, CHANT_RELEASE, 'injury'); this.fx('E23', side, 'concede', { block: 20 }); }
         break;
       default: break;
     }
@@ -569,10 +577,12 @@ export class MatchSound {
    */
   private goal(side: 'home' | 'away') {
     mixer.net(false);
-    // R10/E01/E02: Tore unterbrechen laufende Gesänge sofort (≈ 0,25 s)
-    this.silence('home', PARAMS.goalDuck);
-    this.silence('away', PARAMS.goalDuck);
-    this.goalHymn?.stop(0.3);
+    // Tore: laufende Gesänge werden innerhalb ≈ 0,6 s deutlich leiser (Ducking), der Torjubel liegt darüber; nach der
+    // Torunterbrechung (≈ 4,5 s) kehren sie über ≈ 2,5 s zum normalen Pegel zurück. Ein Gesang des Torschützen-Lagers
+    // läuft dabei bis zu seinem natürlichen Ende weiter; das Lager des Gegentors verstummt (weiches Ausblenden über 2,2 s).
+    mixer.duckChants('both', 0.15, { attack: PARAMS.goalDuck, hold: 4.5 - PARAMS.goalDuck, release: 2.5 });
+    this.silence(side === 'home' ? 'away' : 'home', CHANT_RELEASE, 'goal');
+    this.goalHymn?.stop(0.6, 'goal');
     this.goalHymn = null;
     this.goalUntil = performance.now() + 7000; // Sicherung, falls kein Wiederanstoß kommt (Schlusspfiff)
     this.envelope.event(side === 'home' ? 'home_goal' : 'away_goal', 7);
@@ -617,8 +627,8 @@ export class MatchSound {
 
   /** Wiederanstoß: Jubel, Torhymne und Ereignis-Hüllkurve sofort weich beenden */
   private endGoal() {
-    mixer.endCelebration(0.6);
-    this.goalHymn?.stop(0.6);
+    mixer.endCelebration(1.2);
+    this.goalHymn?.stop(1.2, 'restart');
     this.goalHymn = null;
     this.envelope.release();
     this.goalUntil = performance.now() + 1500;
@@ -640,8 +650,8 @@ export class MatchSound {
   finish(ctx?: { homeScore: number; awayScore: number }) {
     if (this.finished) return;
     mixer.whistle('final');
-    this.silence('home', 1.5);
-    this.silence('away', 1.5);
+    this.silence('home', 2.0, 'finish');
+    this.silence('away', 2.0, 'finish');
     if (ctx) {
       const d = ctx.homeScore - ctx.awayScore;
       if (d > 0) this.fx('E24', 'home', 'goal');

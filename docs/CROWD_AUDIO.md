@@ -95,3 +95,18 @@ Nicht verwenden: KI-Audiogeneratoren (z. B. ElevenLabs), Ausschnitte aus TV-Übe
 bash scripts/crowd-cuts.sh <ordner-mit-originalen>
 node scripts/crowd-audio.mjs --allow-nc
 ```
+
+## Audio-Balancing-Update (Übergänge, Gesangsverlauf, Messung)
+
+**Ursachen der vielen Schnitte (gemessen am echten Audio-Stack, 3-Minuten-Partien offline gerendert):**
+1. Jedes Tor kappte beide laufenden Gesänge mit nur 0,2 s Ausblendung (bis zu 5 von 9 Gesängen je Partie); Verletzung/hoher Rückstand mit 1,2 s.
+2. Ausblenden und Ducking lasen den aktuellen Gain-Wert zurück (`AudioParam.value`); in Safari/iPad ist das während einer Automation unzuverlässig ⇒ Sprünge.
+3. Pegelanpassungen der Kulisse/Gesänge liefen als kurze 0,12-s-Rampen (Sprünge bei Situationswechseln), Gegentor ließ die Heimfans in ≈ 0,35 s verstummen.
+4. Pausen zwischen Gesängen 1–3 s, Heim und Gäste überlagerten sich zeitweise bis zu ≈ 13 % der Spielzeit; der Schiedsrichterpfiff lag ≈ 12 dB über dem Publikum (wirkte als „Sprung“).
+Die React-Anbindung war unauffällig (ein `MatchSound` je Spiel, Cleanup beim Verlassen, keine doppelten Listener); es gibt nur einen Mixer und einen AudioContext.
+
+**Architektur:** `fanAudio.ts` (MatchSound: Spielereignisse → Entscheidungen) → `fanMood.ts` (Scheduler: Prüffenster, Matrix-Chancen) → `audioMixer.ts` (ein AudioContext, getrennte Kanäle Rauschen · Heim · Gäste · Ereignisse (Pfiffe/Torjubel) · Spielgeräusche · Hymnen, Kompressor/Begrenzer). Neu: Audioprotokoll `mixer.log` (Start/Stopp/Ducking mit Zeit, Dauer, Grund).
+
+**Übergänge:** Einblenden 1,5 s · natürliches Ende 2,0 s ausblenden · Pause zwischen Gesängen 2,5–6 s · Ducking bei Ereignissen 0,5 s Anstieg, Rückkehr 1,8–2,5 s · Tor: Gesänge in 0,6 s auf ≈ −16 dB, Torjubel darüber, Rückkehr über 2,5 s nach der Torunterbrechung (4,5 s); der Gesang des Gegentor-Lagers wird über 2,2 s ausgeblendet; Wiederanstoß beendet den Jubel über 1,2 s; Kulisse folgt mit Zeitkonstante 0,45 s, Gesangspegel 0,3 s, höchstens ≈ 21 dB Spanne (nie Stille). Ausblenden läuft über eine eigene Release-Stufe (Kosinuskurve), ohne Rücklesen von Parametern.
+
+**Messung:** `npx vitest run src/lib/matchAudioSim.test.ts` (6 Szenarien, je 3 Minuten) und `audioTransitions.test.ts` (Einblenden, Ausblenden, Ducking; inkl. Kontrolle, dass ein harter Stopp erkannt wird). Benötigt `npm i --no-save node-web-audio-api`. Torjubel/Pfiffe der Simulation sind synthetisches Rauschen (Host-Dateien liegen nicht im Repository). Das ersetzt keine Hörprobe.

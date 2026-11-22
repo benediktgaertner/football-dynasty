@@ -40,3 +40,18 @@ describe('Lautheitsangleich', () => {
     expect(Math.abs(r(0.1) - r(0.6))).toBeLessThan(0.02);
   });
 });
+
+describe('MatchSound.setChants ist idempotent (keine Neuauswahl bei erneutem Aufruf)', () => {
+  it('mehrfacher Aufruf mit gleichen Eingaben und ohne feste Seed ändert die Gesangsauswahl nicht', async () => {
+    const { MatchSound } = await import('./fanAudio');
+    const host = Array.from({ length: 12 }, (_, i) => ({ id: `h${String(i).padStart(2, '0')}`, category: 'chant' as const, name: `Gesang ${i}`, url: `/x/${i}.mp3`, duration: 12 }));
+    const s = new MatchSound((p) => p, '/none/manifest.json', { hostAudio: Promise.resolve(host) }); // keine Seed ⇒ Zufallsstart, aber fest je Partie
+    s.setChants([], []);
+    await s.ready;
+    const first = JSON.stringify(s.songs);
+    for (let i = 0; i < 4; i++) { s.setChants([], []); await s.ready; }
+    expect(JSON.stringify(s.songs)).toBe(first);
+    expect(s.songs.home.length).toBeGreaterThanOrEqual(2);
+    expect(s.songs.home.filter((x) => s.songs.away.some((y) => y.id === x.id))).toEqual([]); // Heim/Gast ohne gemeinsame Gesänge
+  });
+});
