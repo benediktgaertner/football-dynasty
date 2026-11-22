@@ -17,7 +17,7 @@
 import { mixer, type Track } from './audioMixer';
 import { CrowdEnvelope, situationOf, type PlayState, type Situation } from './crowdModel';
 import { loadCrowdLibrary, type CrowdCategory } from './crowdLibrary';
-import { EVENTS, FanScheduler, MoodTrend, PARAMS, levelToIntensity, matchSubset, pickEventReaction, type CrowdRule, type CrowdTrigger, type MoodRow, type MoodValues, type ReactionKind } from './fanMood';
+import { EVENTS, FanScheduler, MoodTrend, PARAMS, aiMatchSubset, levelToIntensity, matchSubset, pickEventReaction, type CrowdRule, type CrowdTrigger, type MoodRow, type MoodValues, type ReactionKind } from './fanMood';
 import type { AudioRef } from './matchClient';
 
 export interface ChantRef extends AudioRef { signature?: boolean }
@@ -130,8 +130,10 @@ export class MatchSound {
     const pool = loadChantPool(this.opts.chantPool ?? DEFAULT_POOL).then((ai) => {
       for (const side of ['home', 'away'] as const) {
         const own: Song[] = this.uploads[side].map((c) => ({ id: c.id, url: this.url(c.path!), volume: c.volume, mood: 'upload', title: c.name }));
-        this.songs[side] = matchSubset(own.length ? own : ai, `${seed}:${side}`);
-        for (const s of this.songs[side]) void mixer.load(s.url); // einmal laden/dekodieren
+        // eigene Uploads: wie bisher; KI-Fanlager: 2–4 Gesänge aus dem ganzen KI-Pool, möglichst ohne die des Gegners
+        this.songs[side] = own.length ? matchSubset(own, `${seed}:${side}`)
+          : aiMatchSubset(ai, `${seed}:${side}`, side === 'away' ? this.songs.home.map((s) => s.id) : []);
+        for (const s of this.songs[side]) void mixer.load(s.url); // nur die ausgewählten Dateien laden/dekodieren
       }
     });
     this.ready = Promise.all([lib, pool]).then(() => undefined);

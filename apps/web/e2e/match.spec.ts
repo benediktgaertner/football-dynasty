@@ -238,16 +238,22 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
   const EVENTS = ['clap', 'attack', 'chance', 'whistle', 'concede', 'goal'];
 
   test('KI-Vereine ohne Upload: nur die KI-Fangesänge – Teilmenge je Partie, keine direkte Wiederholung', async ({ page }) => {
+    const aiReq = new Set<string>();
+    page.on('request', (r) => { if (/\/chants\/ai\/.*\.mp3/.test(r.url())) aiReq.add(r.url()); });
     await start(page, 'home-noanthem-ai', undefined, '&ts=0.3');
     const rec = await record(page, 25_000);
     const s = rec[rec.length - 1]!.s;
     const last = rec[rec.length - 1]!.m;
-    // Teilmenge: 3–4 von 5 Gesängen je Seite (Parameter 3–6, nie alle), ausschließlich aus dem KI-Pool
+    // KI-Fanlager: je Seite 2–4 Gesänge aus dem ganzen KI-Pool (14), Heim und Gäste ohne gemeinsame Gesänge
     for (const side of ['home', 'away'] as const) {
-      expect(s.songs[side].length).toBeGreaterThanOrEqual(3);
+      expect(s.songs[side].length).toBeGreaterThanOrEqual(2);
       expect(s.songs[side].length).toBeLessThanOrEqual(4);
       for (const id of s.songs[side]) expect(id).toMatch(/^ai_/);
     }
+    expect((s.songs.home as string[]).filter((id) => s.songs.away.includes(id))).toEqual([]);
+    // nur die ausgewählten Dateien werden geladen, nicht der ganze Pool
+    expect(aiReq.size).toBeGreaterThan(0);
+    expect(aiReq.size).toBeLessThanOrEqual(s.songs.home.length + s.songs.away.length);
     const chants = (s.played as any[]).filter((p) => p.kind === 'chant');
     expect(chants.length).toBeGreaterThan(0);
     for (const c of chants) expect(s.songs[c.side]).toContain(c.id);
@@ -272,6 +278,22 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
     expect(avgH).toBeGreaterThan(avgA);
   });
 
+  test('KI-Fangesänge: Auswahl bleibt nach Neuladen/Reconnect gleich, neue Partie ⇒ neue Auswahl', async ({ page }) => {
+    const songsOf = async (f: string) => {
+      await open(page, f, undefined, '&ts=0.3');
+      await page.waitForFunction(() => { const s = (window as any).__fd.sound(); return s.songs.home.length > 0 && s.songs.away.length > 0; });
+      return (await snd(page)).songs as { home: string[]; away: string[] };
+    };
+    const f1 = fx('home-noanthem-ai');
+    const a = await songsOf(f1);
+    await page.reload();
+    await page.waitForFunction(() => { const s = (window as any).__fd?.sound(); return !!s && s.songs.home.length > 0; });
+    expect((await snd(page)).songs).toEqual(a); // gleiche Partie ⇒ gleiche Auswahl
+    const others: string[][] = [];
+    for (let i = 0; i < 4; i++) others.push((await songsOf(fx('home-noanthem-ai'))).home);
+    expect(others.some((o) => o.join() !== a.home.join())).toBe(true); // andere Partien ⇒ andere Auswahl
+  });
+
   test('0:4 in der 60. Minute: Heimgesänge nahezu aus, Pfiffe, Gästeblock aktiv', async ({ page }) => {
     await start(page, 'home-noanthem-ai', undefined, '&ts=0.25');
     await page.waitForTimeout(3000);
@@ -293,7 +315,11 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
     expect(homeChants).toBe(0); // V2: 0 % Heimgesang bei ≥ 3 Toren Rückstand ab Minute 60
     expect(whistles).toBeGreaterThanOrEqual(3); // Pfeifkonzert (Crowd-Reaktion C092)
     expect(whistles).toBeGreaterThan(homeCheer);
-    expect(awayChants).toBeGreaterThanOrEqual(2);
+    // Gästeblock singt hörbar: Anteil der Zeit mit laufendem Gästegesang (längere KI-Gesänge bis 24 s ⇒ Anzahl der Starts allein ist kein gutes Maß)
+    const awayCover = rec.filter((r) => r.m.tracks.away.some((t: string) => t.startsWith('chant:'))).length / rec.length;
+    console.log({ awayCover });
+    expect(awayChants).toBeGreaterThanOrEqual(1);
+    expect(awayCover).toBeGreaterThan(0.25);
     const dec = (s.decisions as any[]).filter((d) => d.kind === 'chant' && d.t > tStart);
     for (const d of dec.filter((d) => d.side === 'home')) expect(d.chance).toBe(0);
     for (const d of dec.filter((d) => d.side === 'away')) expect(d.chance).toBeGreaterThanOrEqual(30); // Matrix ≥ 60, nach Major-Update-Tuning (−25 %, Wechselgesang) abgeschwächt

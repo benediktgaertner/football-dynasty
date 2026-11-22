@@ -358,3 +358,13 @@ Grundlage ist `docs/Football_Dynasty_Fanstimmung_Audio_Matrix_V2.xlsx`. Sie wird
 - Der Titel steht jetzt am oberen Rand der Stadionansicht, mit Fortschrittsbalken.
 - Die Spieler stehen unten vor der Haupttribüne und werden nicht mehr verdeckt.
 - Playwright-Test „Hymnentitel oben“.
+
+## KI-Fangesangpool (Erweiterung November 2026)
+- Pool `apps/web/public/audio/chants/ai/manifest.json`: 14 Gesänge (5 bisherige + 9 neue), alle auf ca. −18,5 LUFS angeglichen
+  (`scripts/chant-normalize.py <quelle> <ziel>`), damit die Lautstärkeverhältnisse gleich bleiben.
+- Nicht übernommen: Fangesang_KI_4–7 (identisch mit bestehenden Gesängen), Fangesang_KI_8–10 (Metadaten „Soccer1 / Sounddogs.com“ –
+  kommerzielle Bibliothek, erst nach Lizenzbestätigung aufnehmen).
+- Auswahl: `aiMatchSubset` (fanMood.ts) – je Partie und KI-Fanlager 2–4 Gesänge, mindestens 2 ohne Spott, Seed = Partie-ID + Seite
+  (gleich auf allen Geräten und nach Reconnect). KI gegen KI: Gästeblock ohne die Gesänge des Heimblocks.
+- Vereine mit eigenen Uploads: unverändert (eigene Gesänge, bisherige Teilmenge). Häufigkeit, Pausen, Übergänge, Lautstärke: unverändert.
+- Neue Datei hinzufügen: normalisieren, ins Verzeichnis legen, Eintrag im Manifest (id `ai_…`, mood `support` oder `taunt`).

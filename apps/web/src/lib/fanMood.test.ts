@@ -242,3 +242,51 @@ describe('V2 überlädt nicht', () => {
     expect(whistle).toBeGreaterThan(other * 1.5); // Pfeifen hat 10 s Cooldown, dominiert trotzdem
   });
 });
+
+describe('KI-Fangesangpool: Auswahl je Partie (aiMatchSubset)', async () => {
+  const { aiMatchSubset } = await import('./fanMood');
+  const { readFileSync } = await import('node:fs');
+  const pool = (JSON.parse(readFileSync(new URL('../../public/audio/chants/ai/manifest.json', import.meta.url), 'utf8')).files as Array<{ id: string; mood: string; file: string }>);
+  it('Pool: 14 Gesänge, alle Dateien vorhanden, keine doppelten IDs/Dateien', () => {
+    expect(pool.length).toBe(14);
+    expect(new Set(pool.map((p) => p.id)).size).toBe(14);
+    expect(new Set(pool.map((p) => p.file)).size).toBe(14);
+    for (const p of pool) expect(readFileSync(new URL(`../../public/audio/chants/ai/${p.file}`, import.meta.url)).length).toBeGreaterThan(50_000);
+  });
+  it('2–4 verschiedene Gesänge, mindestens 2 ohne Spott, gleiche Partie ⇒ gleiche Auswahl (Reconnect)', () => {
+    const sizes = new Set<number>();
+    for (let i = 0; i < 500; i++) {
+      const s = aiMatchSubset(pool, `fx-${i}:home`);
+      sizes.add(s.length);
+      expect(s.length).toBeGreaterThanOrEqual(2); expect(s.length).toBeLessThanOrEqual(4);
+      expect(new Set(s.map((x) => x.id)).size).toBe(s.length);
+      expect(s.filter((x) => x.mood !== 'taunt').length).toBeGreaterThanOrEqual(2);
+      expect(aiMatchSubset(pool, `fx-${i}:home`)).toEqual(s);
+    }
+    expect([...sizes].sort()).toEqual([2, 3, 4]);
+  });
+  it('KI gegen KI: Heim- und Gästeblock ohne gemeinsame Gesänge', () => {
+    for (let i = 0; i < 300; i++) {
+      const h = aiMatchSubset(pool, `fx-${i}:home`);
+      const a = aiMatchSubset(pool, `fx-${i}:away`, h.map((x) => x.id));
+      expect(a.filter((x) => h.some((y) => y.id === x.id))).toEqual([]);
+    }
+  });
+  it('ganzer Pool wird genutzt, aufeinanderfolgende Partien abwechslungsreich', () => {
+    const used = new Map<string, number>();
+    let same = 0, prev: string[] = [];
+    for (let i = 0; i < 400; i++) {
+      const s = aiMatchSubset(pool, `fixture-${i * 7919}:home`).map((x) => x.id);
+      for (const id of s) used.set(id, (used.get(id) ?? 0) + 1);
+      same += s.filter((x) => prev.includes(x)).length / s.length; prev = s;
+    }
+    expect(used.size).toBe(14);
+    for (const n of used.values()) expect(n).toBeGreaterThan(30); // jeder Gesang regelmäßig dabei
+    expect(same / 399).toBeLessThan(0.35); // im Schnitt < 35 % Überschneidung mit der vorherigen Partie
+  });
+  it('kleiner Pool / nur Spott: keine Endlosschleife, nie mehr als vorhanden', () => {
+    expect(aiMatchSubset([], 'x')).toEqual([]);
+    expect(aiMatchSubset([{ id: 'a', mood: 'taunt' }], 'x').length).toBe(1);
+    expect(aiMatchSubset([{ id: 'a', mood: 'support' }, { id: 'b', mood: 'taunt' }, { id: 'c', mood: 'support' }], 'y').filter((x) => x.mood === 'support').length).toBe(2);
+  });
+});

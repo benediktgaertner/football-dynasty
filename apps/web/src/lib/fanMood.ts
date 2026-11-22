@@ -170,6 +170,33 @@ export function matchSubset<T>(list: T[], seed: string): T[] {
   return a.slice(0, lo + Math.floor(rnd() * (hi - lo + 1)));
 }
 
+/**
+ * KI-Fanlager: je Partie und Seite 2–4 verschiedene Gesänge aus dem gesamten KI-Pool (zufällig, aber je Partie
+ * auf allen Geräten und nach Reconnects gleich – Seed = Partie-ID + Seite). Mindestens zwei „support“-Gesänge,
+ * damit Spottgesänge (nur bei Führung) die Häufigkeit nicht senken. `avoid`: Gesänge des anderen Fanlagers –
+ * werden nur genommen, wenn sonst zu wenige übrig bleiben.
+ */
+export const AI_SUBSET = { min: 2, max: 4, minSupport: 2 } as const;
+export function aiMatchSubset<T extends { id: string; mood: string }>(pool: T[], seed: string, avoid: Iterable<string> = []): T[] {
+  if (!pool.length) return [];
+  const rnd = seeded(`ai:${seed}`);
+  const a = pool.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j]!, a[i]!]; }
+  const av = new Set(avoid);
+  const order = [...a.filter((x) => !av.has(x.id)), ...a.filter((x) => av.has(x.id))];
+  const k = Math.min(order.length, AI_SUBSET.min + Math.floor(rnd() * (AI_SUBSET.max - AI_SUBSET.min + 1)));
+  const pick = order.slice(0, k);
+  const need = Math.min(AI_SUBSET.minSupport, k, order.filter((x) => x.mood !== 'taunt').length);
+  for (const extra of order.slice(k)) {
+    if (pick.filter((x) => x.mood !== 'taunt').length >= need) break;
+    if (extra.mood === 'taunt') continue;
+    const i = pick.map((x) => x.mood).lastIndexOf('taunt');
+    if (i < 0) break;
+    pick[i] = extra;
+  }
+  return pick;
+}
+
 // ------------------------------------------------------------------ Crowd-Reaktionen
 export interface ScoreState { minute: number; homeScore: number; awayScore: number; sit: Situation }
 
