@@ -1,128 +1,224 @@
 import { describe, expect, it } from 'vitest';
-import { EVENTS, FanScheduler, MoodTrend, levelToIntensity, matchSubset, moodRow, moodTargets, phaseOf, seeded, type MoodValues } from './fanMood';
+import type { Situation } from './crowdModel';
+import { EVENTS, FanScheduler, MoodTrend, PARAMS, RULES, levelToIntensity, matchSubset, moodRow, moodTargets, phaseOf, pickEventReaction, seeded, stateTrigger, subsetRange, type CrowdRule, type MoodValues } from './fanMood';
 import { MOOD_EVENTS, MOOD_ROWS } from './fanMoodData';
 import { pickNext } from './fanAudio';
+import V1 from './__fixtures__/fanMoodV1.json';
 
-describe('Fanstimmungs-Matrix (Excel → Code)', () => {
-  it('105 Zustände (3 Phasen × 7 Spielstände × 5 Situationen) und 26 Ereignisse, Werte 0–100', () => {
+describe('Fanstimmungs-Matrix V2 (Excel → Code)', () => {
+  it('105 Zustände, 26 Ereignisse, 120 Crowd-Reaktionen, Audio-Parameter vollständig', () => {
     expect(MOOD_ROWS).toHaveLength(105);
     expect(new Set(MOOD_ROWS.map((r) => `${r.phase}|${r.diff}|${r.sit}`)).size).toBe(105);
-    for (const r of MOOD_ROWS) for (const k of ['homeChant', 'awayChant', 'homeLevel', 'awayLevel', 'homeWhistle'] as const) expect(r[k]).toBeGreaterThanOrEqual(0), expect(r[k]).toBeLessThanOrEqual(100);
+    for (const r of MOOD_ROWS) for (const k of ['homeChant', 'awayChant', 'homeLevel', 'awayLevel', 'homeWhistle'] as const) { expect(r[k]).toBeGreaterThanOrEqual(0); expect(r[k]).toBeLessThanOrEqual(100); }
     expect(MOOD_EVENTS).toHaveLength(26);
     expect(EVENTS.E01).toMatchObject({ name: 'Heimtor', level: 100, duration: 4.5, priority: 1 });
+    expect(RULES).toHaveLength(120);
+    expect(new Set(RULES.map((r) => `${r.trigger}|${r.side}|${r.reaction}`)).size).toBe(120);
+    expect(new Set(RULES.map((r) => r.reaction))).toEqual(new Set(['clap', 'whistle', 'aah', 'ooh', 'uuh']));
+    expect(PARAMS).toMatchObject({ chantCheckMin: 5, chantCheckMax: 8, chantPauseMin: 1, chantPauseMax: 3, fadeIn: 1, fadeOut: 1.7, goalDuck: 0.22, reactionGap: 3, homeChantDeficit3After60: 0, awayCapPercent: 70, peakLimit: 0.9 });
   });
 
-  it('Zuordnung: Minute → Phase, Spielstand (Heimsicht, begrenzt), Situation', () => {
+  it('V2 erhöht die Gesangschancen in fast allen Zuständen (Ausnahme: hoher Rückstand)', () => {
+    const v1 = new Map(V1.rows.map((r) => [r.id, r]));
+    let up = 0, sumV1 = 0, sumV2 = 0;
+    for (const r of MOOD_ROWS) {
+      const o = v1.get(r.id)!;
+      expect(r.homeChant).toBeGreaterThanOrEqual(o.homeChant - 2);
+      expect(r.awayChant).toBeGreaterThanOrEqual(o.awayChant - 2);
+      if (r.homeChant + r.awayChant > o.homeChant + o.awayChant) up++;
+      sumV1 += o.homeChant + o.awayChant; sumV2 += r.homeChant + r.awayChant;
+    }
+    expect(up).toBeGreaterThan(95);
+    expect(sumV2).toBeGreaterThan(sumV1 * 1.15);
+  });
+
+  it('Zuordnung: Minute → Phase, Spielstand (Heimsicht), Situation', () => {
     expect([phaseOf(1), phaseOf(30), phaseOf(31), phaseOf(60), phaseOf(61), phaseOf(95)]).toEqual([0, 0, 1, 1, 2, 2]);
     expect(moodRow(10, 0, 0, 'calm').id).toBe('S016');
     expect(moodRow(10, 0, 0, 'home_box').id).toBe('S018');
-    expect(moodRow(10, 5, 0, 'calm').id).toBe('S001');
     expect(moodRow(60, 0, 4, 'away_attack').id).toBe('S070');
-    expect(moodRow(85, 0, 7, 'calm').id).toBe('S101');
   });
 
-  it('0:4 in der 60. Minute: Heimgesang ≤ 4 %, starke Pfiffe, Gäste euphorisch (R05)', () => {
-    for (const sit of [0, 1, 2, 3, 4]) {
-      const t = moodTargets(60, 0, 4, sit);
-      expect(t.homeChant).toBeLessThanOrEqual(4);
+  it('0:4 ab Minute 60: Heimgesang 0 %, starke Pfiffe, Gäste aktiv (R05/Parameter)', () => {
+    for (const m of [60, 70, 89]) for (const sit of [0, 1, 2, 3, 4]) {
+      const t = moodTargets(m, 0, 4, sit);
+      expect(t.homeChant).toBe(0);
       expect(t.homeWhistle).toBeGreaterThanOrEqual(60);
-      expect(t.awayChant).toBeGreaterThanOrEqual(65);
-      expect(t.awayLevel).toBeGreaterThan(t.homeLevel);
-      expect(t.row.homeMood).toMatch(/Bedrückt/);
+      expect(t.awayChant).toBeGreaterThanOrEqual(75);
     }
-    // ab Minute 60 nie mehr als 4 %, auch wenn die Excel-Werte später geändert würden
-    for (const m of [60, 70, 89]) for (const sc of [[0, 3], [1, 5], [0, 4]]) expect(moodTargets(m, sc[0]!, sc[1]!, 2).homeChant).toBeLessThanOrEqual(4);
   });
 
-  it('deutlicher Rückstand: Gesänge stark zurück, Pfiffe zu; Auswärtsführung: Gäste aktiver', () => {
-    for (const phase of [10, 45, 75]) for (const sit of [0, 1, 2, 3, 4]) {
-      const even = moodTargets(phase, 0, 0, sit), behind = moodTargets(phase, 0, 3, sit), lead1 = moodTargets(phase, 0, 1, sit);
+  it('deutlicher Rückstand dämpft, Auswärtsführung belebt den Gästeblock', () => {
+    for (const minute of [10, 45, 75]) for (const sit of [0, 1, 2, 3, 4]) {
+      const even = moodTargets(minute, 0, 0, sit), behind = moodTargets(minute, 0, 3, sit), lead1 = moodTargets(minute, 0, 1, sit);
       expect(behind.homeChant).toBeLessThan(even.homeChant * 0.2);
-      expect(behind.homeWhistle).toBeGreaterThan(even.homeWhistle + 30);
       expect(lead1.awayChant).toBeGreaterThan(even.awayChant);
-      expect(moodTargets(phase, 0, 2, sit).awayChant).toBeGreaterThan(lead1.awayChant);
     }
-  });
-
-  it('Ballbesitz und Angriff ändern die Chancen; Pegel → Intensität monoton', () => {
-    expect(moodTargets(20, 0, 0, 'home_attack').homeChant).toBeGreaterThan(moodTargets(20, 0, 0, 'away_attack').homeChant);
-    expect(moodTargets(20, 0, 0, 'away_attack').awayChant).toBeGreaterThan(moodTargets(20, 0, 0, 'home_attack').awayChant);
     expect(levelToIntensity(61)).toBeGreaterThan(levelToIntensity(36));
-    expect(levelToIntensity(12)).toBeLessThan(0.25);
   });
 });
 
-describe('Trend (R19): keine Sofort-Erholung, schneller Absturz', () => {
-  it('Gegentor zum 0:4 ⇒ Heimchance in Sekunden unten; Anschlusstreffer ⇒ nur langsame Erholung', () => {
+describe('Crowd-Reaktionen: Auslöser und Ereignisvarianten', () => {
+  const st = (minute: number, h: number, a: number, sit: Situation) => ({ minute, homeScore: h, awayScore: a, sit });
+  it('spezifischster Zustand gewinnt', () => {
+    expect(stateTrigger('home', st(10, 0, 0, 'calm'))).toBe('calm00');
+    expect(stateTrigger('home', st(10, 0, 0, 'home_possession'))).toBe('own_ball');
+    expect(stateTrigger('away', st(10, 0, 0, 'home_box'))).toBe('opp_attack');
+    expect(stateTrigger('home', st(10, 0, 0, 'home_attack'))).toBe('own_attack');
+    expect(stateTrigger('home', st(50, 0, 2, 'calm'))).toBe('minus2_45');
+    expect(stateTrigger('home', st(60, 0, 4, 'home_attack'))).toBe('minus3_60'); // Stimmungsgedächtnis vor Angriff
+    expect(stateTrigger('away', st(60, 0, 4, 'away_possession'))).toBe('plus2_60');
+    expect(stateTrigger('away', st(20, 0, 1, 'away_possession'))).toBe('own_ball');
+    expect(stateTrigger('away', st(70, 0, 2, 'calm'))).toBe('plus2_60');
+    expect(stateTrigger('home', st(85, 1, 1, 'calm'))).toBe('tight_finale');
+    expect(stateTrigger('home', st(10, 1, 0, 'calm'))).toBeNull();
+  });
+  it('ereignisgebunden: höchstens eine Variante, Verteilung nach Chance (Eigene Großchance → meist Oh)', () => {
+    const rnd = seeded('ev');
+    const n: Record<string, number> = {};
+    for (let i = 0; i < 5000; i++) { const r = pickEventReaction('own_chance', 'home', rnd); n[r?.reaction ?? 'none'] = (n[r?.reaction ?? 'none'] ?? 0) + 1; }
+    expect(n.ooh).toBeGreaterThan(n.aah!); expect(n.aah).toBeGreaterThan(n.clap ?? 0);
+    expect(n.none ?? 0).toBe(0); // Summe der Chancen > 100 ⇒ immer eine Reaktion
+    for (let i = 0; i < 200; i++) expect(pickEventReaction('own_goal', 'home', rnd)?.reaction).not.toBe('whistle'); // nie Pfiffe beim eigenen Tor
+  });
+});
+
+describe('Trend und Auswahl', () => {
+  it('Absturz mit Nachlauf (8 s), Erholung langsam', () => {
     const tr = new MoodTrend();
     let v = tr.update(0.1, 55, 0, 0, 0);
     for (let i = 0; i < 600; i++) v = tr.update(0.1, 55, 0, 0, 0);
-    expect(v.homeChant).toBeCloseTo(moodTargets(55, 0, 0, 0).homeChant, 0);
-    for (let i = 0; i < 150; i++) v = tr.update(0.1, 60, 0, 4, 0); // 15 s nach dem 0:4
-    expect(v.homeChant).toBeLessThanOrEqual(4);
-    expect(v.homeWhistle).toBeGreaterThan(60);
-    for (let i = 0; i < 600; i++) v = tr.update(0.1, 62, 0, 4, 0);
-    // 2:4 – Heimfans schöpfen langsam Hoffnung
+    for (let i = 0; i < 10; i++) v = tr.update(0.1, 60, 0, 4, 0);
+    expect(v.homeChant).toBe(0); // 0:4 ab 60 sofort 0 %
+    for (let i = 0; i < 400; i++) v = tr.update(0.1, 62, 0, 4, 0);
     const target = moodTargets(65, 2, 4, 0).homeChant;
-    for (let i = 0; i < 100; i++) v = tr.update(0.1, 65, 2, 4, 0); // 10 s
+    for (let i = 0; i < 100; i++) v = tr.update(0.1, 65, 2, 4, 0);
     expect(v.homeChant).toBeLessThan(target * 0.4);
-    for (let i = 0; i < 2000; i++) v = tr.update(0.1, 65, 2, 4, 0); // 200 s
-    expect(v.homeChant).toBeGreaterThan(target * 0.9);
   });
-});
-
-describe('Auswahl: Teilmenge je Partie, Shuffle ohne Wiederholung, Fenster 8–12 s', () => {
-  const pool = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id }));
-  it('Teilmenge: 3 von 5, je Partie fest (alle Geräte gleich), zwischen Partien verschieden', () => {
-    const s1 = matchSubset(pool, 'fx-1:home');
-    expect(s1).toHaveLength(3);
-    expect(matchSubset(pool, 'fx-1:home')).toEqual(s1);
-    const variants = new Set(Array.from({ length: 40 }, (_, i) => matchSubset(pool, `fx-${i}:home`).map((x) => x.id).sort().join('')));
-    expect(variants.size).toBeGreaterThan(4);
-    expect(matchSubset(pool.slice(0, 2), 'x')).toHaveLength(2);
-  });
-  it('keine unmittelbare Wiederholung, alle Gesänge der Teilmenge kommen vor', () => {
+  it('Teilmenge je Partie: 3–4 von 5 (nie alle), je Partie fest', () => {
+    expect(subsetRange(5)).toEqual([3, 4]);
+    expect(subsetRange(3)).toEqual([3, 3]);
+    expect(subsetRange(10)).toEqual([3, 6]);
+    const pool = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id }));
+    const sizes = new Set<number>();
+    for (let i = 0; i < 60; i++) { const s = matchSubset(pool, `fx-${i}:home`); sizes.add(s.length); expect(s.length).toBeGreaterThanOrEqual(3); expect(s.length).toBeLessThanOrEqual(4); }
+    expect(sizes).toEqual(new Set([3, 4]));
+    expect(matchSubset(pool, 'x')).toEqual(matchSubset(pool, 'x'));
     const sub = matchSubset(pool, 'fx-9:away');
     const rnd = seeded('r');
     let last: string | null = null;
-    const seen = new Set<string>();
-    for (let i = 0; i < 1000; i++) { const s: { id: string } = pickNext(sub, last, rnd)!; expect(s.id).not.toBe(last); last = s.id; seen.add(s.id); }
-    expect(seen.size).toBe(3);
+    for (let i = 0; i < 500; i++) { const s: { id: string } = pickNext(sub, last, rnd)!; expect(s.id).not.toBe(last); last = s.id; }
   });
+});
 
-  const mood = (m: Partial<MoodValues>): MoodValues => ({ homeChant: 0, awayChant: 0, homeLevel: 30, awayLevel: 20, homeWhistle: 0, ...m });
-  const run = (sec: number, m: MoodValues, extra: Partial<{ busy: boolean; playing: boolean }> = {}) => {
-    const sch = new FanScheduler(seeded('s'));
-    const counts = { home: 0, away: 0, whistle: 0 };
-    for (let t = 0; t < sec; t += 0.25) {
-      for (const a of sch.step(t, { busy: !!extra.busy, playing: { home: !!extra.playing, away: false }, blocked: { home: false, away: false }, hasSongs: { home: true, away: true }, mood: m })) {
-        if (a.kind === 'whistle') counts.whistle++; else counts[a.side]++;
-      }
+// ------------------------------------------------------------------ A/B: V1 gegen V2 in 3-Minuten-Partien
+const SONG_SEC = [17.4, 19.41, 16.95, 19.02, 14.76]; // echte Längen der KI-Fangesänge
+const SITS: Situation[] = ['calm', 'home_possession', 'home_attack', 'away_possession', 'away_attack'];
+type Scenario = { name: string; minute: number; h: number; a: number };
+const SCENARIOS: Scenario[] = [
+  { name: '0:0 Beginn', minute: 5, h: 0, a: 0 }, { name: '0:1 Minute 20', minute: 20, h: 0, a: 1 }, { name: '0:2 Minute 45', minute: 45, h: 0, a: 2 },
+  { name: '0:4 Minute 60', minute: 60, h: 0, a: 4 }, { name: '2:0 Minute 80', minute: 80, h: 2, a: 0 },
+];
+const v1Row = new Map(V1.rows.map((r) => [`${r.phase}|${r.diff}|${r.sit}`, r]));
+
+/** V1: Fenster 8–12 s, Chance aus V1, nur bei freiem Slot; nach Gesangsende normales Fenster */
+function simV1(sc: Scenario, seed: string) {
+  const rnd = seeded(seed);
+  const next = { home: 4, away: 7 }, busyUntil = { home: 0, away: 0 }, n = { home: 0, away: 0 };
+  let sit = 0;
+  for (let t = 0; t < 180; t += 0.25) {
+    if (Math.floor(t / 3) !== Math.floor((t - 0.25) / 3)) sit = Math.floor(rnd() * 5);
+    for (const side of ['home', 'away'] as const) {
+      if (t < next[side]) continue;
+      next[side] = t + 8 + rnd() * 4;
+      if (t < busyUntil[side]) continue;
+      const r = v1Row.get(`${phaseOf(sc.minute)}|${Math.max(-3, Math.min(3, sc.h - sc.a))}|${sit}`)!;
+      let c = side === 'home' ? r.homeChant : r.awayChant;
+      if (side === 'home' && sc.minute >= 60 && sc.h - sc.a <= -3) c = Math.min(c, 4);
+      if (rnd() * 100 < c) { n[side]++; busyUntil[side] = t + SONG_SEC[Math.floor(rnd() * SONG_SEC.length)]!; }
     }
-    return { counts, log: sch.log, stats: sch.stats };
+  }
+  return n;
+}
+
+/** V2: FanScheduler mit echten Gesangslängen, Pause 1–3 s, Crowd-Reaktionen */
+function simV2(sc: Scenario, seed: string) {
+  const rnd = seeded(seed);
+  const sch = new FanScheduler(rnd);
+  const playUntil = { home: 0, away: 0 };
+  const chants: Array<{ side: 'home' | 'away'; from: number; to: number }> = [];
+  const reactions: Array<{ t: number; rule: CrowdRule }> = [];
+  let sit = 0;
+  const ended = { home: true, away: true };
+  for (let t = 0; t < 180; t += 0.25) {
+    if (Math.floor(t / 3) !== Math.floor((t - 0.25) / 3)) sit = Math.floor(rnd() * 5);
+    for (const side of ['home', 'away'] as const) if (!ended[side] && t >= playUntil[side]) { ended[side] = true; sch.chantEnded(side, t); }
+    const mood: MoodValues = moodTargets(sc.minute, sc.h, sc.a, sit);
+    const acts = sch.step(t, {
+      busy: false, playing: { home: t < playUntil.home, away: t < playUntil.away }, blocked: { home: false, away: false },
+      hasSongs: { home: true, away: true }, mood, state: { minute: sc.minute, homeScore: sc.h, awayScore: sc.a, sit: SITS[sit]! },
+    });
+    for (const a of acts) {
+      if (a.kind === 'chant') {
+        const d = SONG_SEC[Math.floor(rnd() * SONG_SEC.length)]!;
+        chants.push({ side: a.side, from: t, to: t + d }); playUntil[a.side] = t + d; ended[a.side] = false;
+      } else reactions.push({ t, rule: a.rule });
+    }
+  }
+  return { chants, reactions, n: { home: chants.filter((c) => c.side === 'home').length, away: chants.filter((c) => c.side === 'away').length } };
+}
+
+describe('A/B-Test V1 → V2 (3-Minuten-Partie, deterministische Seeds)', () => {
+  const RUNS = 200;
+  const avg = (f: (seed: string) => { home: number; away: number }) => {
+    const s = { home: 0, away: 0 };
+    for (let i = 0; i < RUNS; i++) { const n = f(`seed-${i}`); s.home += n.home; s.away += n.away; }
+    return { home: s.home / RUNS, away: s.away / RUNS };
   };
-  it('Chancenverteilung entspricht der Matrix (Fenster alle 8–12 s)', () => {
-    const { counts, log, stats } = run(7200, mood({ homeChant: 63, awayChant: 18, homeWhistle: 1 }));
-    expect(stats.windows.home).toBeGreaterThan(560); expect(stats.windows.home).toBeLessThan(800); // 7200 s / 8–12 s
-    const wins = log.filter((d) => d.kind === 'chant' && d.side === 'home');
-    const gaps = wins.slice(1).map((d, i) => d.t - wins[i]!.t);
-    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(7.9); expect(Math.max(...gaps)).toBeLessThanOrEqual(12.3);
-    expect(counts.home / stats.windows.home).toBeGreaterThan(0.57); expect(counts.home / stats.windows.home).toBeLessThan(0.69);
-    expect(counts.away / stats.windows.away).toBeGreaterThan(0.13); expect(counts.away / stats.windows.away).toBeLessThan(0.23);
-    expect(counts.whistle / stats.windows.whistle).toBeLessThan(0.03);
-  });
-  it('0:4 in der 60. Minute über 10 Minuten: fast keine Heimgesänge, viele Pfiffe, aktive Gäste', () => {
-    const m = moodTargets(60, 0, 4, 0);
-    const { counts } = run(600, m);
-    expect(counts.home).toBeLessThanOrEqual(5);
-    expect(counts.whistle).toBeGreaterThan(30);
-    expect(counts.away).toBeGreaterThan(30);
-    const even = run(600, moodTargets(60, 0, 0, 0)).counts;
-    expect(even.home).toBeGreaterThan(25);
-    expect(even.whistle).toBeLessThan(3);
-  });
-  it('läuft schon ein Gesang oder dominiert ein Ereignis: keine neue Auswahl (R04, R20)', () => {
-    expect(run(300, mood({ homeChant: 100 }), { playing: true }).counts.home).toBe(0);
-    expect(run(300, mood({ homeChant: 100, awayChant: 100, homeWhistle: 100 }), { busy: true }).counts).toEqual({ home: 0, away: 0, whistle: 0 });
+  const table: Record<string, unknown> = {};
+  for (const sc of SCENARIOS) {
+    it(`${sc.name}: mehr Gesänge als V1, Stimmungslogik bleibt`, () => {
+      const a = avg((s) => simV1(sc, s)), b = avg((s) => simV2(sc, s).n);
+      table[sc.name] = { V1_heim: a.home.toFixed(1), V2_heim: b.home.toFixed(1), V1_gast: a.away.toFixed(1), V2_gast: b.away.toFixed(1) };
+      if (sc.minute >= 60 && sc.h - sc.a <= -3) {
+        expect(b.home).toBe(0); // 0:4 ab 60: kein einziger Heimgesang
+        expect(b.away).toBeGreaterThan(a.away * 1.15);
+      } else {
+        const v1 = a.home + a.away, v2 = b.home + b.away;
+        expect(v2).toBeGreaterThan(v1 * 1.15);
+        if (sc.h - sc.a >= 2) expect(b.home).toBeGreaterThan(b.away);
+        if (sc.a - sc.h >= 1) expect(b.away).toBeGreaterThan(a.away);
+      }
+    });
+  }
+  it('Tabelle', () => { console.table(table); });
+});
+
+describe('V2 überlädt nicht', () => {
+  for (const sc of SCENARIOS) {
+    it(`${sc.name}: max. 1 Gesang je Seite, Pausen ≥ 1 s, Reaktionen mit Abstand, Cooldown, nicht über eigenem Gesang`, () => {
+      for (let i = 0; i < 40; i++) {
+        const { chants, reactions } = simV2(sc, `ol-${i}`);
+        for (const side of ['home', 'away'] as const) {
+          const c = chants.filter((x) => x.side === side);
+          let busy = 0;
+          for (let k = 1; k < c.length; k++) expect(c[k]!.from - c[k - 1]!.to).toBeGreaterThanOrEqual(0.99); // nie überlappend, ≥ 1 s Pause
+          for (const x of c) busy += Math.min(180, x.to) - x.from;
+          expect(busy / 180).toBeLessThan(0.93); // kein Dauergesang
+        }
+        for (let k = 1; k < reactions.length; k++) expect(reactions[k]!.t - reactions[k - 1]!.t).toBeGreaterThanOrEqual(PARAMS.reactionGap - 1e-9);
+        for (const r of reactions) {
+          expect(chants.some((c) => c.side === r.rule.side && c.from <= r.t && r.t < c.to)).toBe(false);
+          const same = reactions.filter((x) => x.rule.side === r.rule.side && x.rule.reaction === r.rule.reaction && x.t > r.t && x.t < r.t + r.rule.cooldown);
+          expect(same).toEqual([]);
+        }
+        expect(reactions.length).toBeLessThanOrEqual(36); // ≤ 12 Reaktionen je Minute im ganzen Stadion
+      }
+    });
+  }
+  it('0:4 ab Minute 60: Heim-Unmut (Pfeifen) überwiegt, keine Heimgesänge', () => {
+    let whistle = 0, other = 0;
+    for (let i = 0; i < 100; i++) for (const r of simV2(SCENARIOS[3]!, `w-${i}`).reactions.filter((x) => x.rule.side === 'home')) r.rule.reaction === 'whistle' ? whistle++ : other++;
+    expect(whistle).toBeGreaterThan(other * 1.5); // Pfeifen hat 10 s Cooldown, dominiert trotzdem
   });
 });

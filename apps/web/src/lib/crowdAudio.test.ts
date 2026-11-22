@@ -165,7 +165,7 @@ describe.skipIf(!wa)('Stadionatmosphäre – hörbare Pegelunterschiede (Offline
     const b = await ctx.startRendering() as unknown as AudioBuffer;
     let peak = 0;
     for (let ch = 0; ch < 2; ch++) for (const v of b.getChannelData(ch)) peak = Math.max(peak, Math.abs(v));
-    expect(peak).toBeLessThan(1);
+    expect(peak).toBeLessThan(0.91); // Audio-Peak-Limiter 0,9 (Parameter)
     expect(peak).toBeGreaterThan(0.2);
   }, 60_000);
 
@@ -179,7 +179,7 @@ describe.skipIf(!wa)('Stadionatmosphäre – hörbare Pegelunterschiede (Offline
     expect(await m.reaction('chance', 'away')).toBeNull();
     m.goal('away');
     expect(m.debug().sources).toBe(before);
-    expect(m.missing()).toEqual(['ambience', 'clap', 'attack', 'chance', 'whistle', 'concede', 'goal']);
+    expect(m.missing()).toEqual(['ambience', 'clap', 'attack', 'chance', 'whistle', 'concede', 'goal', 'aah', 'ooh', 'uuh']);
     expect(m.roars).toBe(0);
   });
 });
@@ -216,19 +216,9 @@ describe('Auswahl ohne Wiederholung', () => {
     expect(p.pick(buildLibrary('/', []), ['goal'], 'x')).toBeNull();
   });
 
-  it('Klatschen nur situativ (Ecke, langer Ballbesitz, Schlussphase), mit Sperrzeit', async () => {
-    const { clapTrigger } = await import('./fanAudio');
-    const base = { sit: 'home_possession' as const, side: 'home' as const, ownPossessionSec: 3, corner: false, sinceLastClap: 60 };
-    expect(clapTrigger(base)).toBe(false);
-    expect(clapTrigger({ ...base, corner: true })).toBe(true);
-    expect(clapTrigger({ ...base, ownPossessionSec: 12 })).toBe(true);
-    expect(clapTrigger({ ...base, sit: 'finale' })).toBe(true);
-    expect(clapTrigger({ ...base, corner: true, sinceLastClap: 10 })).toBe(false);
-  });
-
   it('Bibliothek enthält keine Fangesänge (Gesänge nur als Vereins-Upload)', async () => {
     const { CROWD_CATEGORIES } = await import('./crowdLibrary');
-    expect(CROWD_CATEGORIES.map((c) => c.key)).toEqual(['ambience', 'clap', 'attack', 'chance', 'whistle', 'concede', 'goal']);
+    expect(CROWD_CATEGORIES.map((c) => c.key)).toEqual(['ambience', 'clap', 'attack', 'chance', 'whistle', 'concede', 'goal', 'aah', 'ooh', 'uuh']);
   });
 });
 

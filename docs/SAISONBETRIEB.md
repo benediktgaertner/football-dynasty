@@ -298,3 +298,39 @@ Ersetzt die Abschnitte zu `synthChant.ts`, generischen Gesängen und synthetisch
 - **Rhythmisches Klatschen** ist jetzt eine situative Reaktion statt eines Gesangs: Es setzt bei einer Ecke der eigenen Mannschaft, nach mehr als 10 s eigenem Ballbesitz (Heim) und in der knappen Schlussphase ein. Danach gilt eine Sperrzeit von 25 s, für die Gäste von 50 s.
 - **Gästeblock** mit Upload singt etwas häufiger als bisher (Grundrate 0,10 statt 0,07 je Sekunde).
 - **Tests:** Playwright prüft KI ohne Uploads (keine Gesangsspur), Heimspiel mit Heim-Upload (nur Heimverein), Auswärtsspiel mit Gäste-Upload (nur Gastverein), ruhige Phasen, Tore und eine leere Bibliothek. Alle 18 Tests sind grün.
+
+## Update (ohne SQL): Fanstimmung V2 (Excel „Fan- & Audio-Matrix V2“)
+
+Grundlage ist `docs/Football_Dynasty_Fanstimmung_Audio_Matrix_V2.xlsx`. Sie wird mit `python3 scripts/import-fan-matrix.py` nach `apps/web/src/lib/fanMoodData.ts` eingelesen: 105 Zustände, 26 Ereignisse, 120 Crowd-Reaktionen, 20 Audio-Parameter.
+
+**Gesänge**
+- Es werden ausschließlich die bereitgestellten KI-Fangesänge (`public/audio/chants/ai`) bzw. die Vereins-Uploads verwendet.
+- Je Partie ist eine Teilmenge von 3–6 Gesängen aktiv (bei 5 vorhandenen: 3–4), auf allen Geräten gleich.
+- Prüffenster alle 5–8 s, nach dem Ende eines Gesangs 1–3 s Pause. Je Seite läuft höchstens 1 Gesang.
+- Einblenden 1 s, Ausblenden 1,7 s. Ein Tor duckt laufende Gesänge in 0,22 s weg.
+- Bei 0:4 ab Minute 60 liegt die Heim-Gesangschance bei 0 % (Parameter).
+- Stimmungsnachlauf 8 s; die zurückliegende Fangruppe erholt sich nur langsam.
+- Der Gästeblock erreicht höchstens 70 % des Heimpegels. Der Begrenzer kappt Spitzen bei 0,9.
+
+**Crowd-Reaktionen (Klatschen, Pfeifen, Ah, Oh, Uh)**
+- Eigenes Prüffenster je Seite alle 5–8 s. Die Regel richtet sich nach dem spezifischsten Zustand: −3 ab 60′ > Schlussphase ±1 > Angriff > −2 ab 45′ > +2 ab 60′ > Ballbesitz > ruhiges 0:0.
+- Abspielregeln:
+  - Cooldown je Reaktionsart
+  - mindestens 3 s Abstand zwischen zwei Reaktionen
+  - höchstens eine Reaktion je Fenster
+  - nicht über den eigenen Gesang
+- Großchance, Tor und Gegentor lösen je genau eine gewichtete Variante aus (ereignisgebunden).
+- Die Ereignisse E01–E26 steuern weiterhin Priorität und Ducking.
+- Das bisherige feste Klatsch-/Anfeuerungsverhalten ist ersetzt.
+
+**Audiodateien**
+- **Wichtig:** Für die Reaktionen braucht es echte Aufnahmen in den Ordnern `clap`, `whistle`, `aah`, `ooh` und `uuh` (siehe CROWD_AUDIO.md). Die Excel nennt dafür `claps_short.mp3`, `boo_whistle_crowd.mp3`, `crowd_aah.mp3`, `crowd_ooh.mp3` und `crowd_uuh.mp3`.
+- Ohne diese Dateien bleiben die Reaktionen in Produktion stumm. Das Tonmenü (🎚) meldet sie dann als fehlend.
+
+**Tests**
+- `fanMood.test.ts`:
+  - Datenimport
+  - A/B-Vergleich V1/V2 über 200 deterministische 3-Minuten-Partien je Szenario
+  - Prüfung auf Überladung (Pausen, Abstände, Cooldowns)
+- `crowdAudio.test.ts`: Übergänge und Spitzenpegel.
+- Playwright „KI-Fankurve“: u. a. 0:4 in der 60. Minute.

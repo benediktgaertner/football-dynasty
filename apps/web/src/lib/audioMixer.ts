@@ -17,7 +17,8 @@
  */
 import { stadiumSound } from './stadiumSound';
 import { intensityGain } from './crowdModel';
-import { CROWD_CATEGORIES, Picker, crowdStatus, emptyLibrary, urlOf, type CrowdCategory, type CrowdFile, type CrowdLibrary } from './crowdLibrary';
+import { CROWD_CATEGORIES, Picker, REACTION_SOURCES, crowdStatus, emptyLibrary, urlOf, type CrowdCategory, type CrowdFile, type CrowdLibrary } from './crowdLibrary';
+import { PARAMS } from './fanMood';
 
 export type Channel = 'ambience' | 'home' | 'away' | 'events' | 'sfx' | 'anthem';
 export const CHANNELS: Array<{ key: Channel; label: string }> = [
@@ -48,7 +49,7 @@ type Side = 'home' | 'away';
 
 /** Lautstärke je Kategorie (nach Lautheitsangleich) */
 const CAT_VOL: Record<CrowdCategory, number> = {
-  ambience: 0.75, clap: 0.7, attack: 0.75, chance: 0.85, whistle: 0.6, concede: 0.55, goal: 1,
+  ambience: 0.75, clap: 0.7, attack: 0.75, chance: 0.85, whistle: 0.6, concede: 0.55, goal: 1, aah: 0.8, ooh: 0.85, uuh: 0.8,
 };
 
 export interface PlayOpts {
@@ -253,7 +254,8 @@ export class StadiumMixer {
     const mix = Math.max(home, Math.min(1, away * 0.9 * this.awayScale));
     if (this.lvl.ambience) ramp(this.lvl.ambience.gain, this.base * 1.3 * intensityGain(0.15 + 0.85 * mix));
     if (this.lvl.home) ramp(this.lvl.home.gain, Math.min(1.4, this.base * 1.6) * 10 ** ((-12 + 12 * Math.min(1, home / 0.65)) / 20));
-    if (this.lvl.away) ramp(this.lvl.away.gain, Math.min(1.4, this.base * 1.6) * 0.5 * this.awayScale * 10 ** ((-12 + 12 * Math.min(1, away / 0.5)) / 20));
+    // Gästeblock: höchstens 70 % des Heimpegels (Audio-Parameter), auch bei großem Gästeanteil
+    if (this.lvl.away) ramp(this.lvl.away.gain, Math.min(1.4, this.base * 1.6) * Math.min(PARAMS.awayCapPercent / 100, 0.5 * this.awayScale) * 10 ** ((-12 + 12 * Math.min(1, away / 0.5)) / 20));
     if (this.bedHome && this.bedAway) {
       ramp(this.bedHome.g.gain, this.base * 0.95 * intensityGain(home));
       ramp(this.bedHome.f.frequency, 480 + 1000 * home);
@@ -365,20 +367,25 @@ export class StadiumMixer {
     const away = side === 'away';
     return this.play(this.urlOf(f), {
       channel: 'events', side, id: f.id, category: cat, at: o.at,
-      volume: (o.volume ?? 1) * CAT_VOL[cat] * (f.gain ?? 1) * (away ? 0.75 * this.awayScale : 1) * Math.min(1.3, this.base * 1.6),
-      maxSec: o.maxSec, celebrate: o.celebrate, fadeIn: cat === 'goal' || cat === 'chance' ? 0.04 : 0.2, fadeOut: 0.8,
+      volume: (o.volume ?? 1) * CAT_VOL[cat] * (f.gain ?? 1) * (away ? Math.min(PARAMS.awayCapPercent / 100, 0.75 * this.awayScale) : 1) * Math.min(1.3, this.base * 1.6),
+      maxSec: o.maxSec, celebrate: o.celebrate, fadeIn: cat === 'goal' || cat === 'chance' || cat === 'ooh' || cat === 'aah' || cat === 'uuh' ? 0.04 : 0.2,
+      fadeOut: Math.min(0.8, (o.maxSec ?? 3) * 0.35),
       rate: 0.97 + Math.random() * 0.06,
     });
   }
 
-  /** Torjubel: Heimtor = ganze Kurve, Auswärtstor = Gästeblock kurz sehr laut, Heimfans enttäuscht */
+  /** Crowd-Reaktion der Matrix V2 (Klatschen, Pfeifen, Ah, Oh, Uh) – echte Aufnahme der Kategorie bzw. nächstverwandte */
+  crowdReaction(kind: keyof typeof REACTION_SOURCES, side: Side, o: { volume?: number; maxSec?: number; celebrate?: boolean; at?: number } = {}): Promise<Track | null> {
+    const cat = REACTION_SOURCES[kind]?.find((c) => this.has(c));
+    if (!cat) return Promise.resolve(null);
+    return this.reaction(cat, side, { ...o, cooldownMs: 0 });
+  }
+
+  /** Torjubel (höchstens 4,5 s laut Parametern, endet spätestens beim Wiederanstoß); Gästeblock kurz sehr laut */
   goal(side: Side) {
     if (!this.active) return;
-    if (side === 'home') void this.reaction('goal', 'home', { celebrate: true, maxSec: 8 });
-    else {
-      void this.reaction('goal', 'away', { celebrate: true, maxSec: 4.5, volume: 1.25 });
-      void this.reaction('concede', 'home', { celebrate: true, maxSec: 5, volume: 0.8 });
-    }
+    if (side === 'home') void this.reaction('goal', 'home', { celebrate: true, maxSec: PARAMS.goalMax + 1 });
+    else void this.reaction('goal', 'away', { celebrate: true, maxSec: PARAMS.goalMax, volume: 1.25 });
   }
 
   /** Wiederanstoß: laufenden Torjubel sofort weich beenden (keine überlappenden Jubel) */
@@ -607,7 +614,8 @@ function curve(v: number, up: boolean): Float32Array {
 let clipCurve: Float32Array<ArrayBuffer> | null = null;
 function softClip(): Float32Array<ArrayBuffer> {
   if (clipCurve) return clipCurve;
-  const n = 4096, c = new Float32Array(n), k = 0.7, h = 0.98 - k;
+  // Obergrenze = Audio-Peak-Limiter aus den Parametern (0,9)
+  const lim = Math.min(0.99, PARAMS.peakLimit), n = 4096, c = new Float32Array(n), k = lim * 0.7, h = lim - k;
   for (let i = 0; i < n; i++) {
     const x = (i / (n - 1)) * 2 - 1, a = Math.abs(x);
     c[i] = Math.sign(x) * (a <= k ? a : k + h * Math.tanh((a - k) / h));

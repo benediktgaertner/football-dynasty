@@ -15,6 +15,14 @@ Mindestens die genannte Anzahl, besser mehr (mehr Abwechslung). Zielformat der R
 | `whistle/` | Pfeifkonzert und Buhrufe gegen den Gegner | 3 | 2–8 s |
 | `concede/` | Stöhnen/Raunen nach Gegentor oder knapp vergebener Chance | 2 | 2–6 s |
 | `goal/` | Torjubel ab dem Moment des Tores | 3 | 4–10 s |
+| `clap/` → z. B. `claps_short.mp3` | kurzes synchrones Klatschen (auch als Crowd-Reaktion) | 3 | 1–3 s reichen, längere werden gekürzt |
+| `whistle/` → z. B. `boo_whistle_crowd.mp3` | Pfeifkonzert/Unmut der Fans (kein Schiedsrichterpfiff!) | 3 | 1–4 s |
+| `aah/` → z. B. `crowd_aah.mp3` | kurzes gespanntes „Ah“ | 2 | 0,6–2 s |
+| `ooh/` → z. B. `crowd_ooh.mp3` | kollektives „Oh“ (knapp vorbei) | 2 | 0,6–2 s |
+| `uuh/` → z. B. `crowd_uuh.mp3` | tiefes „Uh“/Raunen | 2 | 0,6–2 s |
+
+Die fünf Reaktionsarten der Matrix V2 (Klatschen, Pfeifen, Ah, Oh, Uh) nutzen diese Ordner. Fehlt „Ah/Oh/Uh“, wird ersatzweise die
+nächstverwandte echte Aufnahme genommen (Ah → `attack`, Oh → `chance`, Uh → `concede`); fehlt auch die, bleibt es stumm.
 
 Zu jeder Datei gehört eine Lizenzangabe, gleichnamig als `.json`:
 

@@ -179,7 +179,8 @@ test.describe('Torjubel', () => {
       const s2 = await snd(page);
       expect(s2.busy).toBe(false);
       await page.waitForTimeout(2500);
-      expect((await snd(page)).home).toBeLessThan(0.86);
+      // (nur, wenn inzwischen kein weiteres Tor gefallen ist – 1 Spielminute ≈ 2 s)
+      if ((await st(page)).events.filter((e: any) => e.type === 'goal').length === 1) expect((await snd(page)).home).toBeLessThan(0.86);
       // Spiel läuft ohne zusätzliche Verzögerung weiter
       // (nur messen, wenn in der Messzeit kein weiteres Tor fällt)
       const g0 = (await st(page)).events.filter((e: any) => e.type === 'goal').length;
@@ -217,9 +218,10 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
     const rec = await record(page, 25_000);
     const s = rec[rec.length - 1]!.s;
     const last = rec[rec.length - 1]!.m;
-    // Teilmenge: 3 von 5 Gesängen je Seite, ausschließlich aus dem KI-Pool
+    // Teilmenge: 3–4 von 5 Gesängen je Seite (Parameter 3–6, nie alle), ausschließlich aus dem KI-Pool
     for (const side of ['home', 'away'] as const) {
-      expect(s.songs[side]).toHaveLength(3);
+      expect(s.songs[side].length).toBeGreaterThanOrEqual(3);
+      expect(s.songs[side].length).toBeLessThanOrEqual(4);
       for (const id of s.songs[side]) expect(id).toMatch(/^ai_/);
     }
     const chants = (s.played as any[]).filter((p) => p.kind === 'chant');
@@ -250,7 +252,7 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
     await start(page, 'home-noanthem-ai', undefined, '&ts=0.25');
     await page.waitForTimeout(3000);
     await page.evaluate(() => (window as any).__fd.force({ minute: 60, homeScore: 0, awayScore: 4 }));
-    await page.waitForTimeout(6000); // Grundstimmung fällt schnell (≈ 4 s)
+    await page.waitForTimeout(20_000); // Stimmungsnachlauf 8 s: Heimkurve sofort still, Gästeblock steigt mit
     const before = await snd(page);
     const p0 = before.played.length;
     const tStart = (before.decisions as any[]).at(-1)?.t ?? 0;
@@ -259,15 +261,17 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
     const after = (s.played as any[]).slice(p0);
     const homeChants = after.filter((p) => p.kind === 'chant' && p.side === 'home').length;
     const awayChants = after.filter((p) => p.kind === 'chant' && p.side === 'away').length;
-    const whistles = after.filter((p) => p.kind === 'whistle').length;
+    const whistles = after.filter((p) => p.kind === 'reaction' && p.side === 'home' && p.reaction === 'whistle').length;
+    const homeCheer = after.filter((p) => p.kind === 'reaction' && p.side === 'home' && p.reaction === 'clap').length;
     console.log({ homeChants, awayChants, whistles, mood: s.mood });
     expect(s.mood.row).toMatch(/^(S066|S067|S068|S069|S070)$/); // Mitte, Heim −3 oder mehr
-    expect(s.mood.homeChant).toBeLessThanOrEqual(4);
-    expect(homeChants).toBeLessThanOrEqual(1);
-    expect(whistles).toBeGreaterThanOrEqual(3);
+    expect(s.mood.homeChant).toBe(0);
+    expect(homeChants).toBe(0); // V2: 0 % Heimgesang bei ≥ 3 Toren Rückstand ab Minute 60
+    expect(whistles).toBeGreaterThanOrEqual(3); // Pfeifkonzert (Crowd-Reaktion C092)
+    expect(whistles).toBeGreaterThan(homeCheer);
     expect(awayChants).toBeGreaterThanOrEqual(2);
     const dec = (s.decisions as any[]).filter((d) => d.kind === 'chant' && d.t > tStart);
-    for (const d of dec.filter((d) => d.side === 'home')) expect(d.chance).toBeLessThanOrEqual(4);
+    for (const d of dec.filter((d) => d.side === 'home')) expect(d.chance).toBe(0);
     for (const d of dec.filter((d) => d.side === 'away')) expect(d.chance).toBeGreaterThanOrEqual(60);
     // bedrückte Heimkulisse, Gästeblock lauter als die Heimfans
     const tail = rec.slice(-20);
@@ -306,17 +310,18 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
     expect(all.length).toBeGreaterThan(3);
     const avg = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
     console.log('laut', loud.length ? avg(loud).toFixed(2) : '-', loud.length, 'ruhig', quiet.length ? avg(quiet).toFixed(2) : '-', quiet.length);
-    if (loud.length > 3 && quiet.length > 3) expect(avg(loud) - avg(quiet)).toBeGreaterThan(0.12);
-    if (loud.length) expect(Math.max(...loud)).toBeGreaterThan(0.6); // Angriff hörbar lauter
+    // Grundpegel laut Matrix (Ruhig 36 / Angriff 43 / Strafraum + Zuschlag) – kleinere Stufen, dazu situative Ah/Oh/Uh
+    if (loud.length > 3 && quiet.length > 3) expect(avg(loud) - avg(quiet)).toBeGreaterThan(0.03);
+    if (loud.length) expect(Math.max(...loud)).toBeGreaterThan(0.5); // Angriff lauter als ruhige Phase (Matrix-Grundpegel)
     // Pegel bewegt sich deutlich mit dem Spiel (keine Dauerkulisse)
     const h = rec.map((r) => r.m.crowd[0] as number);
-    expect(Math.max(...h) - Math.min(...h)).toBeGreaterThan(0.2);
+    expect(Math.max(...h) - Math.min(...h)).toBeGreaterThan(0.1); // Stufen laut Matrix, Spitzen über Ah/Oh/Uh
     // ruhige Phase: Heimintensität deutlich unter Torjubel-Niveau
-    expect(Math.min(...all)).toBeLessThan(0.5);
+    expect(Math.min(...all)).toBeLessThan(0.6); // Torjubel = 1,0
   });
 
   test('Auswärtsspiel: eigene MP3 im Gästeblock, KI-Heimverein mit KI-Fangesängen', async ({ page }) => {
-    await start(page, 'away-chants-ai', 'token-away-xxxx');
+    await start(page, 'away-chants-ai', 'token-away-xxxx', '&ts=0.5');
     const rec = await record(page, 40_000);
     const h = rec[rec.length - 1]!.m.history as Array<{ id: string; channel: string; category: string }>;
     const away = h.filter((x) => x.channel === 'away');
@@ -339,13 +344,14 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
       const m = await mix(page);
       const goalClip = m.history.filter((x: any) => x.category === 'goal');
       expect(goalClip.length).toBe(1);
-      if (side === 'away') expect(m.tracks.events.some((t: string) => t.startsWith('concede:'))).toBe(true);
+      // Crowd-Reaktion „Gegentor“ der Heimfans (Pfeifen/Ah/Oh/Uh) bzw. „Eigenes Tor“ geschichtet über den Jubel
+      if (side === 'away') expect((m.history as any[]).some((h) => ['whistle', 'aah', 'ooh', 'uuh'].includes(h.category))).toBe(true);
       // während des Jubels keine Fangesänge
       expect(m.tracks.home).toEqual([]);
       await page.waitForFunction(() => (window as any).__fd.state().events.some((e: any, i: number, a: any[]) => e.type === 'kickoff' && e.side && a.findIndex((x: any) => x.type === 'goal') < i), null, { timeout: 8000 });
       await page.waitForTimeout(1000);
       const after = await mix(page);
-      expect(after.tracks.events.filter((t: string) => t.startsWith('goal:') || t.startsWith('concede:'))).toEqual([]);
+      expect(after.tracks.events.filter((t: string) => t.startsWith('goal:'))).toEqual([]);
       expect(after.celebrating).toBe(0);
     });
   }
@@ -358,7 +364,7 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
     await page.waitForFunction(() => (window as any).__fd.state().status === 'running');
     await page.waitForTimeout(8000);
     const m = await mix(page);
-    expect(m.missing.length).toBe(7);
+    expect(m.missing.length).toBe(10);
     expect(m.ambienceSample).toBe(false);
     // keine Bibliotheksreaktionen ohne Dateien; gesungen wird nur aus dem KI-Pool
     expect((m.history as any[]).filter((x) => x.category !== 'chant')).toEqual([]);

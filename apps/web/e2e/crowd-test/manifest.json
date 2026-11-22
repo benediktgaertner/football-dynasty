@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-11-21T18:13:22.431Z",
+  "generated": "2026-11-22T11:01:12.215Z",
   "files": [
     {
       "id": "ambience_test_ambience_1",
@@ -137,6 +137,66 @@
       "category": "goal",
       "file": "goal/goal_test_goal_2.mp3",
       "duration": 6.03,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "aah_test_aah_1",
+      "category": "aah",
+      "file": "aah/aah_test_aah_1.mp3",
+      "duration": 1.65,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "aah_test_aah_2",
+      "category": "aah",
+      "file": "aah/aah_test_aah_2.mp3",
+      "duration": 1.65,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "ooh_test_ooh_1",
+      "category": "ooh",
+      "file": "ooh/ooh_test_ooh_1.mp3",
+      "duration": 1.65,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "ooh_test_ooh_2",
+      "category": "ooh",
+      "file": "ooh/ooh_test_ooh_2.mp3",
+      "duration": 1.65,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "uuh_test_uuh_1",
+      "category": "uuh",
+      "file": "uuh/uuh_test_uuh_1.mp3",
+      "duration": 1.62,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "uuh_test_uuh_2",
+      "category": "uuh",
+      "file": "uuh/uuh_test_uuh_2.mp3",
+      "duration": 1.54,
       "gain": 1,
       "credit": "Testsignal (generiert)",
       "license": "TEST – nur automatische Tests",
