@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "e2e": "playwright test -c e2e/playwright.config.ts",
-    "e2e:auth": "playwright test -c e2e/auth/playwright.config.ts"
+    "e2e:auth": "playwright test -c e2e/auth/playwright.config.ts",
+    "e2e:club": "playwright test -c e2e/clubpage/playwright.config.ts"
   },
   "dependencies": {
     "@fd/shared": "0.1.0",

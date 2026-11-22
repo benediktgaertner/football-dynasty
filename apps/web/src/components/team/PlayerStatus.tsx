@@ -8,13 +8,14 @@ export function statusText(s?: PlayerStatus): string {
   if (!s) return '';
   const parts: string[] = [];
   if (s.injury) parts.push(`Verletzt (${s.injury.kind}) bis ${new Date(s.injury.until).toLocaleDateString('de-DE')} · ${s.injury.matches === 1 ? '1 Spiel' : `${s.injury.matches} Spiele`}`);
-  for (const d of s.suspensions) parts.push(`${CARD[d.card ?? 'red'] ?? 'Sperre'} (${SCOPE[d.scope] ?? d.scope}): noch ${d.remaining} ${d.remaining === 1 ? 'Spiel' : 'Spiele'}`);
+  for (const d of Array.isArray(s.suspensions) ? s.suspensions : []) parts.push(`${CARD[d.card ?? 'red'] ?? 'Sperre'} (${SCOPE[d.scope] ?? d.scope}): noch ${d.remaining} ${d.remaining === 1 ? 'Spiel' : 'Spiele'}`);
   if (s.unavailable) parts.push('Nicht einsatzberechtigt');
   return parts.join(' · ');
 }
 
 /** Kleines Symbol (Spielfeld, Bank) */
-export function StatusIcon({ s }: { s?: PlayerStatus }) {
+export function StatusIcon({ s: raw }: { s?: PlayerStatus }) {
+  const s = raw && { ...raw, suspensions: Array.isArray(raw.suspensions) ? raw.suspensions : [] };
   if (!s || (!s.injury && s.suspensions.length === 0)) return null;
   const icon = s.injury ? '✚' : s.suspensions.some((d) => d.card === 'red') ? '🟥' : s.suspensions.some((d) => d.card === 'second_yellow') ? '🟨🟥' : '🟨';
   return (

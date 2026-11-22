@@ -7,6 +7,7 @@ import { PlayerPage } from './pages/PlayerPage';
 import { AuthProvider, useAuth } from './lib/auth';
 import { missingEnv } from './lib/supabase';
 import { Button, Card, Shell, Spinner } from './components/ui';
+import { PageErrorBoundary } from './components/ErrorBoundary';
 import { Account } from './pages/Account';
 import { ClubEditor } from './pages/ClubEditor';
 import { Draft } from './pages/Draft';
@@ -54,6 +55,7 @@ function RoutedInner() {
   }
   if (!profile) return session.user.is_anonymous ? <Welcome /> : <ProfileSetup />;
   return (
+    <PageErrorBoundary>
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/konto" element={<Account />} />
@@ -78,6 +80,7 @@ function RoutedInner() {
       <Route path="/w/:worldId/entwicklung/:clubId" element={<Development />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </PageErrorBoundary>
   );
 }
 

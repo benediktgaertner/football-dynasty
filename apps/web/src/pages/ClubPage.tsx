@@ -9,13 +9,24 @@ import { StatusIcon } from '../components/team/PlayerStatus';
 import { Button, Card, ErrorBanner, Pill, Shell, Spinner } from '../components/ui';
 import { seasonApi, type ClubProfileData } from '../lib/seasonApi';
 
+function fmtDate(d: string | null | undefined, short = false): string {
+  const t = d ? new Date(d + 'T12:00:00') : null;
+  if (!t || Number.isNaN(t.getTime())) return '–';
+  return short ? t.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) : t.toLocaleDateString('de-DE');
+}
+
 /** Vereinsprofil (Scouting): Kader, Stärke, zuletzt bekannte Formation, Ergebnisse – ohne geheime Taktikdaten */
 export function ClubPage() {
   const { worldId = '', clubId = '' } = useParams();
   const navigate = useNavigate();
   const [c, setC] = useState<ClubProfileData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { setC(null); void seasonApi.clubProfile(clubId).then(setC).catch((e) => setError((e as Error).message)); }, [clubId]);
+  useEffect(() => {
+    let alive = true;
+    setC(null); setError(null);
+    seasonApi.clubProfile(clubId).then((d) => { if (alive) setC(d); }).catch((e) => { if (alive) setError((e as Error).message); });
+    return () => { alive = false; };
+  }, [clubId]);
   if (!c) return <Shell><WorldNav worldId={worldId} />{error ? <ErrorBanner error={error} /> : <Spinner label="Vereinsprofil wird geladen …" />}</Shell>;
   const gf = c.results.reduce((s, r) => s + r.gf, 0), ga = c.results.reduce((s, r) => s + r.ga, 0);
   const w = c.results.filter((r) => r.gf > r.ga).length, d = c.results.filter((r) => r.gf === r.ga).length, l = c.results.length - w - d;
@@ -30,7 +41,7 @@ export function ClubPage() {
           <div className="min-w-0 flex-1">
             <p className="display text-sm font-semibold uppercase tracking-[0.2em] text-gold">{c.country?.name}{c.league ? ` · ${c.league}` : ''}</p>
             <h1 className="display text-4xl font-extrabold uppercase leading-none">{c.club.name}</h1>
-            <p className="mt-1 text-cream-dim">{c.founded ? `gegr. ${c.founded} · ` : ''}{c.stadium ? `${c.stadium.name} (${c.stadium.capacity.toLocaleString('de-DE')} Plätze)` : ''}{c.manager ? ` · Manager: ${c.manager}` : ' · KI-Verein'}</p>
+            <p className="mt-1 text-cream-dim">{c.founded ? `gegr. ${c.founded} · ` : ''}{c.stadium ? `${c.stadium.name} (${(c.stadium.capacity ?? 0).toLocaleString('de-DE')} Plätze)` : ''}{c.manager ? ` · Manager: ${c.manager}` : ' · KI-Verein'}</p>
           </div>
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="rounded-xl bg-olive-800 p-3"><p className="text-[11px] uppercase text-cream-dim">Tabelle</p><p className="display text-3xl font-bold">{c.position ? `${c.position}.` : '–'}</p></div>
@@ -64,9 +75,9 @@ export function ClubPage() {
         <div className="space-y-4">
           <Card>
             <h2 className="display mb-1 text-xl font-bold uppercase">Zuletzt bekannte Formation</h2>
-            {c.formation ? (
+            {c.formation && c.formation.slots.length > 0 ? (
               <>
-                <p className="mb-2 text-sm text-cream-dim">{c.formation.code} · Startelf vom {new Date(c.formation.date + 'T12:00:00').toLocaleDateString('de-DE')}</p>
+                <p className="mb-2 text-sm text-cream-dim">{c.formation.code} · Startelf vom {fmtDate(c.formation.date)}</p>
                 <div className="pitch-stripes relative mx-auto w-full max-w-[340px] overflow-hidden rounded-2xl border-2 border-cream/50" style={{ aspectRatio: '68 / 100' }}>
                   <div className="absolute inset-x-[20%] bottom-0 h-[16%] border-2 border-b-0 border-cream/40" />
                   <div className="absolute inset-x-[20%] top-0 h-[16%] border-2 border-t-0 border-cream/40" />
@@ -91,7 +102,7 @@ export function ClubPage() {
             <ul className="space-y-1 text-sm">
               {c.results.map((r) => (
                 <li key={r.id} className="flex items-center gap-2">
-                  <span className="w-12 text-xs text-cream-dim">{new Date(r.date + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}</span>
+                  <span className="w-12 text-xs text-cream-dim">{fmtDate(r.date, true)}</span>
                   <span className="w-4 text-xs font-bold text-cream-dim">{r.home ? 'H' : 'A'}</span>
                   <ClubLogo club={r.opponent} size={18} /><ClubLink club={r.opponent} className="min-w-0 flex-1 truncate" />
                   <span className={`display w-14 text-right font-bold tabular-nums ${r.gf > r.ga ? 'text-emerald-300' : r.gf < r.ga ? 'text-danger' : ''}`}>{r.gf}:{r.ga}{r.pf !== null ? '*' : ''}</span>

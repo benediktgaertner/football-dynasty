@@ -1,3 +1,4 @@
+import { normalizeClubProfile } from './clubProfile';
 import { annualSalary } from '@fd/shared';
 import { ApiError } from './api';
 import { matchServerUrl } from './matchApi';
@@ -197,7 +198,7 @@ export const seasonApi = {
   pendingReview: (worldId: string) => rpc<{ slot_id: string; label: string; date: string } | null>('pending_review', { p_world: worldId }),
   markReviewSeen: (worldId: string, slotId: string) => rpc<void>('mark_review_seen', { p_world: worldId, p_slot: slotId }),
   playerProfile: (playerId: string) => rpc<PlayerProfileData>('player_profile', { p_player: playerId }),
-  clubProfile: (clubId: string) => rpc<ClubProfileData>('club_profile', { p_club: clubId }),
+  clubProfile: (clubId: string) => rpc<unknown>('club_profile', { p_club: clubId }).then(normalizeClubProfile),
   seasonCalendar: (worldId: string) => rpc<{ today: string; fixtures: CalendarFixture[] }>('season_calendar', { p_world: worldId }),
   topTransfers: (worldId: string, scope: 'league' | 'world', window: 1 | 2 | null) =>
     rpc<{ scope: string; window: number; league: string | null; rows: TopTransfer[] }>('top_transfers', { p_world: worldId, p_scope: scope, p_window: window }),

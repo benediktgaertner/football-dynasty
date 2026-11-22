@@ -11,7 +11,7 @@ const chrome = process.env.PW_CHROME ?? (existsSync('/usr/bin/google-chrome') ? 
 export default defineConfig({
   testDir: '.',
   testMatch: /.*\.spec\.ts/,
-  testIgnore: ['auth/**'],
+  testIgnore: ['auth/**', 'clubpage/**'],
   timeout: 90_000,
   fullyParallel: false,
   workers: 1,
