@@ -12,7 +12,7 @@ select set_config('fd.world', :'world', false);
 select set_config('fd.seasons', :'seasons', false);
 drop table if exists tests.longrun;
 create table tests.longrun(n int, season_year int, players int, free_agents int, avg_ovr_l1 numeric, avg_ovr_all numeric, avg_age numeric,
-  avg_salary numeric, payroll_total bigint, neg_balance_clubs int, min_balance bigint, max_balance bigint, min_squad int, ec_winners int, slots int, secs numeric);
+  avg_salary numeric, payroll_total bigint, neg_balance_clubs int, min_balance bigint, max_balance bigint, min_squad int, ec_winners int, slots int, secs numeric, ovr_l2 numeric, ovr_l3 numeric, xi_top numeric, xi_bottom numeric, xi_l2 numeric);
 
 do $$
 declare
@@ -55,7 +55,12 @@ begin
       (select max(balance) from public.finances where world_id = w),
       (select min(cnt) from (select count(*) cnt from public.players p join public.clubs c on c.id = p.club_id where c.world_id = w and not c.amateur and not p.retired and c.association_code = (select country_code from public.career_worlds where id = w) group by c.id) q),
       (select count(*) from public.season_awards where world_id = w and kind in ('cl_winner', 'el_winner')),
-      i, round(extract(epoch from clock_timestamp() - t0)::numeric, 1);
+      i, round(extract(epoch from clock_timestamp() - t0)::numeric, 1),
+      (select avg(p.overall) from public.players p join public.competition_entries e on e.club_id = p.club_id join public.competitions k on k.id = e.competition_id where k.season_id = (select current_season_id from public.career_worlds where id = w) and k.kind = 'league' and k.tier = 2),
+      (select avg(p.overall) from public.players p join public.competition_entries e on e.club_id = p.club_id join public.competitions k on k.id = e.competition_id where k.season_id = (select current_season_id from public.career_worlds where id = w) and k.kind = 'league' and k.tier = 3),
+      (select max(public.fd_league1_xi(e.club_id)) from public.competition_entries e join public.competitions k on k.id = e.competition_id where k.season_id = (select current_season_id from public.career_worlds where id = w) and k.kind = 'league' and k.tier = 1),
+      (select min(public.fd_league1_xi(e.club_id)) from public.competition_entries e join public.competitions k on k.id = e.competition_id where k.season_id = (select current_season_id from public.career_worlds where id = w) and k.kind = 'league' and k.tier = 1),
+      (select avg(public.fd_league1_xi(e.club_id)) from public.competition_entries e join public.competitions k on k.id = e.competition_id where k.season_id = (select current_season_id from public.career_worlds where id = w) and k.kind = 'league' and k.tier = 2);
   end loop;
 end $$;
 

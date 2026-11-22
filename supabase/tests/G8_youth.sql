@@ -34,7 +34,7 @@ select public.fd_youth_season_change(:'world', :'season');
 select avg(p.overall) as avg18, count(*) as n18 from public.players p join public.clubs c on c.id = p.club_id
   where c.world_id = :'world' and c.control = 'ai' and c.association_code = (select country_code from public.career_worlds where id = :'world') and p.age = 18 \gset
 select tests.assert(:n18 >= 5 and :avg18 between 66 and 78, 'KI-Jugend mit 18: Ø-OVR ' || round(:avg18::numeric, 1) || ' (' || :n18 || ' Spieler)');
-select tests.assert(not exists (select 1 from public.youth_players where age = 16 and overall > 50), '16-Jährige starten unter OVR 50');
+select tests.assert(not exists (select 1 from public.youth_players where age = 16 and overall > 60), '16-Jährige starten unter OVR 60');
 
 -- Menschlicher Verein: Ausbau nur in der Vorbereitung, Kosten, Rechte
 set role authenticated;

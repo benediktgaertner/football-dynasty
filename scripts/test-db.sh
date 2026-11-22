@@ -212,7 +212,7 @@ fi
 # Optional (LONGRUN=1, Saisonen via LONGRUN_SEASONS, Standard 10): Langzeittest
 if [ "${LONGRUN:-0}" = "1" ]; then
   check "Z0_longrun.sql" -v world="$WORLD" -v seasons="${LONGRUN_SEASONS:-10}" -f "$ROOT/supabase/tests/Z0_longrun.sql"
-  run -c "select n, season_year as jahr, players spieler, free_agents fa, round(avg_ovr_l1,2) ovr_l1, round(avg_ovr_all,2) ovr_alle, round(avg_age,2) alter, round(avg_salary) gehalt, neg_balance_clubs neg_konten, min_balance, max_balance, min_squad, ec_winners, slots termine, secs sek from tests.longrun order by n" || true
+  run -c "select n, season_year as jahr, players spieler, free_agents fa, round(avg_ovr_l1,2) ovr_l1, round(avg_ovr_all,2) ovr_alle, round(avg_age,2) alter, round(avg_salary) gehalt, neg_balance_clubs neg_konten, min_balance, max_balance, min_squad, round(ovr_l2,2) ovr_l2, round(ovr_l3,2) ovr_l3, round(xi_top,1) xi_top, round(xi_bottom,1) xi_schwach, round(xi_l2,1) xi_l2 from tests.longrun order by n" || true
 fi
 [ "${KEEP_DB:-0}" = "1" ] && echo "WORLD=$WORLD" || rm -rf "$PDIR"
 exit $status

@@ -33,7 +33,7 @@ export function Youth() {
         <Card>
           <p className="display text-sm font-semibold uppercase tracking-[0.2em] text-gold">Jugendabteilung</p>
           <p className="display mt-1 text-5xl font-extrabold" data-testid="youth-level">Stufe {data.level}<span className="text-2xl text-cream-dim"> / {data.max_level}</span></p>
-          <p className="mt-2 text-sm text-cream-dim">Jedes Jahr kommen {data.intake} neue Talente (16 Jahre). Sie entwickeln sich schnell und sind mit 18 meist bei OVR 65–80; höhere Stufen bringen mehr und bessere Talente.</p>
+          <p className="mt-2 text-sm text-cream-dim">Jedes Jahr kommen {data.intake} neue Talente (16 Jahre). Sie entwickeln sich schnell und sind mit 18 meist bei OVR 65–80; höhere Stufen und höhere Ligen bringen mehr und bessere Talente.</p>
           <Button className="mt-3 w-full" variant="secondary" disabled={!canUpgrade} busy={busy === 'up'} data-testid="youth-upgrade"
             onClick={() => { if (confirm(`Jugendabteilung auf Stufe ${data.level + 1} für ${formatEuro(data.upgrade_cost ?? 0)} ausbauen?`)) act('up', () => seasonApi.youthUpgrade(worldId), 'Jugendabteilung ausgebaut.'); }}>
             {data.upgrade_cost == null ? 'Höchste Stufe erreicht' : `Ausbau (${formatEuro(data.upgrade_cost)})`}
