@@ -1,0 +1,44 @@
+# Stadionaufnahmen – Quellen und Lizenzen
+
+Diese Aufnahmen werden für die Stadionatmosphäre der KI-Fans verwendet (bearbeitet: geschnitten, Lautheit angeglichen).
+
+- `ambience/ambience_maracana_kulisse.mp3` – _vk (freesound.org) – Maracanã, Flamengo vs. Botafogo, CC0 1.0, https://freesound.org/s/369420/
+- `ambience/ambience_mestalla_gesang.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `ambience/ambience_mestalla_mittel.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `ambience/ambience_mestalla_nach_tor.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `clap/clap_augsburg_klatschen_1.mp3` – georgeradio (freesound.org) – FC Augsburg Fans, CC BY-NC 4.0, https://freesound.org/s/368484/
+- `clap/clap_augsburg_klatschen_17.mp3` – georgeradio (freesound.org) – FC Augsburg Fans, CC BY-NC 4.0, https://freesound.org/s/368484/
+- `clap/clap_augsburg_klatschen_24.mp3` – georgeradio (freesound.org) – FC Augsburg Fans, CC BY-NC 4.0, https://freesound.org/s/368484/
+- `clap/clap_augsburg_klatschen_9.mp3` – georgeradio (freesound.org) – FC Augsburg Fans, CC BY-NC 4.0, https://freesound.org/s/368484/
+- `clap/clap_mestalla_klatschen_103.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `clap/clap_mestalla_klatschen_111.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `clap/clap_mestalla_klatschen_290.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `clap/clap_mestalla_klatschen_298.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `clap/clap_mestalla_klatschen_95.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `clap/clap_wimbledon_applaus.mp3` – Dan_AudioFile (freesound.org) – Wimbledon Stadium, CC BY 4.0, https://freesound.org/s/654084/
+- `attack/attack_mestalla_anschwellen_165.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `attack/attack_mestalla_anschwellen_231.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `attack/attack_mestalla_anschwellen_252.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `chance/chance_mestalla_aufschrei_140.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `chance/chance_mestalla_aufschrei_168.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `chance/chance_mestalla_aufschrei_228.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `whistle/whistle_mestalla_pfiffe_151.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `whistle/whistle_mestalla_pfiffe_181.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `whistle/whistle_mestalla_pfiffe_187.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `whistle/whistle_mestalla_pfiffe_193.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `whistle/whistle_mestalla_pfiffe_199.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `whistle/whistle_mestalla_pfiffe_205.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `whistle/whistle_mestalla_pfiffe_212.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `whistle/whistle_mestalla_pfiffe_218.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `whistle/whistle_mestalla_pfiffe_223.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `concede/concede_mestalla_raunen_168.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona (bearbeitet: Tiefpass, um 7 % verlangsamt), CC BY-NC 4.0, https://freesound.org/s/260585/
+- `concede/concede_mestalla_raunen_228.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona (bearbeitet: Tiefpass, um 7 % verlangsamt), CC BY-NC 4.0, https://freesound.org/s/260585/
+- `goal/goal_mestalla_jubel_172.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `goal/goal_mestalla_jubel_232.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `goal/goal_mestalla_jubel_253.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `aah/aah_mestalla_ah_140.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `aah/aah_mestalla_ah_150.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `ooh/ooh_mestalla_oh_168.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `ooh/ooh_mestalla_oh_228.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
+- `uuh/uuh_mestalla_uh_140.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona (bearbeitet: Tiefpass, um 7 % verlangsamt), CC BY-NC 4.0, https://freesound.org/s/260585/
+- `uuh/uuh_mestalla_uh_228.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona (bearbeitet: Tiefpass, um 7 % verlangsamt), CC BY-NC 4.0, https://freesound.org/s/260585/

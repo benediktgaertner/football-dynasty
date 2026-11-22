@@ -1,5 +1,406 @@
 {
   "version": 1,
-  "generated": null,
-  "files": []
+  "generated": "2026-11-22T11:58:13.172Z",
+  "files": [
+    {
+      "id": "ambience_maracana_kulisse",
+      "category": "ambience",
+      "file": "ambience/ambience_maracana_kulisse.mp3",
+      "duration": 26.04,
+      "gain": 1,
+      "credit": "_vk (freesound.org) – Maracanã, Flamengo vs. Botafogo",
+      "license": "CC0 1.0",
+      "source": "https://freesound.org/s/369420/"
+    },
+    {
+      "id": "ambience_mestalla_gesang",
+      "category": "ambience",
+      "file": "ambience/ambience_mestalla_gesang.mp3",
+      "duration": 45.04,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "ambience_mestalla_mittel",
+      "category": "ambience",
+      "file": "ambience/ambience_mestalla_mittel.mp3",
+      "duration": 26.54,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "ambience_mestalla_nach_tor",
+      "category": "ambience",
+      "file": "ambience/ambience_mestalla_nach_tor.mp3",
+      "duration": 26.04,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "clap_augsburg_klatschen_1",
+      "category": "clap",
+      "file": "clap/clap_augsburg_klatschen_1.mp3",
+      "duration": 7.03,
+      "gain": 1,
+      "credit": "georgeradio (freesound.org) – FC Augsburg Fans",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/368484/"
+    },
+    {
+      "id": "clap_augsburg_klatschen_17",
+      "category": "clap",
+      "file": "clap/clap_augsburg_klatschen_17.mp3",
+      "duration": 7.03,
+      "gain": 1,
+      "credit": "georgeradio (freesound.org) – FC Augsburg Fans",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/368484/"
+    },
+    {
+      "id": "clap_augsburg_klatschen_24",
+      "category": "clap",
+      "file": "clap/clap_augsburg_klatschen_24.mp3",
+      "duration": 7.03,
+      "gain": 1,
+      "credit": "georgeradio (freesound.org) – FC Augsburg Fans",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/368484/"
+    },
+    {
+      "id": "clap_augsburg_klatschen_9",
+      "category": "clap",
+      "file": "clap/clap_augsburg_klatschen_9.mp3",
+      "duration": 7.03,
+      "gain": 1,
+      "credit": "georgeradio (freesound.org) – FC Augsburg Fans",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/368484/"
+    },
+    {
+      "id": "clap_mestalla_klatschen_103",
+      "category": "clap",
+      "file": "clap/clap_mestalla_klatschen_103.mp3",
+      "duration": 7.03,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "clap_mestalla_klatschen_111",
+      "category": "clap",
+      "file": "clap/clap_mestalla_klatschen_111.mp3",
+      "duration": 7.03,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "clap_mestalla_klatschen_290",
+      "category": "clap",
+      "file": "clap/clap_mestalla_klatschen_290.mp3",
+      "duration": 7.03,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "clap_mestalla_klatschen_298",
+      "category": "clap",
+      "file": "clap/clap_mestalla_klatschen_298.mp3",
+      "duration": 7.03,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "clap_mestalla_klatschen_95",
+      "category": "clap",
+      "file": "clap/clap_mestalla_klatschen_95.mp3",
+      "duration": 7.03,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "clap_wimbledon_applaus",
+      "category": "clap",
+      "file": "clap/clap_wimbledon_applaus.mp3",
+      "duration": 5.64,
+      "gain": 1,
+      "credit": "Dan_AudioFile (freesound.org) – Wimbledon Stadium",
+      "license": "CC BY 4.0",
+      "source": "https://freesound.org/s/654084/"
+    },
+    {
+      "id": "attack_mestalla_anschwellen_165",
+      "category": "attack",
+      "file": "attack/attack_mestalla_anschwellen_165.mp3",
+      "duration": 2.85,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "attack_mestalla_anschwellen_231",
+      "category": "attack",
+      "file": "attack/attack_mestalla_anschwellen_231.mp3",
+      "duration": 3.24,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "attack_mestalla_anschwellen_252",
+      "category": "attack",
+      "file": "attack/attack_mestalla_anschwellen_252.mp3",
+      "duration": 2.43,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "chance_mestalla_aufschrei_140",
+      "category": "chance",
+      "file": "chance/chance_mestalla_aufschrei_140.mp3",
+      "duration": 2.95,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "chance_mestalla_aufschrei_168",
+      "category": "chance",
+      "file": "chance/chance_mestalla_aufschrei_168.mp3",
+      "duration": 4.13,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "chance_mestalla_aufschrei_228",
+      "category": "chance",
+      "file": "chance/chance_mestalla_aufschrei_228.mp3",
+      "duration": 4.44,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "whistle_mestalla_pfiffe_151",
+      "category": "whistle",
+      "file": "whistle/whistle_mestalla_pfiffe_151.mp3",
+      "duration": 4.55,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "whistle_mestalla_pfiffe_181",
+      "category": "whistle",
+      "file": "whistle/whistle_mestalla_pfiffe_181.mp3",
+      "duration": 4.55,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "whistle_mestalla_pfiffe_187",
+      "category": "whistle",
+      "file": "whistle/whistle_mestalla_pfiffe_187.mp3",
+      "duration": 4.55,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "whistle_mestalla_pfiffe_193",
+      "category": "whistle",
+      "file": "whistle/whistle_mestalla_pfiffe_193.mp3",
+      "duration": 4.55,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "whistle_mestalla_pfiffe_199",
+      "category": "whistle",
+      "file": "whistle/whistle_mestalla_pfiffe_199.mp3",
+      "duration": 4.55,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "whistle_mestalla_pfiffe_205",
+      "category": "whistle",
+      "file": "whistle/whistle_mestalla_pfiffe_205.mp3",
+      "duration": 4.55,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "whistle_mestalla_pfiffe_212",
+      "category": "whistle",
+      "file": "whistle/whistle_mestalla_pfiffe_212.mp3",
+      "duration": 4.55,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "whistle_mestalla_pfiffe_218",
+      "category": "whistle",
+      "file": "whistle/whistle_mestalla_pfiffe_218.mp3",
+      "duration": 4.55,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "whistle_mestalla_pfiffe_223",
+      "category": "whistle",
+      "file": "whistle/whistle_mestalla_pfiffe_223.mp3",
+      "duration": 4.55,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "concede_mestalla_raunen_168",
+      "category": "concede",
+      "file": "concede/concede_mestalla_raunen_168.mp3",
+      "duration": 4.44,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona (bearbeitet: Tiefpass, um 7 % verlangsamt)",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "concede_mestalla_raunen_228",
+      "category": "concede",
+      "file": "concede/concede_mestalla_raunen_228.mp3",
+      "duration": 4.78,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona (bearbeitet: Tiefpass, um 7 % verlangsamt)",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "goal_mestalla_jubel_172",
+      "category": "goal",
+      "file": "goal/goal_mestalla_jubel_172.mp3",
+      "duration": 7.24,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "goal_mestalla_jubel_232",
+      "category": "goal",
+      "file": "goal/goal_mestalla_jubel_232.mp3",
+      "duration": 7.13,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "goal_mestalla_jubel_253",
+      "category": "goal",
+      "file": "goal/goal_mestalla_jubel_253.mp3",
+      "duration": 8.75,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "aah_mestalla_ah_140",
+      "category": "aah",
+      "file": "aah/aah_mestalla_ah_140.mp3",
+      "duration": 2.53,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "aah_mestalla_ah_150",
+      "category": "aah",
+      "file": "aah/aah_mestalla_ah_150.mp3",
+      "duration": 1.65,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "ooh_mestalla_oh_168",
+      "category": "ooh",
+      "file": "ooh/ooh_mestalla_oh_168.mp3",
+      "duration": 2.53,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "ooh_mestalla_oh_228",
+      "category": "ooh",
+      "file": "ooh/ooh_mestalla_oh_228.mp3",
+      "duration": 2.53,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "uuh_mestalla_uh_140",
+      "category": "uuh",
+      "file": "uuh/uuh_mestalla_uh_140.mp3",
+      "duration": 2.53,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona (bearbeitet: Tiefpass, um 7 % verlangsamt)",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "uuh_mestalla_uh_228",
+      "category": "uuh",
+      "file": "uuh/uuh_mestalla_uh_228.mp3",
+      "duration": 2.53,
+      "gain": 1,
+      "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona (bearbeitet: Tiefpass, um 7 % verlangsamt)",
+      "license": "CC BY-NC 4.0",
+      "source": "https://freesound.org/s/260585/"
+    }
+  ]
 }

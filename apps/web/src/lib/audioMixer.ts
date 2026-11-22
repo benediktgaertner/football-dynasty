@@ -405,7 +405,7 @@ export class StadiumMixer {
       tracks: { ambience: ids('ambience'), home: ids('home'), away: ids('away'), events: ids('events') },
       ambienceSample: this.ambSample, missing: this.missing(),
       duck: { home: this.duckSide.home?.gain.value ?? 1, away: this.duckSide.away?.gain.value ?? 1, ambience: this.ambDuck?.gain.value ?? 1 },
-      history: this.history.slice(-60),
+      history: this.history.slice(-300),
       library: Object.fromEntries(CROWD_CATEGORIES.map((c) => [c.key, this.lib.byCategory.get(c.key)?.length ?? 0])),
     };
   }
@@ -516,7 +516,7 @@ export class StadiumMixer {
     this.sources.add(src);
     this.playing.add(entry);
     if (entry.id) this.history.push({ id: entry.id, channel: entry.channel, category: entry.category, t: at });
-    if (this.history.length > 200) this.history.splice(0, 100);
+    if (this.history.length > 600) this.history.splice(0, 300);
     src.onended = () => { this.sources.delete(src); this.playing.delete(entry); };
     return entry;
   }

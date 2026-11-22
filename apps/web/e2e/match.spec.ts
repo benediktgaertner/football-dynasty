@@ -356,8 +356,20 @@ test.describe('KI-Fankurve (echte Stadionaufnahmen)', () => {
     });
   }
 
+  test('echte Stadionaufnahmen (Produktion): alle Kategorien vorhanden, Rauschen und Reaktionen spielen', async ({ page }) => {
+    await start(page, 'home-noanthem-ai', undefined, `&ts=0.3&crowd=${encodeURIComponent('/audio/crowd/manifest.json')}`);
+    const rec = await record(page, 25_000);
+    const m = rec[rec.length - 1]!.m;
+    expect(m.missing).toEqual([]);
+    expect(m.ambienceSample).toBe(true);
+    const cats = new Set((m.history as any[]).map((h) => h.category));
+    expect(cats.has('ambience')).toBe(true);
+    expect([...cats].some((c) => ['clap', 'whistle', 'aah', 'ooh', 'uuh', 'attack', 'chance'].includes(c))).toBe(true);
+    for (const h of m.history as any[]) if (h.category !== 'chant') expect(h.id).not.toMatch(/_test_/);
+  });
+
   test('ohne Aufnahmen: fehlende Kategorien gemeldet, keine Ersatzgesänge', async ({ page }) => {
-    await page.goto(`/e2e/harness.html?fixture=${encodeURIComponent(fx('home-noanthem-ai'))}&token=token-home-xxxx&server=${encodeURIComponent(SERVER)}&crowd=${encodeURIComponent('/audio/crowd/manifest.json')}`);
+    await page.goto(`/e2e/harness.html?fixture=${encodeURIComponent(fx('home-noanthem-ai'))}&token=token-home-xxxx&server=${encodeURIComponent(SERVER)}&crowd=${encodeURIComponent('/e2e/crowd-empty/manifest.json')}`);
     await page.waitForFunction(() => !!(window as any).__fd?.state().status);
     await waitWalkout(page);
     await page.getByTestId('skip-walkout').click();

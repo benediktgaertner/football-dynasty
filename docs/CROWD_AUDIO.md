@@ -66,3 +66,32 @@ Die Ordner `apps/web/public/audio/crowd/` und `CREDITS.md` werden committet. CRE
 - **Eigene Aufnahmen** im Stadion, z. B. mit dem Handy in Stereo, sind ebenfalls möglich. Angabe dann: `"license": "Eigene Aufnahme"`.
 
 Nicht verwenden: KI-Audiogeneratoren (z. B. ElevenLabs), Ausschnitte aus TV-Übertragungen oder YouTube und Aufnahmen mit Stadionmusik.
+
+## Eingebaut (Stand: Fanstimmung V2)
+
+40 Ausschnitte aus vier Freesound-Aufnahmen; die Herkunft steht in `apps/web/public/audio/crowd/CREDITS.md`.
+
+| Kategorie | Anzahl | Quelle |
+|---|---|---|
+| ambience | 4 | Mestalla (3), Maracanã |
+| clap | 10 | Mestalla (5), FC Augsburg (4), Wimbledon |
+| whistle | 9 | Pfeifkonzert Mestalla |
+| goal | 3 | Mestalla |
+| chance / ooh / aah | 3 / 2 / 2 | Publikumsreaktionen Mestalla |
+| uuh / concede | 2 / 2 | Mestalla, bearbeitet (Tiefpass, um 7 % verlangsamt) |
+| attack | 3 | anschwellende Szenen Mestalla |
+
+**Lizenzen:**
+- Mestalla (vcantos) und FC Augsburg (georgeradio) stehen unter **CC BY-NC 4.0**: nur nicht-kommerzielle Nutzung, mit Namensnennung. Bei einer kommerziellen Nutzung (Werbung, Bezahlinhalte) müssen diese Dateien ersetzt werden.
+- Maracanã (_vk) ist CC0, Wimbledon (Dan_AudioFile) CC BY 4.0.
+
+**Nicht verwendet:**
+- 619065 „soccer crowds“: Laut Freesound CC0, die Datei trägt aber Metadaten eines kommerziellen Archivs (Sounddogs.com). Die Herkunft ist unklar.
+- 528799 (djones, Torjubel) und 846336 (lebertagna, Flamengo): Die Lizenz ließ sich nicht prüfen. Sie werden nach Bestätigung ergänzt.
+
+**Neu erzeugen:**
+
+```bash
+bash scripts/crowd-cuts.sh <ordner-mit-originalen>
+node scripts/crowd-audio.mjs --allow-nc
+```
