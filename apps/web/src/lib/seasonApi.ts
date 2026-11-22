@@ -283,7 +283,18 @@ export const seasonApi = {
   gate: (fixtureId: string) => rpc<{ attendance: number; capacity: number; utilization: number; ticket_price: number; income: number; booked: boolean; home_club_id: string; friendly: boolean } | null>('fixture_gate', { p_fixture: fixtureId }),
   saveStadiumDesign: (worldId: string, name: string, design: import('./matchClient').StadiumDesign) => rpc<{ name: string }>('save_stadium_design', { p_world: worldId, p_name: name, p_design: design }),
   expandStadium: (worldId: string) => rpc<{ capacity: number }>('expand_stadium', { p_world: worldId }),
+  // Jugendabteilung (Migration 0043)
+  youth: (worldId: string) => rpc<YouthOverview>('youth_overview', { p_world: worldId }),
+  youthUpgrade: (worldId: string) => rpc<{ level: number; cost: number }>('youth_upgrade', { p_world: worldId }),
+  youthPromote: (youthId: string) => rpc<{ player_id: string }>('youth_promote', { p_youth: youthId }),
+  youthRelease: (youthId: string) => rpc<{ released: boolean }>('youth_release', { p_youth: youthId }),
 };
+
+export interface YouthPlayer { id: string; name: string; age: number; position: string; overall: number; nationality: string; stars: number; must_decide: boolean }
+export interface YouthOverview {
+  level: number; max_level: number; intake: number; upgrade_cost: number | null; balance: number; status: string; squad_size: number;
+  levels: { level: number; intake: number; cost: number | null }[]; players: YouthPlayer[];
+}
 
 /** Startwert für Gehaltsangebote: gemeinsame Gehaltsformel (Server prüft die echte Forderung) */
 export function estimateSalary(overall: number, age: number): number {
@@ -296,7 +307,7 @@ export const STAGE_LABEL: Record<string, string> = {
 export const TX_LABEL: Record<string, string> = {
   starting_capital: 'Startkapital', stadium_build: 'Stadionbau', stadium_expansion: 'Stadionausbau', draft_purchase: 'Draft', transfer_fee_paid: 'Ablöse gezahlt',
   transfer_fee_received: 'Ablöse erhalten', salary: 'Gehälter', ticket_income: 'Ticketverkauf', match_bonus: 'Spielprämien', placement_prize: 'Platzierungsprämie',
-  sponsor: 'Sponsor', competition_prize: 'Wettbewerbsprämien', stadium_running_cost: 'Stadionbetrieb', adjustment: 'Sonstiges',
+  sponsor: 'Sponsor', competition_prize: 'Wettbewerbsprämien', stadium_running_cost: 'Stadionbetrieb', adjustment: 'Sonstiges', youth_academy: 'Jugendabteilung',
 };
 
 /** Spielerentwicklung (Migration 0023): Bilanz je Spieler und Saison */

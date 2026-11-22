@@ -12,6 +12,7 @@ const ITEMS = [
   { to: 'transfers', label: 'Transfers' },
   { to: 'finanzen', label: 'Finanzen' },
   { to: 'vertraege', label: 'Verträge' },
+  { to: 'jugend', label: 'Jugend' },
   { to: 'fankultur', label: 'Fankultur' },
 ];
 

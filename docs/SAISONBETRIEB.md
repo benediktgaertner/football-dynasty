@@ -395,3 +395,8 @@ Grundlage ist `docs/Football_Dynasty_Fanstimmung_Audio_Matrix_V2.xlsx`. Sie wird
 - Fest eingebaut ist nur noch das Stadionrauschen (`public/audio/crowd`, Kategorie ambience). Frühere eingebaute KI-Gesänge und
   -Reaktionen sind aus der aktiven Konfiguration entfernt: `assets/audio-startpaket/` (zum Hochladen durch den Host) und
   `assets/audio-crowd-archiv/` (alte Reaktionsaufnahmen, nicht mehr ausgeliefert).
+
+## Jugendabteilung und Karriereende (Migration 0043)
+- Zum Saisonwechsel (Trigger auf `career_worlds.current_season_id`, Fehler blockieren den Saisonwechsel nie): Karriereende → Jugend entwickeln (+1 Jahr, Wachstum Richtung Potenzial) → Übernahme in den Profikader → neuer Jahrgang.
+- Menschliche Manager bauen die Jugendabteilung auf der Seite „Jugend“ aus (nur in der Vorbereitung; Buchungsart `youth_academy`). RPCs: `youth_overview`, `youth_upgrade`, `youth_promote`, `youth_release`.
+- Rücknahme: `drop trigger career_worlds_youth_season on public.career_worlds;` stoppt Karriereende und Jugend ab dem nächsten Saisonwechsel; Tabellen bleiben bestehen.

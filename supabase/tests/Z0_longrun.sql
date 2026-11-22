@@ -34,6 +34,7 @@ begin
     while (select status from public.career_worlds where id = w) = 'season' and i < 80 loop
       perform public.fd_begin_slot(w);
       perform tests.finish_slot(w);
+      begin perform public.admin_sweep_world(w); exception when others then raise warning 'Sweep: %', sqlerrm; end; -- Server-Sweep (KI-Training, Entwicklung) wie im Betrieb
       i := i + 1;
     end loop;
     if (select status from public.career_worlds where id = w) <> 'preseason' then

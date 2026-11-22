@@ -23,6 +23,7 @@ import { Contracts } from './pages/Contracts';
 import { LeagueStart } from './pages/LeagueStart';
 import { LeagueSettings } from './pages/LeagueSettings';
 import { Finance } from './pages/Finance';
+import { Youth } from './pages/Youth';
 import { Home } from './pages/Home';
 import { Lobby } from './pages/Lobby';
 import { ProfileSetup, ResetPassword, Welcome } from './pages/Welcome';
@@ -76,6 +77,7 @@ function RoutedInner() {
       <Route path="/w/:worldId/transfers" element={<Transfers />} />
       <Route path="/w/:worldId/finanzen" element={<Finance />} />
       <Route path="/w/:worldId/vertraege" element={<Contracts />} />
+      <Route path="/w/:worldId/jugend" element={<Youth />} />
       <Route path="/w/:worldId/kalender" element={<Calendar />} />
       <Route path="/w/:worldId/uebersicht/:slotId" element={<MatchdayOverview />} />
       <Route path="/w/:worldId/spieler/:playerId" element={<PlayerPage />} />
