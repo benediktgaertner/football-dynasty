@@ -26,4 +26,6 @@ cut M "$M" aah mestalla_ah_140 140.3 142.8; cut M "$M" aah mestalla_ah_150 150.0
 cut M "$M" uuh mestalla_uh_140 140.3 143.0 "$DARK"; cut M "$M" uuh mestalla_uh_228 228.1 231.5 "$DARK"
 cut M "$M" concede mestalla_raunen_228 228.6 233 "$DARK"; cut M "$M" concede mestalla_raunen_168 168.4 172.5 "$DARK"
 cut M "$M" attack mestalla_anschwellen_165 165.3 168.1; cut M "$M" attack mestalla_anschwellen_231 231.3 234.5; cut M "$M" attack mestalla_anschwellen_252 251.8 254.2
+# Applaus (freier Beifall): Wimbledon-Aufnahme, Anfang
+cut W "$W" applause wimbledon_beifall 0.3 5.9
 echo "Fertig: $(find "$R" -name '*.wav' | wc -l) Ausschnitte → $R"

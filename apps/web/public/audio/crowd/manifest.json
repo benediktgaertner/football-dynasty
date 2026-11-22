@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-11-22T11:58:13.172Z",
+  "generated": "2026-11-22T12:30:14.339Z",
   "files": [
     {
       "id": "ambience_maracana_kulisse",
@@ -401,6 +401,16 @@
       "credit": "vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona (bearbeitet: Tiefpass, um 7 % verlangsamt)",
       "license": "CC BY-NC 4.0",
       "source": "https://freesound.org/s/260585/"
+    },
+    {
+      "id": "applause_wimbledon_beifall",
+      "category": "applause",
+      "file": "applause/applause_wimbledon_beifall.mp3",
+      "duration": 5.64,
+      "gain": 1,
+      "credit": "Dan_AudioFile (freesound.org) – Wimbledon Stadium",
+      "license": "CC BY 4.0",
+      "source": "https://freesound.org/s/654084/"
     }
   ]
 }

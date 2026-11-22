@@ -10,6 +10,7 @@ const ITEMS = [
   { to: 'europa', label: 'Europa' },
   { to: 'transfers', label: 'Transfers' },
   { to: 'finanzen', label: 'Finanzen' },
+  { to: 'vertraege', label: 'Verträge' },
   { to: 'fankultur', label: 'Fankultur' },
 ];
 

@@ -7,7 +7,7 @@
  * Bewusst KEINE Fangesänge in der Bibliothek: Gesänge kommen ausschließlich aus den MP3-Uploads der Vereine.
  */
 export type CrowdCategory =
-  | 'ambience' | 'clap' | 'attack' | 'chance' | 'whistle' | 'concede' | 'goal' | 'aah' | 'ooh' | 'uuh';
+  | 'ambience' | 'clap' | 'attack' | 'chance' | 'whistle' | 'concede' | 'goal' | 'aah' | 'ooh' | 'uuh' | 'applause' | 'boo';
 
 export interface CrowdFile {
   id: string;
@@ -40,11 +40,14 @@ export const CROWD_CATEGORIES: Array<{ key: CrowdCategory; label: string; min: n
   { key: 'aah', label: 'Kollektives „Ah“', min: 2, seconds: [0.6, 2], hint: 'kurzes gespanntes Ah (Angriff, Flanke)' },
   { key: 'ooh', label: 'Kollektives „Oh“', min: 2, seconds: [0.6, 2], hint: 'Oh nach knapp vorbei / Parade' },
   { key: 'uuh', label: 'Tiefes „Uh“ / Raunen', min: 2, seconds: [0.6, 2], hint: 'tiefes Raunen, Erschrecken' },
+  { key: 'applause', label: 'Applaus', min: 2, seconds: [1.5, 6], hint: 'freier Beifall nach guter Aktion (nicht rhythmisch)' },
+  { key: 'boo', label: 'Buhrufe', min: 2, seconds: [1.5, 6], hint: '„Buuuh“ gegen die eigene Mannschaft bzw. den Gegner (keine Pfiffe)' },
 ];
 
 /** Crowd-Reaktionen der Matrix V2 → Kategorien (bei fehlender Datei nächstverwandte echte Aufnahme) */
-export const REACTION_SOURCES: Record<'clap' | 'whistle' | 'aah' | 'ooh' | 'uuh', CrowdCategory[]> = {
+export const REACTION_SOURCES: Record<'clap' | 'whistle' | 'aah' | 'ooh' | 'uuh' | 'applause' | 'boo' | 'scream', CrowdCategory[]> = {
   clap: ['clap'], whistle: ['whistle'], aah: ['aah', 'attack'], ooh: ['ooh', 'chance'], uuh: ['uuh', 'concede'],
+  applause: ['applause', 'clap'], boo: ['boo', 'whistle'], scream: ['chance', 'ooh'],
 };
 
 const cache = new Map<string, Promise<CrowdLibrary>>();

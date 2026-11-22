@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-11-22T11:01:12.215Z",
+  "generated": "2026-11-22T12:30:50.713Z",
   "files": [
     {
       "id": "ambience_test_ambience_1",
@@ -197,6 +197,46 @@
       "category": "uuh",
       "file": "uuh/uuh_test_uuh_2.mp3",
       "duration": 1.54,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "applause_test_applause_1",
+      "category": "applause",
+      "file": "applause/applause_test_applause_1.mp3",
+      "duration": 3.03,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "applause_test_applause_2",
+      "category": "applause",
+      "file": "applause/applause_test_applause_2.mp3",
+      "duration": 3.03,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "boo_test_boo_1",
+      "category": "boo",
+      "file": "boo/boo_test_boo_1.mp3",
+      "duration": 3,
+      "gain": 1,
+      "credit": "Testsignal (generiert)",
+      "license": "TEST – nur automatische Tests",
+      "source": "scripts/crowd-audio.mjs"
+    },
+    {
+      "id": "boo_test_boo_2",
+      "category": "boo",
+      "file": "boo/boo_test_boo_2.mp3",
+      "duration": 2.98,
       "gain": 1,
       "credit": "Testsignal (generiert)",
       "license": "TEST – nur automatische Tests",

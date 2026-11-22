@@ -18,6 +18,7 @@ import { Cup } from './pages/Cup';
 import { Europe } from './pages/Europe';
 import { FanCulture } from './pages/FanCulture';
 import { Transfers } from './pages/Transfers';
+import { Contracts } from './pages/Contracts';
 import { Finance } from './pages/Finance';
 import { Home } from './pages/Home';
 import { Lobby } from './pages/Lobby';
@@ -68,6 +69,7 @@ function RoutedInner() {
       <Route path="/w/:worldId/fankultur" element={<FanCulture />} />
       <Route path="/w/:worldId/transfers" element={<Transfers />} />
       <Route path="/w/:worldId/finanzen" element={<Finance />} />
+      <Route path="/w/:worldId/vertraege" element={<Contracts />} />
       <Route path="/w/:worldId/kalender" element={<Calendar />} />
       <Route path="/w/:worldId/uebersicht/:slotId" element={<MatchdayOverview />} />
       <Route path="/w/:worldId/spieler/:playerId" element={<PlayerPage />} />

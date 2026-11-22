@@ -101,6 +101,10 @@ export class MatchSound {
   /** Protokoll gespielter Gesänge/Pfiffe (Tests, Diagnose) */
   readonly played: Array<{ t: number; side: Side; kind: 'chant' | 'reaction'; id?: string; mood?: string; reaction?: string; minute: number; score: string }> = [];
   private ps: PlayState | null = null;
+  /** Unmut je Fangruppe (0…1): steigt bei Gegentoren und vergebenen Chancen im Rückstand, klingt langsam ab */
+  frustration: Record<Side, number> = { home: 0, away: 0 };
+  private curSong: Record<Side, string | null> = { home: null, away: null };
+  private lastBox: Record<Side, number> = { home: -99, away: -99 };
   private url: (path: string) => string;
   private manifest: string;
   private opts: MatchSoundOptions;
@@ -169,7 +173,15 @@ export class MatchSound {
     const lv = this.envelope.update(dt, [Math.min(1, levelToIntensity(m.homeLevel) + box[0]), Math.min(1, levelToIntensity(m.awayLevel) + box[1])]);
     mixer.setCrowd(lv.home, lv.away);
     this.ps = ps;
-    void prev;
+    for (const sd of ['home', 'away'] as const) this.frustration[sd] = Math.max(0, this.frustration[sd] - dt / 240);
+    // „Ahhh“ bei gefährlichen Angriffen: Ball kommt in den Strafraum – Heimfans reagieren stärker
+    for (const sd of ['home', 'away'] as const) {
+      const box = this.sit === `${sd}_box`, before = prev === `${sd}_box`;
+      if (box && !before && this.t - this.lastBox[sd] > 8 && performance.now() > this.goalUntil && Math.random() < (sd === 'home' ? 0.55 : 0.3)) {
+        this.lastBox[sd] = this.t;
+        this.shout('aah', sd, sd === 'home' ? 1.0 : 0.8, 1.4);
+      }
+    }
     // Prüffenster (5–8 s): Gesänge nach Matrix-Chance, Crowd-Reaktionen nach Regel des aktuellen Zustands
     const now = performance.now();
     const busy = now < this.goalUntil || now < this.eventUntil || this.envelope.busy;
@@ -188,10 +200,24 @@ export class MatchSound {
     this.phaseEvents(ps);
   }
 
-  /** Crowd-Reaktion abspielen: Dauer zufällig zwischen min und max, Lautstärke aus der Regel */
+  /**
+   * Situative Reaktion direkt (Applaus, Buhrufe, Ah/Oh/Uh, Aufschrei) – echte Aufnahme der Kategorie,
+   * zählt für Mindestabstand/Cooldown der Crowd-Reaktionen. Lautstärke 0…1+ (Reaktionen bewusst gut hörbar).
+   */
+  private shout(kind: 'clap' | 'whistle' | 'aah' | 'ooh' | 'uuh' | 'applause' | 'boo' | 'scream', side: Side, volume: number, sec: number, o: { celebrate?: boolean } = {}) {
+    void mixer.crowdReaction(kind, side, { volume: volume * 1.25, maxSec: sec, celebrate: o.celebrate });
+    this.scheduler.noteReaction({ id: `X:${kind}`, trigger: 'event', side, reaction: kind, chance: 100, volume: volume * 100, minSec: sec, maxSec: sec, cooldown: 4, priority: 2, eventBound: true }, this.t);
+    const ps = this.ps;
+    this.played.push({ t: this.t, side, kind: 'reaction', id: `X:${kind}`, reaction: kind, minute: ps?.minute ?? 0, score: ps ? `${ps.homeScore}:${ps.awayScore}` : '' });
+  }
+
+  /** Crowd-Reaktion abspielen: Dauer zufällig zwischen min und max, Lautstärke aus der Regel (gut hörbar über der Kulisse) */
   private react(rule: CrowdRule, o: { celebrate?: boolean } = {}) {
     const dur = rule.minSec + Math.random() * (rule.maxSec - rule.minSec);
-    void mixer.crowdReaction(rule.reaction as ReactionKind, rule.side, { volume: rule.volume / 70, maxSec: Math.max(0.6, dur), celebrate: o.celebrate });
+    // Unmut: frustrierte Fans pfeifen/buhen stattdessen
+    const frus = this.frustration[rule.side];
+    const kind = rule.reaction === 'whistle' && frus > 0.5 && Math.random() < 0.5 ? 'boo' : rule.reaction;
+    void mixer.crowdReaction(kind as ReactionKind | 'boo', rule.side, { volume: rule.volume / 50, maxSec: Math.max(0.6, dur), celebrate: o.celebrate });
     const ps = this.ps;
     this.played.push({ t: this.t, side: rule.side, kind: 'reaction', id: rule.id, reaction: rule.reaction, minute: ps?.minute ?? 0, score: ps ? `${ps.homeScore}:${ps.awayScore}` : '' });
   }
@@ -219,7 +245,9 @@ export class MatchSound {
   /** nächsten Gesang einer Seite wählen: zufällig, nicht derselbe wie zuletzt; Spottgesang nur bei eigener Führung */
   private choose(side: Side, ps: PlayState): Song | null {
     const lead = (side === 'home' ? 1 : -1) * (ps.homeScore - ps.awayScore);
-    const list = this.songs[side].filter((s) => s.mood !== 'taunt' || lead >= 1);
+    const other = side === 'home' ? 'away' : 'home';
+    // nie dieselbe Datei gleichzeitig auf beiden Spuren
+    const list = this.songs[side].filter((s) => (s.mood !== 'taunt' || lead >= 1) && s.url !== this.curSong[other]);
     return pickNext(list, this.lastSong[side]);
   }
 
@@ -228,6 +256,7 @@ export class MatchSound {
     const song = this.choose(side, ps);
     if (!song) return;
     this.lastSong[side] = song.id;
+    this.curSong[side] = song.url;
     const placeholder: Track = { stop: () => undefined, ended: Promise.resolve(), url: '' }; // Platzhalter während des Ladens
     this.cur[side] = placeholder;
     this.played.push({ t: this.t, side, kind: 'chant', id: song.id, mood: song.mood, minute: ps.minute, score: `${ps.homeScore}:${ps.awayScore}` });
@@ -242,6 +271,7 @@ export class MatchSound {
       void t.ended.then(() => {
         if (this.cur[side] !== t) return;
         this.cur[side] = null;
+        this.curSong[side] = null;
         this.scheduler.chantEnded(side, this.t); // 1–3 s Pause, dann neues Prüffenster
         if (!this.cur.home && !this.cur.away) mixer.chanting(false);
       });
@@ -251,6 +281,7 @@ export class MatchSound {
   private silence(side: Side, fade: number) {
     this.cur[side]?.stop(fade);
     this.cur[side] = null;
+    this.curSong[side] = null;
     if (!this.cur.home && !this.cur.away) mixer.chanting(false);
   }
 
@@ -286,22 +317,55 @@ export class MatchSound {
         // Wiederanstoß nach einem Tor: intensiver Jubel endet vollständig, normale Kulisse kehrt zurück
         if (side) this.endGoal();
         break;
-      case 'halftime': mixer.whistle('half'); break;
+      case 'halftime':
+        mixer.whistle('half');
+        for (const sd of ['home', 'away'] as const) {
+          const d = sd === 'home' ? ctx.homeScore - ctx.awayScore : ctx.awayScore - ctx.homeScore;
+          if (d <= -2 || (d <= -1 && this.frustration[sd] > 0.5)) this.shout(d <= -2 ? 'whistle' : 'boo', sd, sd === 'home' ? 1 : 0.7, 4);
+        }
+        break;
       case 'fulltime': this.finish(ctx); break;
       case 'goal': this.goal(side ?? 'home'); break;
       // E05–E08: Aluminium kurz vor der Zuschauerreaktion (Pfosten/Latte unterscheidet die Engine nicht)
       case 'woodwork':
         mixer.woodwork();
-        if (side) { this.bigChance(side, H ? 'E05' : 'E06'); this.envelope.event(H ? 'home_miss' : 'away_miss'); }
+        // Aufschrei bei Pfosten/Latte (angreifende Fans), Gegner erschrocken „Uhhh“
+        if (side) {
+          this.fx(H ? 'E05' : 'E06', side, null);
+          this.shout('scream', side, side === 'home' ? 1.1 : 0.9, 2.2);
+          this.shout('uuh', side === 'home' ? 'away' : 'home', 0.7, 1.5);
+          this.envelope.event(H ? 'home_miss' : 'away_miss');
+          this.missedChance(side, ctx);
+        }
         break;
       // Dribbling/Durchbruch: erwartungsvolles Anfeuern
-      case 'chance': if (side) void mixer.reaction('attack', side, { maxSec: 3, cooldownMs: 4000, volume: H ? 0.8 : 0.6 }); break;
+      // gelungene Aktion (Dribbling/Durchbruch): Applaus der eigenen Fans, sonst erwartungsvolles Anfeuern
+      case 'chance':
+        if (side) {
+          if (Math.random() < (H ? 0.45 : 0.3)) this.shout('applause', side, H ? 0.8 : 0.6, 2.5);
+          else void mixer.reaction('attack', side, { maxSec: 3, cooldownMs: 4000, volume: H ? 0.8 : 0.6 });
+        }
+        break;
       // E03/E04: Großchance vergeben – kollektives „Ooooh“
-      case 'save': if (big && side) { this.bigChance(side, H ? 'E03' : 'E04'); this.envelope.event(H ? 'home_miss' : 'away_miss', H ? 2 : undefined); } break;
+      // Großchance pariert: „Ooooh“ der Angreifer (Excel-Varianten), Applaus der eigenen Fans für den Torhüter
+      case 'save':
+        if (big && side) {
+          this.bigChance(side, H ? 'E03' : 'E04');
+          this.envelope.event(H ? 'home_miss' : 'away_miss', H ? 2 : undefined);
+          if (Math.random() < 0.5) setTimeout(() => this.shout('applause', side === 'home' ? 'away' : 'home', 0.7, 2.2), 900);
+          this.missedChance(side, ctx);
+        }
+        break;
       case 'miss':
         mixer.whistle('soft');
         if (ctx.ballOutsideNet && side) { mixer.net(true); this.bigChance(side, 'E26'); }
-        else if (big && side) { this.bigChance(side, H ? 'E03' : 'E04'); this.envelope.event(H ? 'home_miss' : 'away_miss', H ? 2 : undefined); }
+        // vergebene Großchance: kollektives „Ooooh“
+        else if (big && side) {
+          this.fx(H ? 'E03' : 'E04', side, null);
+          this.shout('ooh', side, side === 'home' ? 1.1 : 0.9, 1.8);
+          this.envelope.event(H ? 'home_miss' : 'away_miss', H ? 2 : undefined);
+          this.missedChance(side, ctx);
+        }
         break;
       // E09/E10: Foul (side = foulendes Team) – Protest/Pfiffe der Fans des gefoulten Teams
       case 'foul':
@@ -317,19 +381,32 @@ export class MatchSound {
       // E19/E20: Elfmeter – Anspannung; beim Gäste-Elfmeter pfeifen die Heimfans
       case 'penalty':
         mixer.whistle('short');
+        this.shout('uuh', side ?? 'home', 0.9, 1.5); // überraschende Situation
         if (H) { this.fx('E19', 'home', 'attack'); mixer.duckChants('both', 0.2, { hold: 4 }); }
         else if (side) this.fx('E20', 'home', 'whistle');
         this.eventUntil = Math.max(this.eventUntil, performance.now() + 6000);
         break;
       // E11–E14: Karten (side = Team des Spielers) – Protest der betroffenen Fans
       case 'yellow': case 'second_yellow': if (side) this.fx(H ? 'E11' : 'E12', side, 'whistle'); break;
-      case 'red': if (side) this.fx(H ? 'E13' : 'E14', side, 'whistle', { block: H ? 90 : 20 }); break; // kein euphorischer Heimgesang nach Rot
+      case 'red':
+        if (side) {
+          this.shout('uuh', side === 'home' ? 'away' : 'home', 0.8, 1.5); // Überraschung im anderen Block
+          this.fx(H ? 'E13' : 'E14', side, 'whistle', { block: H ? 90 : 20 }); // kein euphorischer Heimgesang nach Rot
+        }
+        break;
       // E23: Verletzung – besorgtes Murmeln, kein fröhlicher Gesang während der Behandlung
       case 'injury':
         if (side) { this.silence(side, 1.2); this.fx('E23', side, 'concede', { block: 20 }); }
         break;
       default: break;
     }
+  }
+
+  /** vergebene Chance im Rückstand: Unmut steigt; bei großem Frust Buhrufe statt Aufmunterung */
+  private missedChance(side: Side, ctx: { homeScore: number; awayScore: number }) {
+    const d = side === 'home' ? ctx.homeScore - ctx.awayScore : ctx.awayScore - ctx.homeScore;
+    if (d < 0) this.frustration[side] = Math.min(1, this.frustration[side] + 0.12 * -d);
+    if (this.frustration[side] > 0.7 && Math.random() < 0.35) setTimeout(() => this.shout('boo', side, 0.8, 2.5), 1800);
   }
 
   /**
@@ -359,10 +436,17 @@ export class MatchSound {
     this.goalUntil = performance.now() + 7000; // Sicherung, falls kein Wiederanstoß kommt (Schlusspfiff)
     this.envelope.event(side === 'home' ? 'home_goal' : 'away_goal', 7);
     // Aufnahmen: Heimtor = Kurve explodiert; Auswärtstor = Gästeblock kurz sehr laut, Heimfans enttäuscht
-    mixer.goal(side);
+    mixer.goal(side, this.goalIntensity(side));
+    // Gegentor: Unmut der anderen Fans steigt; bei deutlichem Rückstand Buhrufe/Pfiffe statt Raunen
+    const other: Side = side === 'home' ? 'away' : 'home';
+    const ps = this.ps;
+    const deficit = ps ? (other === 'home' ? ps.awayScore + 1 - ps.homeScore : ps.homeScore + 1 - ps.awayScore) : 0;
+    this.frustration[other] = Math.min(1, this.frustration[other] + 0.2 + 0.1 * Math.max(0, deficit - 1));
+    this.frustration[side] = Math.max(0, this.frustration[side] - 0.4);
+    if (deficit >= 2) { this.shout(deficit >= 3 ? 'whistle' : 'boo', other, other === 'home' ? 0.9 : 0.6, 3, { celebrate: true }); }
     // Crowd-Reaktionen „Eigenes Tor“ / „Gegentor“: je eine Variante, endet mit dem Wiederanstoß
     this.eventReaction('own_goal', side, { celebrate: true });
-    this.eventReaction('opp_goal', side === 'home' ? 'away' : 'home', { celebrate: true });
+    if (deficit < 2) this.eventReaction('opp_goal', side === 'home' ? 'away' : 'home', { celebrate: true });
     const hymn = pickNext(side === 'home' ? this.homeGoal : this.awayGoal, null);
     if (!hymn) return;
     const gen = mixer.generation;
@@ -372,6 +456,22 @@ export class MatchSound {
       if (this.finished || gen !== mixer.generation || performance.now() > this.goalUntil) { t.stop(0.2); return; }
       this.goalHymn = t;
     });
+  }
+
+  /**
+   * Dynamischer Torjubel: Ausgleich/Führungstor/späte Tore lauter, Tore bei klarer Führung verhaltener.
+   * Ergebnis 0,7…1,4 (Lautstärkefaktor); die Dauer endet immer beim Wiederanstoß.
+   */
+  goalIntensity(side: Side): number {
+    const ps = this.ps;
+    if (!ps) return 1;
+    const before = side === 'home' ? ps.homeScore - ps.awayScore : ps.awayScore - ps.homeScore; // Stand vor dem Tor
+    let f = 1;
+    if (before === -1 || before === 0) f += 0.2; // Ausgleich bzw. Führung
+    if (ps.minute >= 80 && Math.abs(before) <= 1) f += 0.2; // späte, wichtige Tore
+    if (before >= 3) f -= 0.3; // Schützenfest
+    if (side === 'away') f *= 0.9;
+    return Math.max(0.7, Math.min(1.4, f));
   }
 
   /** Wiederanstoß: Jubel, Torhymne und Ereignis-Hüllkurve sofort weich beenden */

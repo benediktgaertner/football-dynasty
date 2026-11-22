@@ -49,7 +49,7 @@ type Side = 'home' | 'away';
 
 /** Lautstärke je Kategorie (nach Lautheitsangleich) */
 const CAT_VOL: Record<CrowdCategory, number> = {
-  ambience: 0.75, clap: 0.7, attack: 0.75, chance: 0.85, whistle: 0.6, concede: 0.55, goal: 1, aah: 0.8, ooh: 0.85, uuh: 0.8,
+  ambience: 0.75, clap: 0.7, attack: 0.75, chance: 0.85, whistle: 0.6, concede: 0.55, goal: 1, aah: 0.8, ooh: 0.85, uuh: 0.8, applause: 0.75, boo: 0.7,
 };
 
 export interface PlayOpts {
@@ -382,10 +382,10 @@ export class StadiumMixer {
   }
 
   /** Torjubel (höchstens 4,5 s laut Parametern, endet spätestens beim Wiederanstoß); Gästeblock kurz sehr laut */
-  goal(side: Side) {
+  goal(side: Side, intensity = 1) {
     if (!this.active) return;
-    if (side === 'home') void this.reaction('goal', 'home', { celebrate: true, maxSec: PARAMS.goalMax + 1 });
-    else void this.reaction('goal', 'away', { celebrate: true, maxSec: PARAMS.goalMax, volume: 1.25 });
+    if (side === 'home') void this.reaction('goal', 'home', { celebrate: true, maxSec: PARAMS.goalMax + 1, volume: intensity });
+    else void this.reaction('goal', 'away', { celebrate: true, maxSec: PARAMS.goalMax, volume: 1.25 * intensity });
   }
 
   /** Wiederanstoß: laufenden Torjubel sofort weich beenden (keine überlappenden Jubel) */

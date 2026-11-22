@@ -22,3 +22,7 @@ Diese Aufnahmen werden für die Stadionatmosphäre der KI-Fans verwendet (bearbe
 - `ooh/ooh_test_ooh_2.mp3` – Testsignal (generiert), TEST – nur automatische Tests, scripts/crowd-audio.mjs
 - `uuh/uuh_test_uuh_1.mp3` – Testsignal (generiert), TEST – nur automatische Tests, scripts/crowd-audio.mjs
 - `uuh/uuh_test_uuh_2.mp3` – Testsignal (generiert), TEST – nur automatische Tests, scripts/crowd-audio.mjs
+- `applause/applause_test_applause_1.mp3` – Testsignal (generiert), TEST – nur automatische Tests, scripts/crowd-audio.mjs
+- `applause/applause_test_applause_2.mp3` – Testsignal (generiert), TEST – nur automatische Tests, scripts/crowd-audio.mjs
+- `boo/boo_test_boo_1.mp3` – Testsignal (generiert), TEST – nur automatische Tests, scripts/crowd-audio.mjs
+- `boo/boo_test_boo_2.mp3` – Testsignal (generiert), TEST – nur automatische Tests, scripts/crowd-audio.mjs

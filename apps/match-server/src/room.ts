@@ -9,7 +9,16 @@ export interface Client {
   userId: string;
   role: Side | 'spectator';
   cmdWindow: number[];
+  /** Sitzungskennung des Browsers (über Wiederverbindungen stabil) – Grundlage der Idempotenz */
+  sid?: string;
 }
+
+/** Ein Manager, der kürzer als diese Zeit weg ist, behält die Kontrolle (kurze Verbindungsabbrüche ändern nichts am Spiel) */
+export const AUTOPILOT_GRACE_MS = 20_000;
+/** Backpressure: langsame Clients bekommen keine weiteren Bilder, extrem langsame werden getrennt */
+const DROP_FRAMES_ABOVE = 512 * 1024;
+const TERMINATE_ABOVE = 8 * 1024 * 1024;
+const ACK_CACHE = 64;
 
 const LOOP_MS = 25;
 const CHECKPOINT_EVERY = 400; // alle 20 s Echtzeit (Seed + Befehlsprotokoll)
@@ -50,6 +59,16 @@ export class MatchRoom {
   private anthemPending = false;
   /** Zustimmungen zum gemeinsamen Überspringen (Seiten mit Manager) */
   private skipVotes = new Set<Side>();
+  /** Seit wann ist die Seite ohne verbundenen Manager (für die Karenzzeit vor der Automatik) */
+  private offlineSince: Partial<Record<Side, number>> = {};
+  private lastAutopilotCheck = 0;
+  /** bereits beantwortete Befehle je Seite+Sitzung: gleicher Befehl (gleiche id) wird nicht erneut ausgeführt */
+  private acks = new Map<string, Map<number, Record<string, unknown>>>();
+  private ckptChain: Promise<void> = Promise.resolve();
+  private ckptQueued = false;
+  private ckptTimer: NodeJS.Timeout | null = null;
+  /** Raum geschlossen: neue Verbindungen müssen einen frischen Raum laden */
+  closed = false;
 
   constructor(fixtureId: string, private backend: Backend, onClose: () => void, private speed = 1) {
     this.fixtureId = fixtureId;
@@ -64,6 +83,8 @@ export class MatchRoom {
       // Wiederaufnahme nach Neustart: Seed + Befehle deterministisch nachspielen
       this.engine = replay(setup, cp.log as CommandRecord[], cp.tick);
       this.lastCheckpointTick = cp.tick;
+      // Die Manager müssen sich nach dem Neustart erst wieder verbinden: Karenzzeit statt sofortiger Automatik
+      for (const side of ['home', 'away'] as const) this.offlineSince[side] = Date.now();
       this.begin();
     } else {
       this.engine = new MatchEngine(setup);
@@ -134,11 +155,14 @@ export class MatchRoom {
 
   private updateAutopilot(): void {
     if (!this.engine || this.engine.isFinished) return;
+    const now = Date.now();
     for (const side of ['home', 'away'] as const) {
       const team = side === 'home' ? this.db.home : this.db.away;
       if (team.control !== 'human') continue;
-      // E4: abwesender Manager ⇒ Automatik; zurück ⇒ Manager übernimmt wieder
-      this.engine.setAutopilot(side, !this.managerOnline(side));
+      // E4: abwesender Manager ⇒ Automatik (erst nach kurzer Karenzzeit); zurück ⇒ Manager übernimmt wieder
+      if (this.managerOnline(side)) { delete this.offlineSince[side]; this.engine.setAutopilot(side, false); continue; }
+      const since = (this.offlineSince[side] ??= now);
+      if (now - since >= AUTOPILOT_GRACE_MS / this.speed) this.engine.setAutopilot(side, true);
     }
   }
 
@@ -192,6 +216,7 @@ export class MatchRoom {
       // Manager sehen ihr Team nach Ereignissen (Wechsel, Karten, Verletzungen) aktualisiert
       if (m.t === 'ev' && m.events.some((e) => ['goal', 'sub', 'yellow', 'second_yellow', 'red', 'injury', 'tactic', 'halftime'].includes(e.type))) this.sendViews();
     }
+    if (now - this.lastAutopilotCheck > 500) { this.lastAutopilotCheck = now; this.updateAutopilot(); }
     // Matchnoten und Fitness laufend aktualisieren (Teamansicht spätestens alle 8 s)
     if (now - this.lastViewAt > 8000) { this.lastViewAt = now; this.sendViews(); }
     if (this.engine.tick - this.lastCheckpointTick >= CHECKPOINT_EVERY && !this.engine.isFinished) {
@@ -200,13 +225,30 @@ export class MatchRoom {
     }
   }
 
-  async saveCheckpoint(): Promise<void> {
-    if (this.status !== "running") return;
-    try {
-      await this.backend.checkpoint(this.fixtureId, this.engine.tick, { tick: this.engine.tick, log: this.engine.commandLog });
-    } catch (e) {
-      console.error('Checkpoint fehlgeschlagen', this.fixtureId, e);
-    }
+  /**
+   * Seed + Befehlsprotokoll sichern. Speicherungen laufen nacheinander (nie ein älterer Stand nach einem neueren);
+   * mehrere Anforderungen während einer laufenden Speicherung werden zu einer zusammengefasst.
+   */
+  saveCheckpoint(): Promise<void> {
+    if (this.status !== 'running' && this.status !== 'failed') return this.ckptChain;
+    if (this.ckptQueued) return this.ckptChain;
+    this.ckptQueued = true;
+    this.ckptChain = this.ckptChain.then(async () => {
+      this.ckptQueued = false;
+      try {
+        await this.backend.checkpoint(this.fixtureId, this.engine.tick, { tick: this.engine.tick, log: this.engine.commandLog });
+      } catch (e) {
+        console.error('Checkpoint fehlgeschlagen', this.fixtureId, e);
+      }
+    });
+    return this.ckptChain;
+  }
+
+  /** Nach jedem angenommenen Befehl bald sichern: ein Neustart verliert dann keinen Wechsel und keine Taktik */
+  private scheduleCheckpoint(): void {
+    if (this.ckptTimer) return;
+    this.ckptTimer = setTimeout(() => { this.ckptTimer = null; void this.saveCheckpoint(); }, 1000 / this.speed);
+    this.ckptTimer.unref();
   }
 
   private async finish(): Promise<void> {
@@ -236,6 +278,8 @@ export class MatchRoom {
   }
 
   close(): void {
+    this.closed = true;
+    if (this.ckptTimer) clearTimeout(this.ckptTimer);
     if (this.timer) clearInterval(this.timer);
     if (this.autoStart) clearTimeout(this.autoStart);
     if (this.walkoutTimer) clearTimeout(this.walkoutTimer);
@@ -252,8 +296,17 @@ export class MatchRoom {
     return { home: team(this.db.home), away: team(this.db.away) };
   }
 
-  join(c: Client): void {
+  join(c: Client, since = 0): void {
+    // Dieselbe Person nur einmal je Raum: eine alte (ggf. halb tote) Verbindung wird abgelöst
+    for (const o of [...this.clients]) {
+      if (o.userId !== c.userId) continue;
+      this.clients.delete(o);
+      try { o.ws.close(4409, 'replaced'); } catch { /* schon zu */ }
+    }
     this.clients.add(c);
+    const all = this.presenter ? this.presenter.released : this.engine.events;
+    // Client meldet, wie viele Ereignisse er schon hat ⇒ nur Verpasstes nachliefern (bei Rückschritt nach Neustart: alles)
+    const from = since > 0 && since <= all.length ? since : 0;
     this.send(c, {
       t: 'init',
       role: c.role,
@@ -269,7 +322,8 @@ export class MatchRoom {
       teams: this.roster(),
       snapshot: this.presenter?.lastFrame ?? this.engine.snapshot(),
       scene: this.presenter?.scene ?? 0,
-      events: this.presenter ? this.presenter.released : this.engine.events,
+      events: from > 0 ? all.slice(from) : all,
+      eventsFrom: from,
       view: c.role === 'spectator' ? null : this.engine.teamView(c.role),
     });
     if (this.status === 'running') this.updateAutopilot();
@@ -278,7 +332,8 @@ export class MatchRoom {
   }
 
   leave(c: Client): void {
-    this.clients.delete(c);
+    if (!this.clients.delete(c)) return; // bereits abgelöst
+    if (c.role !== 'spectator' && !this.managerOnline(c.role)) this.offlineSince[c.role] ??= Date.now();
     // Manager weg: ggf. haben jetzt alle verbliebenen Manager zugestimmt
     if (this.status === 'waiting' && this.walkoutUntil > 0 && this.skipVotes.size > 0) {
       const needed = this.skipNeeded();
@@ -295,6 +350,10 @@ export class MatchRoom {
 
   handleCommand(c: Client, id: number, cmd: MatchCommand): void {
     if (c.role === 'spectator') return this.send(c, { t: 'ack', id, ok: false, error: 'Zuschauer können nichts ändern.' });
+    // Idempotenz: ein erneut gesendeter Befehl (z. B. nach Verbindungsabbruch) wird nicht ein zweites Mal ausgeführt
+    const key = c.sid ? `${c.role}:${c.sid}` : null;
+    const known = key ? this.acks.get(key)?.get(id) : undefined;
+    if (known) { this.send(c, { ...known, dup: true }); this.sendView(c.role); return; }
     // Schutz vor Befehlsfluten: höchstens 10 Befehle pro Sekunde
     const now = Date.now();
     c.cmdWindow = c.cmdWindow.filter((t) => now - t < 1000);
@@ -302,8 +361,15 @@ export class MatchRoom {
     c.cmdWindow.push(now);
     if (this.status === 'finished') return this.send(c, { t: 'ack', id, ok: false, error: 'Die Partie ist beendet.' });
     const res = this.engine.applyCommand(c.role, cmd);
-    this.send(c, { t: 'ack', id, ok: res.ok, error: res.ok ? undefined : res.error, tick: this.engine.tick });
-    if (res.ok) this.sendView(c.role);
+    const ack = { t: 'ack', id, ok: res.ok, error: res.ok ? undefined : res.error, tick: this.engine.tick };
+    if (key) {
+      let m = this.acks.get(key);
+      if (!m) this.acks.set(key, (m = new Map()));
+      m.set(id, ack);
+      if (m.size > ACK_CACHE) m.delete(m.keys().next().value as number);
+    }
+    this.send(c, ack);
+    if (res.ok) { this.sendView(c.role); this.scheduleCheckpoint(); }
   }
 
   private lastViewAt = 0;
@@ -321,6 +387,14 @@ export class MatchRoom {
   }
   broadcast(msg: unknown): void {
     const data = JSON.stringify(msg);
-    for (const c of this.clients) if (c.ws.readyState === 1) c.ws.send(data);
+    const droppable = (msg as { t?: string }).t === 'frame';
+    for (const c of this.clients) {
+      if (c.ws.readyState !== 1) continue;
+      const queued = c.ws.bufferedAmount;
+      if (queued > TERMINATE_ABOVE) { c.ws.terminate(); continue; }
+      // Langsame Verbindung: Bilder auslassen (Ereignisse und Zustand gehen nie verloren, das nächste Bild folgt in 100 ms)
+      if (droppable && queued > DROP_FRAMES_ABOVE) continue;
+      c.ws.send(data);
+    }
   }
 }

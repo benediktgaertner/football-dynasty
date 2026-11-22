@@ -140,6 +140,14 @@ export function Matchday() {
             </div>
           </Card>
 
+          {slot.kind === 'season_end' && (
+            <Card className="mb-4">
+              <h2 className="display text-2xl font-bold uppercase">Saisonabschluss: Verträge & Kaderplanung</h2>
+              <p className="mt-1 text-sm text-cream-dim">Verhandle Verlängerungen, Gehälter und Laufzeiten, bevor der Saisonabschluss startet. Reguläre Transfers sind gesperrt.</p>
+              <Button className="mt-3" onClick={() => navigate(`/w/${worldId}/vertraege`)}>Vertragsmanagement öffnen</Button>
+            </Card>
+          )}
+
           <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
             <div className="space-y-4">
               {/* Nächste Begegnung */}

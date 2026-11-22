@@ -162,6 +162,10 @@ run -tAc "select public.admin_add_europe('$WORLD', pg_read_file('$PDIR/full/MDA.
 check "C1_reduce_players.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/C1_reduce_players.sql"
 check "D0_anthem.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/D0_anthem.sql"
 check "E0_accounts.sql" -v world="$WORLD" -v mig="$ROOT/supabase/migrations/20261201000036_email_login_accounts.sql" -f "$ROOT/supabase/tests/E0_accounts.sql"
+# Major-Update (0037+): jeder Teil bringt eigene Tests G*.sql mit (Variable world verfügbar)
+for t in "$ROOT"/supabase/tests/G*.sql; do
+  [ -f "$t" ] && check "$(basename "$t")" -v world="$WORLD" -v root="$ROOT" -f "$t"
+done
 
 # Welterstellung mit Land und Startliga: alle drei Startligen in unterschiedlichen Ländern
 TAG=1

@@ -1,5 +1,5 @@
 // Erzeugt SQL-Prüfungen, die TypeScript- und SQL-Implementierung derselben Regeln vergleichen.
-import { POSITIONS as ALL_POS, generateOutfieldAttributes, generateGoalkeeperAttributes, outfieldOverall, goalkeeperOverall, createRng, marketValue, devMultiplier, devAttributeCost, devAgeFactor, matchXp, normalizeName, stadiumBuildCost, STARTING_CAPITAL, snakeDraftManagerIndex, totalDraftPicks, PLAYER_INSTRUCTIONS, roleGroup, CONFLICTING_INSTRUCTIONS, trainingDevelopmentPoints, POSITIONS, validatePlayerInstructions } from '../packages/shared/dist/index.js';
+import { POSITIONS as ALL_POS, generateOutfieldAttributes, generateGoalkeeperAttributes, outfieldOverall, goalkeeperOverall, createRng, marketValue, devMultiplier, devAttributeCost, devAgeFactor, matchXp, normalizeName, stadiumBuildCost, STARTING_CAPITAL, snakeDraftManagerIndex, totalDraftPicks, PLAYER_INSTRUCTIONS, roleGroup, CONFLICTING_INSTRUCTIONS, trainingDevelopmentPoints, POSITIONS, validatePlayerInstructions, league1Target, league1RaiseAttributes } from '../packages/shared/dist/index.js';
 const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
 const names = ['FC Köln-Süd 1908', 'Straße United', 'Atlético Málaga', 'ŁKS Łódź', 'Øster IF', 'Æro BK', 'Beşiktaş Gençlik', 'Dinamo Đakovo', 'Œuvre FC', "Sporting d'Évora", 'SV Grünwald 1911', '  1. FC  Über-Ägypten  ', 'İzmirspor', 'Žalgiris Šiauliai', 'Cœur de Lion'];
 const lines = ['\\set ON_ERROR_STOP on'];
@@ -47,6 +47,20 @@ for (const [kind, pos, line] of [['outfield', 'ST', { minutes: 90, rating: 7.4, 
   for (const [k, v] of Object.entries(xp)) {
     lines.push(`select tests.assert(abs((public.fd_dev_match_xp(${q(kind)}, ${q(pos)}, ${line.minutes}, ${line.rating}, ${line.goals}, ${line.assists}, ${line.tacklesWon}, ${line.interceptions}, ${line.saves}) ->> ${q(k)})::numeric - ${v}) < 1e-9, ${q('Spiel-XP TS=SQL ' + pos + ' ' + k)});`);
   }
+}
+// 0039: stärkere 1. Ligen – Zielverteilung und positionsgerechte Attributanhebung
+for (const [s, n] of [[92, 18], [100, 20], [79, 18], [40, 10], [20, 12]]) for (const r of [1, 2, 4, 7, Math.ceil(n / 2), n]) {
+  lines.push(`select tests.assert(abs(public.fd_league1_target(${s}, ${r}, ${n}) - ${league1Target(s, r, n)}) < 1e-9, ${q('1. Liga Ziel TS=SQL ' + s + '/' + r + '/' + n)});`);
+}
+const lrng = createRng('parity-league1');
+for (let i = 0; i < 45; i++) {
+  const pos = ALL_POS[i % ALL_POS.length];
+  const target = 60 + ((i * 11) % 38);
+  const di = 1 + (i % 9);
+  const attrs = pos === 'GK' ? generateGoalkeeperAttributes(lrng, target) : generateOutfieldAttributes(lrng, pos, target);
+  const kind = pos === 'GK' ? 'goalkeeper' : 'outfield';
+  const raised = league1RaiseAttributes(kind, pos, attrs, di);
+  lines.push(`select tests.assert(public.fd_league1_raise(${q(kind)}, ${q(pos)}, ${q(JSON.stringify(attrs))}::jsonb, ${di}) = ${q(JSON.stringify(raised))}::jsonb, ${q('1. Liga Attribute TS=SQL ' + pos + ' #' + i)});`);
 }
 lines.push(`\\echo '>>> 20_parity: TypeScript und SQL rechnen identisch'`);
 process.stdout.write(lines.join('\n') + '\n');

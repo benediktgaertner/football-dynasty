@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Situation } from './crowdModel';
-import { EVENTS, FanScheduler, MoodTrend, PARAMS, RULES, levelToIntensity, matchSubset, moodRow, moodTargets, phaseOf, pickEventReaction, seeded, stateTrigger, subsetRange, type CrowdRule, type MoodValues } from './fanMood';
+import { CHANT_TUNING, EVENTS, FanScheduler, MoodTrend, PARAMS, RULES, levelToIntensity, matchSubset, moodRow, moodTargets, phaseOf, pickEventReaction, seeded, stateTrigger, subsetRange, type CrowdRule, type MoodValues } from './fanMood';
 import { MOOD_EVENTS, MOOD_ROWS } from './fanMoodData';
 import { pickNext } from './fanAudio';
 import V1 from './__fixtures__/fanMoodV1.json';
@@ -142,9 +142,10 @@ function simV1(sc: Scenario, seed: string) {
 }
 
 /** V2: FanScheduler mit echten Gesangslängen, Pause 1–3 s, Crowd-Reaktionen */
-function simV2(sc: Scenario, seed: string) {
+const UNTUNED = { scale: 1, whileOtherSings: 1, sameSideAgain: 1, otherSideTurn: 1 };
+function simV2(sc: Scenario, seed: string, tune: typeof UNTUNED = CHANT_TUNING) {
   const rnd = seeded(seed);
-  const sch = new FanScheduler(rnd);
+  const sch = new FanScheduler(rnd, 1, undefined, tune);
   const playUntil = { home: 0, away: 0 };
   const chants: Array<{ side: 'home' | 'away'; from: number; to: number }> = [];
   const reactions: Array<{ t: number; rule: CrowdRule }> = [];
@@ -168,29 +169,48 @@ function simV2(sc: Scenario, seed: string) {
   return { chants, reactions, n: { home: chants.filter((c) => c.side === 'home').length, away: chants.filter((c) => c.side === 'away').length } };
 }
 
-describe('A/B-Test V1 → V2 (3-Minuten-Partie, deterministische Seeds)', () => {
+describe('A/B-Test: V1 → V2 (Excel) → Major-Update (−25 %, abwechselnd)', () => {
   const RUNS = 200;
   const avg = (f: (seed: string) => { home: number; away: number }) => {
     const s = { home: 0, away: 0 };
     for (let i = 0; i < RUNS; i++) { const n = f(`seed-${i}`); s.home += n.home; s.away += n.away; }
     return { home: s.home / RUNS, away: s.away / RUNS };
   };
+  /** Anteil der Zeit, in der beide Blöcke gleichzeitig singen, und Anteil der Seitenwechsel aufeinanderfolgender Gesänge */
+  const overlap = (sc: Scenario, tune: typeof UNTUNED) => {
+    let both = 0, any = 0, switches = 0, pairs = 0;
+    for (let i = 0; i < RUNS; i++) {
+      const { chants } = simV2(sc, `ov-${i}`, tune);
+      for (let t = 0; t < 180; t += 0.5) {
+        const h = chants.some((c) => c.side === 'home' && c.from <= t && t < c.to), a = chants.some((c) => c.side === 'away' && c.from <= t && t < c.to);
+        if (h || a) any++; if (h && a) both++;
+      }
+      const seq = chants.slice().sort((x, y) => x.from - y.from);
+      for (let k = 1; k < seq.length; k++) { pairs++; if (seq[k]!.side !== seq[k - 1]!.side) switches++; }
+    }
+    return { both: both / Math.max(1, any), switch: switches / Math.max(1, pairs) };
+  };
   const table: Record<string, unknown> = {};
   for (const sc of SCENARIOS) {
-    it(`${sc.name}: mehr Gesänge als V1, Stimmungslogik bleibt`, () => {
-      const a = avg((s) => simV1(sc, s)), b = avg((s) => simV2(sc, s).n);
-      table[sc.name] = { V1_heim: a.home.toFixed(1), V2_heim: b.home.toFixed(1), V1_gast: a.away.toFixed(1), V2_gast: b.away.toFixed(1) };
-      if (sc.minute >= 60 && sc.h - sc.a <= -3) {
-        expect(b.home).toBe(0); // 0:4 ab 60: kein einziger Heimgesang
-        expect(b.away).toBeGreaterThan(a.away * 1.15);
-      } else {
-        const v1 = a.home + a.away, v2 = b.home + b.away;
-        expect(v2).toBeGreaterThan(v1 * 1.15);
-        if (sc.h - sc.a >= 2) expect(b.home).toBeGreaterThan(b.away);
-        if (sc.a - sc.h >= 1) expect(b.away).toBeGreaterThan(a.away);
-      }
+    it(`${sc.name}: ≈ 25 % weniger als V2, Stimmungslogik bleibt`, () => {
+      const v1 = avg((s) => simV1(sc, s)), v2 = avg((s) => simV2(sc, s, UNTUNED).n), now = avg((s) => simV2(sc, s).n);
+      table[sc.name] = { V1: (v1.home + v1.away).toFixed(1), V2: (v2.home + v2.away).toFixed(1), neu: (now.home + now.away).toFixed(1), neu_heim: now.home.toFixed(1), neu_gast: now.away.toFixed(1) };
+      if (sc.minute >= 60 && sc.h - sc.a <= -3) { expect(now.home).toBe(0); expect(now.away).toBeGreaterThan(3); return; }
+      const ratio = (now.home + now.away) / (v2.home + v2.away);
+      expect(ratio).toBeGreaterThan(0.6); expect(ratio).toBeLessThan(0.85);
+      if (sc.h - sc.a >= 2) expect(now.home).toBeGreaterThan(now.away);
+      if (sc.a - sc.h >= 2) expect(now.away).toBeGreaterThan(now.home);
     });
   }
+  it('Heim- und Gästegesang überlagern sich deutlich seltener, Wechsel überwiegt', () => {
+    const sc = SCENARIOS[0]!;
+    const a = overlap(sc, UNTUNED), b = overlap(sc, CHANT_TUNING);
+    table['Überlagerung/Wechsel 0:0'] = { vorher: `${(a.both * 100).toFixed(0)} % / ${(a.switch * 100).toFixed(0)} %`, neu: `${(b.both * 100).toFixed(0)} % / ${(b.switch * 100).toFixed(0)} %` };
+    expect(b.both).toBeLessThan(a.both * 0.5);
+    expect(b.both).toBeLessThan(0.15);
+    expect(b.switch).toBeGreaterThan(0.55);
+    expect(b.both).toBeGreaterThan(0); // gelegentlich erlaubt
+  });
   it('Tabelle', () => { console.table(table); });
 });
 

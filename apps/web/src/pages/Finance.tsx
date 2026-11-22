@@ -1,4 +1,5 @@
 import { StadiumDesigner } from '../components/StadiumDesigner';
+import { FinanceDashboard } from '../components/FinanceDashboard';
 import { requireSupabase } from '../lib/supabase';
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -72,6 +73,7 @@ export function Finance() {
           <p className="mt-1 text-xs text-cream-dim">Die Nachfrage hängt von Preis, Tabellenplatz, Gegner, Spielbedeutung, Liga, Stadiongröße und Ruf ab. Die Zuschauerzahl zeigt sich nach dem Spiel.</p>
         </Card>
       </div>
+      <FinanceDashboard worldId={worldId} refreshKey={data.balance} />
       <div className="mt-4">
         <StadiumDesigner name={data.stadium.name} capacity={data.stadium.capacity} attendance={data.last_attendance?.attendance ?? null}
           design={data.stadium.design ?? {}} homeColors={colors} worldId={worldId}

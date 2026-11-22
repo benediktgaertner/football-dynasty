@@ -11,6 +11,7 @@ import { crowdStatus } from '../lib/crowdLibrary';
 import { MatchSound, type ChantRef } from '../lib/fanAudio';
 import type { AudioRef, MatchState } from '../lib/matchClient';
 import { LiveBoard } from '../components/match/LiveBoard';
+import { ConnectionBanner } from '../components/match/ConnectionBanner';
 import { matchServerUrl } from '../lib/matchApi';
 import { seasonApi } from '../lib/seasonApi';
 import { formatEuro } from '../lib/api';
@@ -99,6 +100,7 @@ export function Match() {
   return (
     <Shell right={<><Link to={`/w/${worldId}/spieltag`} className="display rounded-xl px-3 py-2 text-lg font-semibold uppercase text-cream-dim hover:bg-olive-800 hover:text-cream">Spieltag</Link><Link to={`/w/${worldId}/team`} className="display rounded-xl px-3 py-2 text-lg font-semibold uppercase text-cream-dim hover:bg-olive-800 hover:text-cream">Team</Link></>}>
       <Scoreboard teams={teams} homeColor={homeColor} awayColor={awayColor} score={snap.score} minute={snap.minute} phase={snap.phase} status={status} connection={state.connection} role={role} competition={state.stadium?.competition ?? null} />
+      <ConnectionBanner state={state} client={client} />
 
       <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,1fr)_228px] xl:grid-cols-[minmax(0,1fr)_250px]">
         <div className="relative">
@@ -199,6 +201,7 @@ function useBanner(events: MatchEvent[], teams: { home: RosterTeam; away: Roster
   useEffect(() => {
     if (!teams) return;
     if (seen.current < 0) { seen.current = events.length; return; }
+    if (events.length < seen.current) { seen.current = events.length; return; } // Server-Neustart: Protokoll neu aufgebaut
     const fresh = events.slice(seen.current);
     seen.current = events.length;
     const pick = [...fresh].reverse().find((e) => ['goal', 'save', 'chance', 'woodwork', 'red', 'second_yellow', 'penalty'].includes(e.type));
@@ -379,9 +382,21 @@ export function WalkoutOverlay({ state, voted, onSkip, sound }: { state: MatchSt
   const { votes, needed } = state.walkoutSkip;
   const others = needed.filter((s) => s !== state.role && !votes.includes(s));
   const otherName = (side: 'home' | 'away') => (side === 'home' ? state.teams?.home.name : state.teams?.away.name) ?? 'Gegner';
+  // Fortschritt von Einlauf und Hymne (gleiche Zeitbasis wie der Anpfiff)
+  const total = state.walkoutStartedAt && state.walkoutEndsAt ? state.walkoutEndsAt - state.walkoutStartedAt : 0;
+  const progress = total > 0 ? Math.min(1, Math.max(0, (Date.now() - state.walkoutStartedAt!) / total)) : 0;
   return (
+    <>
+    {/* Hymnentitel am oberen Rand der Stadionansicht – die Aufstellung steht unten vor der Haupttribüne */}
+    {sound.line && (
+      <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center px-3" data-testid="anthem-title">
+        <div className="max-w-[90%] rounded-lg bg-ink/70 px-4 py-1.5 text-center shadow-lg">
+          <p className="display truncate text-lg font-bold uppercase text-gold sm:text-xl">{sound.line}</p>
+          {total > 0 && <div className="mt-1 h-1 overflow-hidden rounded-full bg-olive-700" aria-hidden><div className="h-full bg-gold transition-[width] duration-200" style={{ width: `${progress * 100}%` }} /></div>}
+        </div>
+      </div>
+    )}
     <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-3">
-      {sound.line && <p className="display rounded-lg bg-ink/70 px-4 py-1.5 text-center text-xl font-bold uppercase text-gold">{sound.line}</p>}
       <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-xl bg-ink/80 px-3 py-2 text-sm shadow-xl">
         <span className="display text-lg font-bold uppercase">Anpfiff in {mmss}</span>
         {manager && !voted && (
@@ -399,6 +414,7 @@ export function WalkoutOverlay({ state, voted, onSkip, sound }: { state: MatchSt
       </div>
       <p className="text-xs text-cream-dim">Der Anpfiff erfolgt für alle gleichzeitig – im Multiplayer wird nur übersprungen, wenn alle Manager zustimmen.</p>
     </div>
+    </>
   );
 }
 

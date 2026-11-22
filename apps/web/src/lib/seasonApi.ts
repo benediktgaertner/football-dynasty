@@ -275,6 +275,8 @@ export const seasonApi = {
     transactions: Array<{ id: number; kind: string; amount: number; balance_after: number; description: string; created_at: string }>;
     last_attendance: { attendance: number; label: string } | null;
   }>('finance_overview', { p_world: worldId }),
+  /** Finanzdashboard (Migration 0037): Saisonanalyse aus den echten Buchungen, ein Aufruf je Ansicht */
+  financeReport: (worldId: string, seasonId: string | null) => rpc<import('./financeReport').FinanceReport>('finance_season_report', { p_world: worldId, p_season_id: seasonId }),
   setTickets: (worldId: string, league: number, cup: number, intl: number) => rpc<void>('set_ticket_prices', { p_world: worldId, p_league: league, p_cup: cup, p_international: intl }),
   /** Zuschauer, Auslastung und Ticketeinnahmen eines Spiels (erst sichtbar, wenn das Ergebnis sichtbar ist) */
   gate: (fixtureId: string) => rpc<{ attendance: number; capacity: number; utilization: number; ticket_price: number; income: number; booked: boolean; home_club_id: string; friendly: boolean } | null>('fixture_gate', { p_fixture: fixtureId }),

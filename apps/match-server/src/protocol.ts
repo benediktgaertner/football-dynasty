@@ -15,7 +15,9 @@ export const engineCommandSchema = z.discriminatedUnion('kind', [
 ]);
 
 export const clientMessageSchema = z.discriminatedUnion('t', [
-  z.object({ t: z.literal('hello'), token: z.string().min(10).max(4096), fixtureId: uuidish }),
+  /** sid: Sitzungskennung des Clients (bleibt über Wiederverbindungen gleich ⇒ Befehle idempotent);
+   * since: Anzahl der Ereignisse, die der Client schon hat (⇒ nur verpasste Ereignisse nachliefern) */
+  z.object({ t: z.literal('hello'), token: z.string().min(10).max(4096), fixtureId: uuidish, sid: z.string().min(8).max(64).optional(), since: z.number().int().nonnegative().max(100_000).optional() }),
   z.object({ t: z.literal('start') }),
   /** Einlauf: gemeinsam überspringen (jeder anwesende Manager muss zustimmen) */
   z.object({ t: z.literal('skip_walkout') }),

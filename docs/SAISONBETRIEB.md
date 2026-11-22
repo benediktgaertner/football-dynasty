@@ -334,3 +334,27 @@ Grundlage ist `docs/Football_Dynasty_Fanstimmung_Audio_Matrix_V2.xlsx`. Sie wird
   - Prüfung auf Überladung (Pausen, Abstände, Cooldowns)
 - `crowdAudio.test.ts`: Übergänge und Spitzenpegel.
 - Playwright „KI-Fankurve“: u. a. 0:4 in der 60. Minute.
+
+## Major-Update: Stadionakustik
+
+**Gesänge**
+- Etwa 25–30 % seltener. Die Excel-Logik bleibt, alle Chancen werden skaliert (`CHANT_TUNING` in `fanMood.ts`).
+- Heim und Gäste singen überwiegend abwechselnd. Gleichzeitig singen sie nur selten (Faktor 0,12 während die andere Seite singt). Nach einem Gesang wechselt die Seite bevorzugt.
+- Dieselbe MP3 läuft nie gleichzeitig auf beiden Spuren.
+- Simulation 0:0: früher 43 % Überlagerung, jetzt etwa 8 %; Seitenwechsel bei etwa 70 %.
+
+**Reaktionen** (lauter abgemischt, Excel-Lautstärke ÷ 50 statt ÷ 70)
+- „Ahhh“ beim Eindringen in den Strafraum (Heim 55 %, Gäste 30 %).
+- „Ooooh“ bei vergebener Großchance.
+- Aufschrei bei Pfosten oder Latte (angreifende Fans) und „Uhhh“ beim Gegner.
+- „Uhhh“ bei Elfmeterpfiff und Roter Karte.
+- Applaus nach gelungenem Dribbling und für eine Parade des eigenen Torhüters.
+- Pfeifkonzert bzw. Buhrufe zur Halbzeit im Rückstand und nach Gegentoren bei ≥ 2 Toren Rückstand.
+- Unmutszähler je Fanlager: Er steigt bei Gegentoren und bei vergebenen Chancen im Rückstand und lässt Pfiffe in Buhrufe übergehen.
+- Dynamischer Torjubel: Ausgleich, Führungstor und späte Tore sind lauter, Tore bei klarer Führung verhaltener. Der Jubel endet immer beim Wiederanstoß.
+- Neue Kategorien `applause` und `boo`. Für `boo` gibt es noch keine Aufnahme; bis dahin wird ersatzweise das echte Pfeifkonzert verwendet.
+
+**Hymne**
+- Der Titel steht jetzt am oberen Rand der Stadionansicht, mit Fortschrittsbalken.
+- Die Spieler stehen unten vor der Haupttribüne und werden nicht mehr verdeckt.
+- Playwright-Test „Hymnentitel oben“.

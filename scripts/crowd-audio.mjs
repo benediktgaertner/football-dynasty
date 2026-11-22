@@ -42,6 +42,9 @@ const CATS = {
   aah: [0.6, 2.5, -20, 0.2, 2],
   ooh: [0.6, 2.5, -19, 0.2, 2],
   uuh: [0.6, 2.5, -20, 0.2, 2],
+  // Major-Update: freier Applaus und Buhrufe
+  applause: [1.5, 6, -20, 0.6, 2],
+  boo: [1.5, 6, -20, 0.6, 2],
 };
 const AUDIO = new Set(['.wav', '.flac', '.mp3', '.ogg', '.m4a', '.aif', '.aiff']);
 

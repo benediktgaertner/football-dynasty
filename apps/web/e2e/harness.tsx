@@ -10,6 +10,7 @@ import { MatchClient, type MatchState } from '../src/lib/matchClient';
 import { MatchPitch } from '../src/components/match/MatchPitch';
 import { WalkoutOverlay, useMatchAudio } from '../src/pages/Match';
 import { mixer } from '../src/lib/audioMixer';
+import { ConnectionBanner } from '../src/components/match/ConnectionBanner';
 
 const q = new URLSearchParams(location.search);
 const fixture = q.get('fixture') ?? 'home-anthem-ai';
@@ -36,6 +37,14 @@ function App() {
       force: (f: { minute?: number; homeScore?: number; awayScore?: number } | null) => { sound.sound.forceState = f; },
       pitch: () => (window as unknown as { __fdPitch?: unknown }).__fdPitch ?? null,
       leave: () => { root.unmount(); },
+      // Test-Hilfen für Verbindungsabbrüche und Befehle
+      /** Socket hart schließen (wie ein Netzabbruch); after = Funktion, die nach dem Senden eines Befehls sofort trennt */
+      drop: () => { (client as unknown as { ws: WebSocket | null }).ws?.close(); },
+      cmdThenDrop: (c: unknown) => { const p = client.command(c as Parameters<typeof client.command>[0]); (client as unknown as { ws: WebSocket | null }).ws?.close(); return p; },
+      cmd: (c: unknown) => client.command(c as Parameters<typeof client.command>[0]),
+      conn: () => ({ connection: client.state.connection, reconnect: client.state.reconnect, recoveredAt: client.state.recoveredAt, role: client.state.role, view: client.state.view ? { pendingSubs: client.state.view.pendingSubs, subsUsed: client.state.view.subsUsed, players: client.state.view.players.map((p) => ({ id: p.id, onPitch: p.onPitch, main: p.main, unavailable: p.unavailable })) } : null,
+        score: client.state.latest?.score ?? null, tick: client.state.latest?.tick ?? 0 }),
+      events: () => (client.state.events as Array<{ type: string; side: string | null; tick: number }>).map((e) => `${e.tick}:${e.type}:${e.side}`),
     };
   }, [client, sound]);
   if (!state.teams) return <p style={{ color: '#fff' }}>verbinde … {state.connection}</p>;
@@ -49,6 +58,7 @@ function App() {
       {state.status === 'waiting' && state.walkoutEndsAt && (
         <WalkoutOverlay state={state} voted={voted} onSkip={() => { setVoted(true); client.skipWalkout(); }} sound={sound} />
       )}
+      <ConnectionBanner state={state} client={client} />
       <div data-testid="status" style={{ color: '#fff' }}>{state.status}</div>
     </div>
   );

@@ -31,9 +31,11 @@ export function createWorldSimulator(backend: Backend, rooms: Map<string, Promis
       const engine = new MatchEngine(toEngineSetup(db));
       engine.setAutopilot('home', true);
       engine.setAutopilot('away', true);
-      // In Häppchen rechnen und den Event-Loop freigeben: Live-Partien und neue Verbindungen bleiben flüssig
+      // In kleinen Häppchen rechnen und den Event-Loop freigeben: Live-Partien und neue Verbindungen bleiben flüssig.
+      // Gemessen ≈ 0,45 ms je Tick: 400 Ticks blockierten ~180 ms (Bildstrom und Heartbeat der Live-Partien stockten),
+      // 40 Ticks ≈ 18 ms liegen unter dem 25-ms-Takt der Live-Schleife.
       while (!engine.isFinished) {
-        for (let i = 0; i < 400 && !engine.isFinished; i++) engine.step();
+        for (let i = 0; i < 40 && !engine.isFinished; i++) engine.step();
         await new Promise((r) => setImmediate(r));
       }
       await backend.finish(fixtureId, engine.result());

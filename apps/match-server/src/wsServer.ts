@@ -41,7 +41,11 @@ export function attachMatchServer(server: Server, backend: Backend, opts: { allo
     let client: Client | null = null;
     let room: MatchRoom | null = null;
     let busy = false;
-    const fail = (message: string, code = 4000) => { ws.send(JSON.stringify({ t: 'error', message })); ws.close(code, message.slice(0, 100)); };
+    // ohne Fehler-Listener würde ein Socketfehler (z. B. ECONNRESET) als unbehandelte Ausnahme enden
+    ws.on('error', () => { /* close folgt */ });
+    const fail = (message: string, code = 4000, transient = false) => {
+      try { ws.send(JSON.stringify({ t: 'error', message, transient })); ws.close(code, message.slice(0, 100)); } catch { /* Socket schon zu */ }
+    };
     const helloTimeout = setTimeout(() => { if (!client) fail('Keine Anmeldung.', 4001); }, 10_000);
     let alive = true;
     ws.on('pong', () => { alive = true; });
@@ -70,16 +74,20 @@ export function attachMatchServer(server: Server, backend: Backend, opts: { allo
             getRoom(m.fixtureId),
             new Promise<never>((_, rej) => setTimeout(() => rej(new Error('room_load_timeout')), 20_000)),
           ]);
+          // Raum wurde gerade geschlossen (Abpfiff + 30 s): frisch laden statt in einen toten Raum zu laufen
+          if (room.closed) { rooms.delete(m.fixtureId); room = await getRoom(m.fixtureId); }
           if (ws.readyState !== 1) return;
-          client = { ws, userId, role, cmdWindow: [] };
+          client = { ws, userId, role, cmdWindow: [], sid: m.sid };
           clearTimeout(helloTimeout);
-          room.join(client);
+          room.join(client, m.since ?? 0);
         } catch (e) {
           const message = e instanceof Error && /already_finished/.test(e.message) ? 'Das Spiel ist bereits beendet. Das Ergebnis siehst du nach der Freigabe am Spieltag.'
             : e instanceof Error && /slot_not_live|not_current/.test(e.message) ? 'Dieses Spiel ist gerade nicht angesetzt.'
             : 'Spiel konnte nicht geladen werden. Bitte neu verbinden.';
+          const transient = !(e instanceof Error && /already_finished|slot_not_live|not_current/.test(e.message));
           console.error('hello fehlgeschlagen', e);
-          return fail(message, 4500);
+          // vorübergehende Fehler (Datenbank, Neustart): Client verbindet automatisch neu
+          return fail(message, transient ? 4502 : 4500, transient);
         } finally {
           busy = false;
         }

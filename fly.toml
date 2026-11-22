@@ -9,6 +9,11 @@ primary_region = "fra"
 [env]
   PORT = "2567"
 
+# SIGTERM bei Deploy/Neustart: der Server sichert alle laufenden Partien (Checkpoint) und schließt die Verbindungen.
+# Fly-Standard sind nur 5 s – zu knapp bei langsamer Datenbank, dann ginge bis zu 20 s Spielstand verloren.
+kill_signal = "SIGTERM"
+kill_timeout = "20s"
+
 [http_service]
   internal_port = 2567
   force_https = true

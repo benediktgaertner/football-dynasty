@@ -243,7 +243,8 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
         const base = Math.min(total, 20_000);
         const elapsed = total - remaining;
         const p = remaining < base * 0.28 ? Math.max(Math.min(0.72, elapsed / base), 1 - remaining / base) : Math.min(0.72, elapsed / base);
-        debugPitch({ mode: 'walkout', walkoutP: p });
+        // Aufstellung steht vor der Haupttribüne (unten, y = W − 3,2 m): Bildschirmlage für die Overlay-Prüfung
+        debugPitch({ mode: 'walkout', walkoutP: p, lineupTopPx: (oy + (W - 3.2 - 1.6) * s) / dpr, canvasH: ch });
         drawWalkout([...st.players].map(([id, [x, y]]) => [id, x, y] as [string, number, number]), p, nowMs / 1000);
         drawWeather(); drawPyro(); return;
       }
@@ -253,6 +254,7 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
         const evs = client.state.events as MatchEvent[];
         const nowMs = performance.now();
         const dt = Math.min(0.25, (nowMs - evState.lastT) / 1000); evState.lastT = nowMs;
+        if (evState.idx > evs.length) evState.idx = -1; // Ereignisprotokoll wurde zurückgesetzt (Server-Neustart)
         if (evState.idx < 0) { const i = evs.findIndex((e) => e.tick > st.tick); evState.idx = i < 0 ? evs.length : i; }
         const [bx0, by0, bz0] = st.ball;
         while (evState.idx < evs.length && evs[evState.idx]!.tick <= st.tick) {

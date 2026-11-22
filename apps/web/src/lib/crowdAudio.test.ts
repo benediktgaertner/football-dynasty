@@ -179,7 +179,7 @@ describe.skipIf(!wa)('Stadionatmosphäre – hörbare Pegelunterschiede (Offline
     expect(await m.reaction('chance', 'away')).toBeNull();
     m.goal('away');
     expect(m.debug().sources).toBe(before);
-    expect(m.missing()).toEqual(['ambience', 'clap', 'attack', 'chance', 'whistle', 'concede', 'goal', 'aah', 'ooh', 'uuh']);
+    expect(m.missing()).toEqual(['ambience', 'clap', 'attack', 'chance', 'whistle', 'concede', 'goal', 'aah', 'ooh', 'uuh', 'applause', 'boo']);
     expect(m.roars).toBe(0);
   });
 });
@@ -218,7 +218,7 @@ describe('Auswahl ohne Wiederholung', () => {
 
   it('Bibliothek enthält keine Fangesänge (Gesänge nur als Vereins-Upload)', async () => {
     const { CROWD_CATEGORIES } = await import('./crowdLibrary');
-    expect(CROWD_CATEGORIES.map((c) => c.key)).toEqual(['ambience', 'clap', 'attack', 'chance', 'whistle', 'concede', 'goal', 'aah', 'ooh', 'uuh']);
+    expect(CROWD_CATEGORIES.map((c) => c.key)).toEqual(['ambience', 'clap', 'attack', 'chance', 'whistle', 'concede', 'goal', 'aah', 'ooh', 'uuh', 'applause', 'boo']);
   });
 });
 

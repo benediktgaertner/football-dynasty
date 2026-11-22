@@ -18,7 +18,8 @@ import {
 
 export type PresenterMessage =
   | { t: 'frame'; s: Snapshot; scene: number }
-  | { t: 'ev'; events: MatchEvent[] }
+  /** from = Index des ersten Ereignisses im Gesamtprotokoll (Client erkennt Duplikate und Lücken) */
+  | { t: 'ev'; events: MatchEvent[]; from: number }
   | { t: 'skip'; from: number; to: number; scene: number }
   | { t: 'status'; status: 'running' | 'halftime' }
   | { t: 'done' };
@@ -61,9 +62,10 @@ export class Presenter {
   private release(out: PresenterMessage[]): void {
     const ev = this.engine.events;
     if (ev.length > this.released.length) {
-      const fresh = ev.slice(this.released.length);
+      const from = this.released.length;
+      const fresh = ev.slice(from);
       this.released.push(...fresh);
-      out.push({ t: 'ev', events: fresh });
+      out.push({ t: 'ev', events: fresh, from });
     }
   }
 

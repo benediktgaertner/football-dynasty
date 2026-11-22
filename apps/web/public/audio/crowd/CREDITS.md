@@ -42,3 +42,4 @@ Diese Aufnahmen werden für die Stadionatmosphäre der KI-Fans verwendet (bearbe
 - `ooh/ooh_mestalla_oh_228.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona, CC BY-NC 4.0, https://freesound.org/s/260585/
 - `uuh/uuh_mestalla_uh_140.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona (bearbeitet: Tiefpass, um 7 % verlangsamt), CC BY-NC 4.0, https://freesound.org/s/260585/
 - `uuh/uuh_mestalla_uh_228.mp3` – vcantos (freesound.org) – Mestalla, Valencia vs. FC Barcelona (bearbeitet: Tiefpass, um 7 % verlangsamt), CC BY-NC 4.0, https://freesound.org/s/260585/
+- `applause/applause_wimbledon_beifall.mp3` – Dan_AudioFile (freesound.org) – Wimbledon Stadium, CC BY 4.0, https://freesound.org/s/654084/

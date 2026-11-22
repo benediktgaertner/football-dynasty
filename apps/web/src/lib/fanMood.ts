@@ -47,6 +47,13 @@ export interface AudioParams {
   moodLag: number; homeChantDeficit3After60: number; awayCapPercent: number; peakLimit: number; subsetMin: number; subsetMax: number; noRepeat: number;
 }
 export const PARAMS: AudioParams = AUDIO_PARAMS;
+
+/**
+ * Major-Update: Gesangshäufigkeit insgesamt um ≈ 25 % senken (Excel-Situationslogik bleibt, nur skaliert),
+ * Heim und Gäste überwiegend abwechselnd: Singt die andere Seite gerade, startet ein Gesang nur selten;
+ * hat zuletzt dieselbe Seite gesungen, ist ein Wechsel wahrscheinlicher.
+ */
+export const CHANT_TUNING = { scale: 0.95, whileOtherSings: 0.12, sameSideAgain: 0.55, otherSideTurn: 1.8 } as const;
 export const RULES: CrowdRule[] = CROWD_RULES;
 
 export interface MoodEvent { id: string; name: string; fans: string; level: number; duration: number; effect: string; note: string; priority: number }
@@ -218,10 +225,12 @@ export class FanScheduler {
   private next: Record<'home' | 'away' | 'rhome' | 'raway', number>;
   private cool = new Map<string, number>();
   private lastReaction = -Infinity;
+  /** Seite des zuletzt gestarteten Gesangs (Wechsel bevorzugt) */
+  private lastSide: Side | null = null;
   readonly log: Decision[] = [];
   /** Zähler über die ganze Partie (Log wird gekürzt) */
   readonly stats = { windows: { home: 0, away: 0 }, starts: { home: 0, away: 0 }, reactionWindows: { home: 0, away: 0 }, reactions: { home: 0, away: 0 } };
-  constructor(private rnd: () => number = Math.random, private scale = 1, private p: AudioParams = PARAMS) {
+  constructor(private rnd: () => number = Math.random, private scale = 1, private p: AudioParams = PARAMS, private tune: { scale: number; whileOtherSings: number; sameSideAgain: number; otherSideTurn: number } = CHANT_TUNING) {
     this.next = { home: this.win() * 0.3, away: this.win() * 0.6, rhome: this.rwin() * 0.5, raway: this.rwin() * 0.8 };
   }
   private win() { return (this.p.chantCheckMin + this.rnd() * (this.p.chantCheckMax - this.p.chantCheckMin)) * this.scale; }
@@ -244,11 +253,16 @@ export class FanScheduler {
       if (i.busy) { this.next[side] = t + 2 * this.scale; continue; }
       this.next[side] = t + this.win();
       if (i.playing[side] || !i.hasSongs[side]) continue; // R29: nur bei freiem Slot
-      const chance = i.blocked[side] ? 0 : side === 'home' ? i.mood.homeChant : i.mood.awayChant;
+      const other: Side = side === 'home' ? 'away' : 'home';
+      const T = this.tune;
+      let chance = i.blocked[side] ? 0 : (side === 'home' ? i.mood.homeChant : i.mood.awayChant) * T.scale;
+      if (i.playing[other] || out.some((o) => o.kind === 'chant')) chance *= T.whileOtherSings; // gleichzeitig nur selten
+      else if (this.lastSide === side) chance *= T.sameSideAgain;
+      else if (this.lastSide === other) chance = Math.min(100, chance * T.otherSideTurn);
       const started = this.rnd() * 100 < chance;
       this.log.push({ t, kind: 'chant', side, chance, started });
       this.stats.windows[side]++;
-      if (started) { this.stats.starts[side]++; out.push({ kind: 'chant', side }); }
+      if (started) { this.stats.starts[side]++; this.lastSide = side; out.push({ kind: 'chant', side }); }
     }
     for (const side of ['home', 'away'] as const) {
       const key = side === 'home' ? 'rhome' : 'raway';

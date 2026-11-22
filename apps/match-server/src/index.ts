@@ -46,6 +46,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       startedAt: startedAt.toISOString(),
       engine: { virtualMinutes: MATCH_VIRTUAL_MINUTES, realSeconds: MATCH_REAL_SECONDS, implemented: true },
       rooms: match.rooms.size,
+      clients: match.wss.clients.size,
+      uptimeSeconds: Math.round(process.uptime()),
     }, origin);
   }
 
@@ -99,7 +101,11 @@ process.on('SIGTERM', () => {
   sim.stop();
   // Laufende Partien sichern: nach dem Neustart werden sie per Replay exakt fortgesetzt
   void Promise.allSettled([...match.rooms.values()].map((p) => p.then((r) => r.saveCheckpoint()))).then(() => {
+    // Clients mit „Dienst startet neu“ (1012) verabschieden: sie verbinden sofort automatisch neu und laden den Stand nach
+    for (const ws of match.wss.clients) { try { ws.close(1012, 'server_restart'); } catch { /* schon zu */ } }
     server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 1_000).unref();
   });
-  setTimeout(() => process.exit(0), 10_000).unref();
+  // Fly wartet laut fly.toml (kill_timeout) mindestens 15 s – Rückfall, falls die Datenbank hängt
+  setTimeout(() => process.exit(0), 12_000).unref();
 });

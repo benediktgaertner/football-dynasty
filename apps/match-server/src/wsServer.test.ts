@@ -53,7 +53,7 @@ beforeAll(async () => {
 afterAll(() => new Promise<void>((r) => server.close(() => r())));
 
 interface Conn { ws: WebSocket; msgs: any[]; wait: (pred: (m: any) => boolean, ms?: number) => Promise<any>; send: (m: unknown) => void }
-function connect(token: string, fixtureId: string, origin = 'http://ok.test'): Promise<Conn> {
+function connect(token: string, fixtureId: string, origin = 'http://ok.test', sid?: string, since?: number): Promise<Conn> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(url, { headers: { origin } });
     const msgs: any[] = [];
@@ -73,7 +73,7 @@ function connect(token: string, fixtureId: string, origin = 'http://ok.test'): P
         waiters.push({ pred, res: (m) => { clearTimeout(t); res(m); } });
       }),
     };
-    ws.on('open', () => { ws.send(JSON.stringify({ t: 'hello', token, fixtureId })); resolve(conn); });
+    ws.on('open', () => { ws.send(JSON.stringify({ t: 'hello', token, fixtureId, sid, since })); resolve(conn); });
     ws.on('error', reject);
   });
 }
@@ -176,7 +176,8 @@ describe('Match-Server (echte WebSocket-Clients)', () => {
 
     // Gast trennt Verbindung ⇒ Automatik, verbindet sich wieder ⇒ Zustand kommt mit init
     away.ws.close();
-    await new Promise((r) => setTimeout(r, 300));
+    // länger als die Karenzzeit (20 s / Testgeschwindigkeit 40 = 500 ms) ⇒ Automatik übernimmt
+    await new Promise((r) => setTimeout(r, 800));
     const away2 = await connect('token-away-xxxx', 'f1');
     const re = await away2.wait((m) => m.t === 'init');
     expect(re.status).toBe('running');
@@ -198,6 +199,54 @@ describe('Match-Server (echte WebSocket-Clients)', () => {
     expect(last.log.some((r) => r.cmd.kind === 'autopilot')).toBe(true);
     for (const c of [home, away2, fan]) c.ws.close();
   }, 30000);
+
+  it('Wiederverbindung: nur verpasste Ereignisse, Befehle idempotent, kurze Abbrüche ohne Automatik, alte Verbindung wird abgelöst', async () => {
+    const home = await connect('token-home-xxxx', 'f-reco');
+    const away = await connect('token-away-xxxx', 'f-reco');
+    const ih = await home.wait((m) => m.t === 'init');
+    await away.wait((m) => m.t === 'init');
+    expect(ih.eventsFrom).toBe(0);
+    home.send({ t: 'start' });
+    await home.wait((m) => m.t === 'status' && m.status === 'running');
+    // Befehl mit Sitzungskennung: zweimal gesendet (z. B. nach Verbindungsabbruch) ⇒ nur einmal ausgeführt
+    const a = await connect('token-away-xxxx', 'f-reco', 'http://ok.test', 'sid-away-0001');
+    await a.wait((m) => m.t === 'init');
+    expect(away.ws.readyState).toBeGreaterThanOrEqual(2); // alte Verbindung der Person abgelöst
+    const closed = await new Promise<number>((r) => (away.ws.readyState === 3 ? r(0) : away.ws.on('close', (c) => r(c))));
+    expect(closed).toBe(4409);
+    const awayPl = (await a.wait((m) => m.t === 'init')).view.players;
+    const out = awayPl.find((p: any) => p.onPitch && p.position !== 'GK');
+    const inn = awayPl.find((p: any) => !p.onPitch && !p.unavailable && p.main !== 'GK');
+    const cmd = { kind: 'sub', outId: out.id, inId: inn.id };
+    a.send({ t: 'cmd', id: 5, cmd });
+    const first = await a.wait((m) => m.t === 'ack' && m.id === 5);
+    expect(first.ok).toBe(true);
+    // Angenommener Befehl wird zeitnah gesichert (Neustart verliert keinen Wechsel)
+    await new Promise((r) => setTimeout(r, 300));
+    const last = checkpoints.at(-1)!.data as { log: Array<{ cmd: { kind: string } }> };
+    expect(last.log.some((r) => r.cmd.kind === 'sub')).toBe(true);
+    a.send({ t: 'cmd', id: 5, cmd });
+    await a.wait((m) => m.t === 'ack' && m.id === 5 && m.dup === true);
+    const dup = a.msgs.filter((m) => m.t === 'ack' && m.id === 5).at(-1);
+    expect(dup.ok).toBe(true);
+    // ohne Idempotenz würde ein neuer Versuch „bereits vorgemerkt“ melden – mit neuer id tut er das weiterhin (echtes Duplikat)
+    a.send({ t: 'cmd', id: 6, cmd });
+    expect((await a.wait((m) => m.t === 'ack' && m.id === 6)).ok).toBe(false);
+
+    // kurzer Abbruch (< Karenzzeit): Verbindung weg, sofort zurück mit „since“ ⇒ nur Neues, keine Automatik
+    const seen = home.msgs.filter((m) => m.t === 'ev').flatMap((m) => m.events).length + ih.events.length;
+    home.ws.close();
+    await new Promise((r) => setTimeout(r, 100));
+    const home2 = await connect('token-home-xxxx', 'f-reco', 'http://ok.test', 'sid-home-0001', seen);
+    const re = await home2.wait((m) => m.t === 'init');
+    expect(re.eventsFrom).toBe(seen);
+    expect(re.view.autopilot).toBe(false);
+    expect(re.status).toBe('running');
+    // ab jetzt laufen Ereignisse lückenlos mit fortlaufendem „from“
+    const evs = await home2.wait((m) => m.t === 'ev' && m.from >= seen, 15000);
+    expect(evs.from).toBeGreaterThanOrEqual(seen);
+    home2.ws.close(); a.ws.close();
+  });
 
   it('setzt eine Partie nach Neustart aus dem Checkpoint exakt fort', async () => {
     stored = checkpoints.find((c) => c.tick >= 800)!.data as DbSetup['checkpoint'];
