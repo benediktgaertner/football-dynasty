@@ -117,6 +117,8 @@ export class MatchSound {
   songs: Record<Side, Song[]> = { home: [], away: [] };
   private cur: Record<Side, Track | null> = { home: null, away: null };
   private lastSong: Record<Side, string | null> = { home: null, away: null };
+  /** Audiozeit, zu der der letzte Gesang der Seite endete */
+  private lastEnd: Record<Side, number> = { home: -999, away: -999 };
   private blockUntil: Record<Side, number> = { home: 0, away: 0 };
   private once = new Set<string>();
   private goalUntil = 0;
@@ -312,6 +314,9 @@ export class MatchSound {
     const other = side === 'home' ? 'away' : 'home';
     // nie dieselbe Datei gleichzeitig auf beiden Spuren
     const list = this.songs[side].filter((s) => (s.mood !== 'taunt' || lead >= 1) && s.url !== this.curSong[other]);
+    // gibt es situationsbedingt nur diesen einen Gesang (z. B. Heimteam im Rückstand ohne Spottgesänge), wird er nicht unmittelbar
+    // wiederholt: mindestens 45 s nach seinem Ende Pause
+    if (list.length === 1 && list[0]!.id === this.lastSong[side] && this.t - this.lastEnd[side] < 45) return null;
     return pickNext(list, this.lastSong[side]);
   }
 
@@ -336,6 +341,7 @@ export class MatchSound {
         if (this.cur[side] !== t) return;
         this.cur[side] = null;
         this.curSong[side] = null;
+        this.lastEnd[side] = this.t;
         this.scheduler.chantEnded(side, this.t); // 1–3 s Pause, dann neues Prüffenster
         if (!this.cur.home && !this.cur.away) mixer.chanting(false);
       });

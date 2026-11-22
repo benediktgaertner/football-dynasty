@@ -42,7 +42,6 @@ async function setup(seconds: number, buf = 10) {
   m.preload('mem://t', steady(ctx, buf));
   return { ctx, m };
 }
-const at = async (ctx: OfflineAudioContext, t: number, fn: () => void) => { void ctx.suspend(t).then(() => { fn(); void ctx.resume(); }); };
 
 describe.skipIf(!wa)('Audioübergänge (Offline-Rendering)', () => {
   it('Fangesang beginnt: Einblenden über 1,5 s ohne Sprung', async () => {
@@ -71,7 +70,7 @@ describe.skipIf(!wa)('Audioübergänge (Offline-Rendering)', () => {
   it('Tor während eines Gesangs: stop(2,2 s) blendet weich aus, kein harter Schnitt', async () => {
     const { ctx, m } = await setup(16);
     const tr = await m.play('mem://t', { channel: 'home', at: 4.5, fadeIn: 1.5, volume: 0.6 });
-    await at(ctx, 9, () => tr!.stop(2.2, 'goal'));
+    tr!.stop(2.2, 'goal', 9);
     const l = levels(await ctx.startRendering() as unknown as AudioBuffer, 8, 13);
     const before = l.slice(2, 8).reduce((a, b) => a + b, 0) / 6;
     const after = l.slice(-5).reduce((a, b) => a + b, 0) / 5;
@@ -84,7 +83,7 @@ describe.skipIf(!wa)('Audioübergänge (Offline-Rendering)', () => {
   it('Kontrolle: ein harter Stopp (0,2 s, altes Verhalten bei Toren) wird von der Messung erkannt', async () => {
     const { ctx, m } = await setup(16);
     const tr = await m.play('mem://t', { channel: 'home', at: 4.5, fadeIn: 1.5, volume: 0.6 });
-    await at(ctx, 9, () => tr!.stop(0.2, 'goal'));
+    tr!.stop(0.2, 'goal', 9);
     const l = levels(await ctx.startRendering() as unknown as AudioBuffer, 8, 13);
     expect(maxStep(l)).toBeGreaterThan(0.3);
   }, 60_000);
@@ -92,7 +91,7 @@ describe.skipIf(!wa)('Audioübergänge (Offline-Rendering)', () => {
   it('Ereignis (Torjubel): Gesang wird innerhalb 0,4–0,8 s deutlich leiser (Ducking) und kehrt weich zurück', async () => {
     const { ctx, m } = await setup(24, 20);
     await m.play('mem://t', { channel: 'home', at: 4, fadeIn: 0.5, volume: 0.6 });
-    await at(ctx, 10, () => m.duckChants('both', 0.15, { attack: 0.6, hold: 3.5, release: 2.5 }));
+    m.duckChants('both', 0.15, { attack: 0.6, hold: 3.5, release: 2.5, at: 10 });
     const l = levels(await ctx.startRendering() as unknown as AudioBuffer, 8, 22);
     const base = l.slice(5, 15).reduce((a, b) => a + b, 0) / 10; // 8,5–9,5 s
     const t = (thr: number) => l.findIndex((v, i) => i > 20 && v < base - thr) / 10 + 8 - 10; // Sekunden nach dem Ereignis
@@ -107,8 +106,8 @@ describe.skipIf(!wa)('Audioübergänge (Offline-Rendering)', () => {
   it('Ducking und Gesang werden nicht über AudioParam.value gelesen: zwei Ducks hintereinander bleiben stetig', async () => {
     const { ctx, m } = await setup(20, 16);
     await m.play('mem://t', { channel: 'home', at: 4, fadeIn: 0.5, volume: 0.6 });
-    await at(ctx, 8, () => m.duckChants('home', 0.3, { attack: 0.5, hold: 1.5, release: 2 }));
-    await at(ctx, 9.2, () => m.duckChants('home', 0.5, { attack: 0.4, hold: 1, release: 1.5 })); // mitten im ersten Duck
+    m.duckChants('home', 0.3, { attack: 0.5, hold: 1.5, release: 2, at: 8 });
+    m.duckChants('home', 0.5, { attack: 0.4, hold: 1, release: 1.5, at: 9.2 }); // mitten im ersten Duck
     const l = levels(await ctx.startRendering() as unknown as AudioBuffer, 7, 16);
     expect(maxStep(l)).toBeLessThan(0.2);
   }, 60_000);

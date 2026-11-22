@@ -40,7 +40,7 @@ export function loadVolumes(): Record<Channel, number> {
   } catch { return { ...DEFAULT_VOL }; }
 }
 
-export interface Track { stop: (fadeSec?: number, reason?: string) => void; ended: Promise<void>; url: string }
+export interface Track { stop: (fadeSec?: number, reason?: string, at?: number) => void; ended: Promise<void>; url: string }
 
 /** Protokoll der Audioplanung (Diagnose/Tests): geplante und tatsächliche Start-/Stoppzeiten, Ducking */
 export interface AudioLogEntry {
@@ -327,9 +327,9 @@ export class StadiumMixer {
    * Laufenden Gesang einer Seite rasch ducken (R10: 0,15–0,35 s), kurz halten, dann weich zurück.
    * depth 0…1 (Restpegel); für Tore wird der Gesang stattdessen gestoppt.
    */
-  duckChants(side: Side | 'both', depth: number, o: { attack?: number; hold?: number; release?: number } = {}) {
+  duckChants(side: Side | 'both', depth: number, o: { attack?: number; hold?: number; release?: number; at?: number } = {}) {
     if (!this.ctx) return;
-    const now = this.ctx.currentTime;
+    const now = o.at ?? this.ctx.currentTime; // at: nur Tests (Offline-Rendering)
     const a = o.attack ?? 0.25, h = o.hold ?? 1.5, r = o.release ?? 1.2;
     this.note({ ev: 'duck', t: now, side: side === 'both' ? undefined : side, depth, attack: a, hold: h, release: r });
     for (const sd of side === 'both' ? (['home', 'away'] as const) : [side]) {
@@ -586,12 +586,12 @@ export class StadiumMixer {
     let done = false;
     let resolve!: () => void;
     const ended = new Promise<void>((r) => { resolve = r; });
-    const stop = (fade = 1, reason?: string) => {
+    const stop = (fade = 1, reason?: string, when?: number) => {
       if (done) return; done = true;
-      this.note({ ev: 'stop', t: ctx.currentTime, channel: o.channel, id: o.id, category: o.category as string | undefined, side: o.side, fade, reason: reason ?? 'stop' });
+      this.note({ ev: 'stop', t: when ?? ctx.currentTime, channel: o.channel, id: o.id, category: o.category as string | undefined, side: o.side, fade, reason: reason ?? 'stop' });
       this.playing.delete(entry);
       this.celebration = this.celebration.filter((x) => x !== handle);
-      const t = Math.max(ctx.currentTime, at);
+      const t = Math.max(when ?? ctx.currentTime, at);
       const f = Math.max(0.05, fade);
       rel.gain.cancelScheduledValues(t); rel.gain.setValueAtTime(1, t); rel.gain.setValueCurveAtTime(fadeCurve(false), t, f);
       try { src.stop(t + f + 0.05); } catch { /* bereits beendet */ }

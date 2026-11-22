@@ -30,6 +30,19 @@ describe.skipIf(!wa)('3-Minuten-Partien: technische Audioprüfung (Offline-Rende
       if (process.env.FD_AUDIO_RANGE) { const [a, b] = process.env.FD_AUDIO_RANGE.split('-').map(Number) as [number, number]; console.log('Pegel', a, '-', b, 's:', res.levels.slice(a * 10, b * 10).map((v) => v.toFixed(0)).join(' '), '\nLog:', JSON.stringify(res.log.filter((e) => e.t >= a - 1 && e.t <= b).map((e) => `${e.t.toFixed(2)} ${e.ev} ${e.channel ?? e.side ?? ''}/${e.category ?? ''}:${e.id ?? ''} fade=${e.fade ?? ''} ${e.reason ?? ''} depth=${e.depth ?? ''}`))); }
       if (process.env.FD_AUDIO_DEBUG) console.log(sc.name, 'große Sprünge außerhalb von Ereignissen:', JSON.stringify(s.bigJumps), '\nStarts:', JSON.stringify(res.log.filter((e) => e.ev === 'start' && e.category !== 'ambience').map((e) => `${e.t.toFixed(1)}s ${e.channel}/${e.category ?? ''}:${e.id} len=${e.len?.toFixed(1)}`)));
       expect(res.levels.length).toBeGreaterThan(1700);
+      expect(s.errors).toEqual([]); // keine Laufzeitfehler im Audio-Stack
+      expect(s.hardCuts, JSON.stringify(res.log.filter((e) => e.channel === 'home' || e.channel === 'away').map((e) => `${e.t.toFixed(1)} ${e.ev} ${e.channel} ${e.id} fade=${e.fade} fi=${e.fadeIn} ${e.reason ?? ''}`))).toBe(0); // kein Gesang wird mit weniger als 1 s Ausblendung gestoppt
+      expect(s.hardStarts, JSON.stringify(res.log.filter((e) => e.channel === 'home' || e.channel === 'away').map((e) => `${e.t.toFixed(1)} ${e.ev} ${e.channel} ${e.id} fade=${e.fade} fi=${e.fadeIn} ${e.reason ?? ''}`))).toBe(0); // alle Gesänge blenden ≥ 1 s ein
+      expect(s.shortEndFades, JSON.stringify(res.log.filter((e) => e.channel === 'home' || e.channel === 'away').map((e) => `${e.t.toFixed(1)} ${e.ev} ${e.channel} ${e.id} fade=${e.fade} fi=${e.fadeIn} ${e.reason ?? ''}`))).toBe(0); // natürliches Ende immer mit ≥ 1,5 s Ausblendung
+      expect(Object.keys(s.cutReasons).every((r) => ['goal', 'injury', 'deficit', 'finish'].includes(r))).toBe(true); // Abbrüche nur durch Tor/Verletzung/Rückstand/Abpfiff
+      expect(s.chantsCut).toBeLessThanOrEqual(sc.events.filter((e) => e.type === 'goal' || e.type === 'injury').length);
+      expect(s.chantStarts).toBeGreaterThanOrEqual(5); expect(s.chantStarts).toBeLessThanOrEqual(14); // Häufigkeit wie bisher (8–11 je Partie)
+      expect(s.maxSimultaneousChants).toBeLessThanOrEqual(2);
+      expect(s.overlapSeconds).toBeLessThan(40); // gleichzeitiger Gesang bleibt die Ausnahme
+      expect(s.sameFileTwice, JSON.stringify(res.log.filter((e) => e.channel === 'home' || e.channel === 'away').map((e) => `${e.t.toFixed(1)} ${e.ev} ${e.channel} ${e.id} fade=${e.fade} fi=${e.fadeIn} ${e.reason ?? ''}`))).toBe(0); // nie dieselbe Datei direkt hintereinander
+      expect(s.minLevelDb).toBeGreaterThan(-50); // nie Stille: Grundrauschen läuft durchgehend
+      expect(s.jumpsOver9OutsideEvents).toBeLessThanOrEqual(12); // keine Pegelsprünge außerhalb von Ereignissen (Aufnahmen haben natürliche Dynamik)
+      if (sc.name.startsWith('0:0')) expect(s.chantsCut).toBe(0); // ohne Tor/Verletzung läuft jeder Gesang bis zum Ende
     }, 240_000);
   }
 });
