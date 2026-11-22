@@ -5,6 +5,8 @@ import { api, type WorldSummary } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Button, Card, ErrorBanner, Field, Pill, Shell, Spinner, TextInput } from '../components/ui';
 import { CountryPicker } from '../components/CountryPicker';
+import { SecurePrompt, secureStep } from '../components/SecureAccount';
+import { dismissAccountPrompt } from '../lib/account';
 
 const STATUS_LABEL: Record<string, string> = {
   lobby: 'Lobby',
@@ -16,7 +18,13 @@ const STATUS_LABEL: Record<string, string> = {
 
 /** B2.2: Karrierewelt erstellen oder beitreten. */
 export function Home() {
-  const { profile } = useAuth();
+  const { profile, account, refreshAccount } = useAuth();
+  const [promptClosed, setPromptClosed] = useState(false);
+  const unsecured = !!account && secureStep(account) !== 'done';
+  // einmal geöffnet bleibt die Aufforderung offen, bis sie geschlossen wird (auch nach erfolgreicher Sicherung)
+  const [promptOpen, setPromptOpen] = useState(false);
+  useEffect(() => { if (unsecured && !account?.prompt_dismissed && !promptClosed) setPromptOpen(true); }, [unsecured, account?.prompt_dismissed, promptClosed]);
+  const showPrompt = promptOpen && !promptClosed;
   const navigate = useNavigate();
   const [worlds, setWorlds] = useState<WorldSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -64,7 +72,19 @@ export function Home() {
   }
 
   return (
-    <Shell right={<Link to="/konto" className="display rounded-xl px-3 py-2 text-lg font-semibold uppercase text-cream-dim hover:bg-olive-800 hover:text-cream">{profile?.username}</Link>}>
+    <Shell right={<Link to="/konto" className="display rounded-xl px-3 py-2 text-lg font-semibold uppercase text-cream-dim hover:bg-olive-800 hover:text-cream" data-testid="account-link">{profile?.username}</Link>}>
+      {showPrompt && (
+        <SecurePrompt onClose={(dismissed) => {
+          setPromptClosed(true);
+          if (dismissed) void dismissAccountPrompt().then(() => refreshAccount()).catch(() => undefined);
+        }} />
+      )}
+      {unsecured && !showPrompt && (
+        <Link to="/konto" className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-sunset/40 bg-sunset/10 px-4 py-3 text-cream" data-testid="secure-banner">
+          <span>Dein Account ist noch nicht gesichert. Hinterlege E-Mail und Passwort, um auf mehreren Geräten zu spielen.</span>
+          <Pill tone="warn">Sichern</Pill>
+        </Link>
+      )}
       <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
         <Card className="animate-rise">
           <form onSubmit={create} className="space-y-4">

@@ -116,3 +116,7 @@ npm run build
 - **Testseite:** `apps/web/e2e/harness.html`. Sie nutzt die echten Komponenten (MatchClient, MatchPitch, Einlauf-Overlay, Stadionton) und ist nur im Dev-Server verfügbar, nicht im Produktions-Build.
 - **Fälle:** Überspringen (Heimspiel mit Hymne, Auswärtsspiel gegen KI ohne Hymne, Heimspiel ohne Hymne, Pokal, Champions League), kurzer Einlauf ohne Hymne, volle Hymne, Multiplayer-Abstimmung, Verlassen stoppt alles, Heim- und Auswärtstor (Jubeldauer, Ende mit Wiederanstoß, keine Überlappung), KI-Fankurve klingt nicht musikalisch.
 - **Seeds mit frühem Tor:** `npx tsx e2e/findGoalSeed.ts [home|away]` (im Match-Server-Ordner).
+
+## Login-Tests
+- DB: `E0_accounts.sql` (in `scripts/test-db.sh`).
+- Browser: `npm run e2e:auth -w @fd/web` – lokale PostgreSQL + `apps/web/e2e/auth/mockSupabase.ts` (Nachbildung von Supabase Auth/REST, nur Tests). Pflichtfälle 1–6, siehe LOGIN.md.

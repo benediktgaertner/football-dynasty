@@ -122,3 +122,6 @@ Keine Schlüssel nötig, keine laufenden Kosten: Musik entsteht im Browser oder 
 1. **Supabase:** SQL Editor → New query → `football_dynasty_update_0035.sql` → Run (wiederholbar).
 2. **GitHub/Netlify:** Zip-Inhalt ins Repository kopieren und pushen.
 3. **Fly.io: Deploy nötig** (Match-Server: Einlaufdauer nach Hymnenlänge, gemeinsames Überspringen): `& "$env:USERPROFILE\.fly\bin\flyctl.exe" deploy -a football-dynasty`
+
+## Login (0036)
+Siehe [LOGIN.md](LOGIN.md): Supabase-Einstellungen (Confirm email, Redirect URLs, SMTP), Backup vor der Migration, Deploy-Reihenfolge.

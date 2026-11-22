@@ -6,7 +6,7 @@ import { MatchdayOverview } from './pages/MatchdayOverview';
 import { PlayerPage } from './pages/PlayerPage';
 import { AuthProvider, useAuth } from './lib/auth';
 import { missingEnv } from './lib/supabase';
-import { Card, Shell, Spinner } from './components/ui';
+import { Button, Card, Shell, Spinner } from './components/ui';
 import { Account } from './pages/Account';
 import { ClubEditor } from './pages/ClubEditor';
 import { Draft } from './pages/Draft';
@@ -21,12 +21,37 @@ import { Transfers } from './pages/Transfers';
 import { Finance } from './pages/Finance';
 import { Home } from './pages/Home';
 import { Lobby } from './pages/Lobby';
-import { Welcome } from './pages/Welcome';
+import { ProfileSetup, ResetPassword, Welcome } from './pages/Welcome';
+import { AccountNotices } from './components/SecureAccount';
 
 function Routed() {
-  const { loading, session, profile } = useAuth();
+  return (
+    <>
+      <AccountNotices />
+      <RoutedInner />
+    </>
+  );
+}
+
+function RoutedInner() {
+  const { loading, session, profile, profileError, recovery, refreshProfile } = useAuth();
   if (loading) return <Spinner label="Verbinde …" />;
-  if (!session || !profile) return <Welcome />;
+  if (recovery) return <ResetPassword />;
+  if (!session) return <Welcome />;
+  // Profil nicht ladbar (z. B. offline): Sitzung behalten, NICHT zur Anmeldung leiten – sonst könnte ein
+  // ungesicherter Account durch eine neue Anmeldung überschrieben werden.
+  if (profileError) {
+    return (
+      <Shell>
+        <Card className="mx-auto max-w-md space-y-4">
+          <h1 className="display text-3xl font-bold uppercase">Keine Verbindung</h1>
+          <p className="text-cream-dim">Dein Account konnte nicht geladen werden. Deine Daten sind sicher – bitte versuche es erneut.</p>
+          <Button onClick={() => void refreshProfile()}>Erneut versuchen</Button>
+        </Card>
+      </Shell>
+    );
+  }
+  if (!profile) return session.user.is_anonymous ? <Welcome /> : <ProfileSetup />;
   return (
     <Routes>
       <Route path="/" element={<Home />} />

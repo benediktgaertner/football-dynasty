@@ -161,6 +161,7 @@ chmod -R 755 "$PDIR/full"
 run -tAc "select public.admin_add_europe('$WORLD', pg_read_file('$PDIR/full/MDA.json')::jsonb) ->> 'status'" >/dev/null
 check "C1_reduce_players.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/C1_reduce_players.sql"
 check "D0_anthem.sql" -v world="$WORLD" -f "$ROOT/supabase/tests/D0_anthem.sql"
+check "E0_accounts.sql" -v world="$WORLD" -v mig="$ROOT/supabase/migrations/20261201000036_email_login_accounts.sql" -f "$ROOT/supabase/tests/E0_accounts.sql"
 
 # Welterstellung mit Land und Startliga: alle drei Startligen in unterschiedlichen Ländern
 TAG=1

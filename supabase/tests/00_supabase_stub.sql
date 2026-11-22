@@ -7,9 +7,19 @@ create role service_role nologin bypassrls;
 create schema auth;
 create table auth.users (
   id uuid primary key,
-  is_anonymous boolean not null default true,
-  email text
+  -- Testbenutzer gelten als reguläre Accounts; anonyme Altaccounts setzen Tests ausdrücklich
+  is_anonymous boolean not null default false,
+  email text,
+  -- Spalten wie in Supabase Auth (für Kontostatus/Umstellungstests)
+  email_change text default '',
+  email_confirmed_at timestamptz,
+  encrypted_password text default '',
+  raw_user_meta_data jsonb default '{}',
+  created_at timestamptz default now(),
+  last_sign_in_at timestamptz
 );
+-- wie GoTrue: E-Mail eindeutig (Groß-/Kleinschreibung egal)
+create unique index users_email_key on auth.users (lower(email)) where email is not null;
 
 -- entspricht der Supabase-Implementierung von auth.uid()
 create or replace function auth.uid() returns uuid

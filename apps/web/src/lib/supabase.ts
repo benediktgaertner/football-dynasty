@@ -20,7 +20,8 @@ if (anonKey && /service_role/.test(atobSafe(anonKey.split('.')[1] ?? ''))) {
 export const supabase: SupabaseClient | null =
   url && anonKey
     ? createClient(url, anonKey, {
-        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+        // implicit: Links aus E-Mails (Bestätigung, Passwort vergessen) funktionieren auch auf einem anderen Gerät
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit' },
       })
     : null;
 
