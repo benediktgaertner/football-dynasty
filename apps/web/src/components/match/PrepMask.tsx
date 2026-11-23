@@ -2,6 +2,9 @@ import { CLASH_THRESHOLD, colorDistance, readableTextColor } from '@fd/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChoreoEditor } from '../../pages/FanCulture';
 import { renderChoreoDesign } from '../../lib/fanArt';
+import { ChoreoPlayer } from '../../lib/choreo/render';
+import { isV2 } from '../../lib/choreo/model';
+import { Link } from 'react-router-dom';
 import { fanApi, type Kit, type PrepState, type PrepTeam } from '../../lib/fanApi';
 import type { ChoreoDesign } from '../../lib/matchClient';
 import { L, W, renderFanLayers, renderStadiumLayer, stadiumMargin } from '../../lib/stadiumArt';
@@ -116,10 +119,17 @@ export function PrepMask({ worldId, onDone }: { worldId: string; onDone: () => v
             <div>
               <p className="mb-1 font-semibold">Choreografie (Heimkurve)</p>
               <select className="min-h-11 w-full rounded-lg border border-olive-600 bg-olive-900 px-2 text-cream" disabled={mine.confirmed || busy !== null}
-                value={fx.choreo?.id ?? ''} onChange={(e) => void act('ch', () => fanApi.prepChoice(worldId, fx.id, null, e.target.value || null, true, null))}>
+                value={fx.choreo?.id ?? ''} onChange={(e) => {
+                  // „Zufällig“: wählt jetzt eine der gespeicherten Choreografien nur für dieses Spiel (keine dauerhafte Stadionänderung)
+                  const list = fx.choreos ?? [];
+                  const v = e.target.value === '__random' ? (list[Math.floor(Math.random() * list.length)]?.id ?? '') : e.target.value;
+                  void act('ch', () => fanApi.prepChoice(worldId, fx.id, null, v || null, true, null));
+                }}>
                 <option value="">Standard / automatisch</option>
                 {(fx.choreos ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {(fx.choreos ?? []).length > 1 && <option value="__random">🎲 Zufällige gespeicherte Choreografie</option>}
               </select>
+              <Link to={`/w/${worldId}/choreo`} className="mt-1 inline-block text-sm text-gold underline" data-testid="prep-choreo-designer">Choreo-Designer öffnen</Link>
               {!mine.confirmed && !edit && (
                 <button type="button" className="mt-1 text-sm text-gold underline" onClick={() => {
                   const cur = fx.choreos?.find((c) => c.id === fx.choreo?.id);
@@ -183,7 +193,10 @@ function PrepPreview({ fx }: { fx: NonNullable<PrepState['fixture']> }) {
     ctx.drawImage(renderStadiumLayer(o), 0, 0);
     ctx.drawImage(renderFanLayers(o)[0], 0, 0);
     const choreo: ChoreoDesign = fx.choreo ?? { pattern: 'stripes', colors: fx.home_colors, text: fx.home.short, motif: 'crest', block: 'home_curve' };
-    if (!fx.neutral) ctx.drawImage(renderChoreoDesign(o, choreo), 0, 0);
+    if (!fx.neutral) {
+      if (isV2(choreo)) { const pl = new ChoreoPlayer(o, choreo); pl.drawTimeline(ctx, pl.duration - 0.001, performance.now(), { staticFrame: true }); pl.dispose(); } // Endzustand der Szenenfolge
+      else ctx.drawImage(renderChoreoDesign(o, choreo), 0, 0);
+    }
     for (let i = 0; i < 18; i++) { ctx.fillStyle = i % 2 ? '#327440' : '#2c6838'; ctx.fillRect(ox + (i * L / 18) * s, oy, (L / 18) * s + 1, W * s); }
     ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = Math.max(1, 0.22 * s); ctx.strokeRect(ox, oy, L * s, W * s);
     ctx.beginPath(); ctx.moveTo(ox + (L / 2) * s, oy); ctx.lineTo(ox + (L / 2) * s, oy + W * s); ctx.stroke();

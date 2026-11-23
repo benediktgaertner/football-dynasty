@@ -1,6 +1,7 @@
 import type { KitConfig } from '@fd/shared';
 import { ApiError } from './api';
 import type { ChoreoDesign, FlagDesign, UltraGroup } from './matchClient';
+import type { ChoreoV2 } from './choreo/model';
 import { requireSupabase } from './supabase';
 
 /** Fankultur (Fahnen, Choreografien, Ultras), Stadionsound und Europapokal */
@@ -51,7 +52,9 @@ export const fanApi = {
   culture: (worldId: string) => rpc<FanCulture>('fan_culture', { p_world: worldId }),
   save: (worldId: string, flags: FlagDesign[], ultras: UltraGroup[], defaultChoreo: string | null, auto: boolean) =>
     rpc<FanCulture>('save_fan_culture', { p_world: worldId, p_flags: flags, p_ultras: ultras, p_default_choreo: defaultChoreo, p_auto: auto }),
-  saveChoreo: (worldId: string, id: string | null, name: string, design: ChoreoDesign) => rpc<string>('save_choreo', { p_world: worldId, p_id: id, p_name: name, p_design: design }),
+  choreoPrefs: (worldId: string) => rpc<{ random: boolean; saved: number }>('choreo_prefs', { p_world: worldId }),
+  setChoreoRandom: (worldId: string, on: boolean) => rpc<void>('set_choreo_random', { p_world: worldId, p_on: on }),
+  saveChoreo: (worldId: string, id: string | null, name: string, design: ChoreoDesign | ChoreoV2) => rpc<string>('save_choreo', { p_world: worldId, p_id: id, p_name: name, p_design: design }),
   deleteChoreo: (worldId: string, id: string) => rpc<void>('delete_choreo', { p_world: worldId, p_id: id }),
   setFixtureChoreo: (worldId: string, fixtureId: string, choreoId: string | null) => rpc<void>('set_fixture_choreo', { p_world: worldId, p_fixture: fixtureId, p_choreo: choreoId }),
   saveAudio: (worldId: string, id: string | null, payload: Record<string, unknown>) => rpc<string>('save_club_audio', { p_world: worldId, p_id: id, p_payload: payload }),

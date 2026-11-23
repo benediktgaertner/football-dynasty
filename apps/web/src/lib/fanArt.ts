@@ -55,7 +55,7 @@ function choreoColor(d: ChoreoDesign, u: number, v: number, umin: number, umax: 
 }
 
 /** Einfache Motive als Pfad (Einheitskreis −1…1) */
-function motifPath(ctx: CanvasRenderingContext2D, motif: string, cx: number, cy: number, r: number) {
+export function motifPath(ctx: CanvasRenderingContext2D, motif: string, cx: number, cy: number, r: number) {
   ctx.beginPath();
   if (motif === 'star') {
     for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + (i * Math.PI) / 5; const rr = i % 2 ? r * 0.45 : r; ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); }

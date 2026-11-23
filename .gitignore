@@ -16,3 +16,4 @@ assets/crowd-raw/**/*.aif*
 # Claude Code: lokaler Zustand des Build-Test-Fix-Loops und persönliche Einstellungen
 .claude/state/
 .claude/settings.local.json
+apps/web/test-results/

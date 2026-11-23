@@ -1,6 +1,6 @@
 import { CLASH_THRESHOLD, KIT_PATTERNS, colorDistance, type KitConfig } from '@fd/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { KitPreview } from '../components/KitPreview';
 import { WorldNav } from '../components/WorldNav';
 import { Button, Card, ErrorBanner, Shell, Spinner, TextInput } from '../components/ui';
@@ -79,6 +79,7 @@ export function FanCulture() {
 
         <Card>
           <h2 className="display mb-2 text-2xl font-bold uppercase">Choreografie</h2>
+          <Link to={`/w/${worldId}/choreo`} className="mb-3 block rounded-lg border border-gold/60 bg-gold/10 px-3 py-2 text-sm font-semibold text-gold hover:bg-gold/20" data-testid="open-choreo-designer">Choreo-Designer öffnen: ganzes Stadion, Szenen, Banner, Fahnen, Konfetti →</Link>
           <ChoreoEditor draft={draft} setDraft={setDraft} />
           <div className="mt-3 flex flex-wrap gap-2">
             <Button busy={busy === 'ch'} disabled={draft.name.trim().length < 2} onClick={() => void act('ch', async () => {

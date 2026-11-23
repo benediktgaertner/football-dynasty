@@ -1,6 +1,8 @@
 import { readableTextColor } from '@fd/shared';
 import { useEffect, useRef } from 'react';
 import type { MatchClient, RosterTeam, StadiumView, Weather } from '../../lib/matchClient';
+import { ChoreoPlayer } from '../../lib/choreo/render';
+import { isV2 } from '../../lib/choreo/model';
 import { renderChoreoLayer, renderFanLayers, renderStadiumLayer, stadiumMargin } from '../../lib/stadiumArt';
 import { autoFanCulture, awayFlagSpots, drawFlag, flagSpots, renderAwayBanner, renderChoreoDesign, renderUltrasLayer, type FlagSpot } from '../../lib/fanArt';
 import type { FlagDesign, MatchEvent, UltraGroup } from '../../lib/matchClient';
@@ -75,6 +77,8 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
     let base: HTMLCanvasElement | null = null;
     let fans: [HTMLCanvasElement, HTMLCanvasElement] | null = null;
     let choreo: HTMLCanvasElement | null = null;
+    /** Choreografie v2 (Szenen, Elemente, Animation); ältere einfache Designs laufen über die Bitmap-Ebene */
+    let choreoPlayer: ChoreoPlayer | null = null;
     let ultrasLayer: HTMLCanvasElement | null = null;
     let spots: FlagSpot[] = [];
     const fanView = stadium?.fans ?? null;
@@ -148,7 +152,9 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
           base = renderStadiumLayer(o);
           fans = renderFanLayers(o);
           // eigene Choreografie des Heimvereins (gewählt oder Standard), sonst die automatische bei wichtigen Spielen
-          choreo = fanView?.choreo ? renderChoreoDesign(o, fanView.choreo) : atmo?.choreo ? renderChoreoLayer(o) : null;
+          choreoPlayer?.dispose();
+          choreoPlayer = fanView?.choreo && isV2(fanView.choreo) ? new ChoreoPlayer(o, fanView.choreo, { reduced }) : null;
+          choreo = fanView?.choreo ? (isV2(fanView.choreo) ? null : renderChoreoDesign(o, fanView.choreo)) : atmo?.choreo ? renderChoreoLayer(o) : null;
           ultrasLayer = homeUltras.length ? renderUltrasLayer(o, homeUltras, important ? 1 : 0.6) : null;
           // Schwenkfahnen: eigene Fahnen/Ultra-Fahnen, sonst Vereinsfahnen in den Heimfarben
           spots = reduced ? [] : flagSpots(o, homeFlags, homeUltras, important ? 1 : 0.45);
@@ -165,6 +171,11 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
         if (awayBanner) ctx.drawImage(awayBanner, 0, 0);
         // Choreografie beim Einlauf, vor dem Anpfiff und zu Beginn beider Halbzeiten
         if (choreo && (inWalkout || minute < 8 || (minute >= 45 && minute < 48))) ctx.drawImage(choreo, 0, 0);
+        // Choreografie v2: Szenenfolge im Einlauf (synchron zur gemeinsamen Einlaufzeit), danach beständige Elemente
+        if (choreoPlayer) {
+          const wStart = walkoutStartedAt ?? (walkoutEndsAt ? walkoutEndsAt - WALKOUT_MS : 0);
+          choreoPlayer.draw(ctx, { now, walkout: inWalkout ? { elapsedMs: Date.now() - wStart, totalMs: walkoutEndsAt! - wStart } : null, minute });
+        }
         // Schwenkfahnen (schneller bei Toren und beim Einlauf)
         const waveT = now / 1000 * (fast || inWalkout ? 1.6 : 1);
         for (let i = 0; i < spots.length; i++) {
@@ -244,12 +255,12 @@ export function MatchPitch({ client, teams, homeColor, awayColor, highlight, sta
         const elapsed = total - remaining;
         const p = remaining < base * 0.28 ? Math.max(Math.min(0.72, elapsed / base), 1 - remaining / base) : Math.min(0.72, elapsed / base);
         // Aufstellung steht vor der Haupttribüne (unten, y = W − 3,2 m): Bildschirmlage für die Overlay-Prüfung
-        debugPitch({ mode: 'walkout', walkoutP: p, lineupTopPx: (oy + (W - 3.2 - 1.6) * s) / dpr, canvasH: ch });
+        debugPitch({ mode: 'walkout', choreo: choreoPlayer?.lastDrawn ?? null, view: { s, ox, oy, dpr }, minute, walkoutP: p, lineupTopPx: (oy + (W - 3.2 - 1.6) * s) / dpr, canvasH: ch });
         drawWalkout([...st.players].map(([id, [x, y]]) => [id, x, y] as [string, number, number]), p, nowMs / 1000);
         drawWeather(); drawPyro(); return;
       }
       const sp = st.setPiece;
-      debugPitch({ mode: celebration ? 'celebration' : 'play', score: st.score, tick: st.tick, ball: st.ball });
+      debugPitch({ mode: celebration ? 'celebration' : 'play', choreo: choreoPlayer?.lastDrawn ?? null, view: { s, ox, oy, dpr }, minute, score: st.score, tick: st.tick, ball: st.ball });
       {
         const evs = client.state.events as MatchEvent[];
         const nowMs = performance.now();
