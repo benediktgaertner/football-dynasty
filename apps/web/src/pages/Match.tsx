@@ -388,15 +388,7 @@ export function WalkoutOverlay({ state, voted, onSkip, sound }: { state: MatchSt
   const progress = total > 0 ? Math.min(1, Math.max(0, (Date.now() - state.walkoutStartedAt!) / total)) : 0;
   return (
     <>
-    {/* Hymnentitel am oberen Rand der Stadionansicht – die Aufstellung steht unten vor der Haupttribüne */}
-    {sound.line && (
-      <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center px-3" data-testid="anthem-title">
-        <div className="max-w-[90%] rounded-lg bg-ink/70 px-4 py-1.5 text-center shadow-lg">
-          <p className="display truncate text-lg font-bold uppercase text-gold sm:text-xl">{sound.line}</p>
-          {total > 0 && <div className="mt-1 h-1 overflow-hidden rounded-full bg-olive-700" aria-hidden><div className="h-full bg-gold transition-[width] duration-200" style={{ width: `${progress * 100}%` }} /></div>}
-        </div>
-      </div>
-    )}
+    {/* Hymne: ausschließlich akustisch – keine Titel-, Dateinamen- oder Textanzeige */}
     <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-3">
       <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-xl bg-ink/80 px-3 py-2 text-sm shadow-xl">
         <span className="display text-lg font-bold uppercase">Anpfiff in {mmss}</span>
@@ -487,7 +479,6 @@ export function useMatchAudio(state: MatchState | null, client: MatchClient | nu
         if (cancelled) { t?.stop(0.3); return; }
         if (!t) { mixer.ducking(1, 2); return; }
         walkoutTrack.current = t;
-        setLine(`♪ ${a.name}`);
         // Hymne zu Ende ⇒ sanft zurück zur normalen Kulisse (Anpfiff folgt kurz danach)
         void t.ended.then(() => { if (walkoutTrack.current === t) { walkoutTrack.current = null; setLine(null); mixer.ducking(1, 3); } });
         return;
@@ -498,7 +489,6 @@ export function useMatchAudio(state: MatchState | null, client: MatchClient | nu
       const t2 = await mixer.play(urlFor(g.path), { channel: 'anthem', volume: g.volume, maxSec: Math.max(3, (endsAt - Date.now()) / 1000), fadeIn: 1 });
       if (cancelled) { t2?.stop(0.3); return; }
       walkoutTrack.current = t2;
-      if (t2) setLine(`♪ ${g.name}`);
     })();
     return () => { cancelled = true; };
   }, [on, hasWalkout, state?.status, fans]); // eslint-disable-line react-hooks/exhaustive-deps

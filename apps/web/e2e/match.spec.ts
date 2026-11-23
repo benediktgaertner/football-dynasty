@@ -41,25 +41,16 @@ async function expectImmediateKickoff(page: Page, clickedAt: number) {
 }
 
 test.describe('Einlauf & Hymne überspringen', () => {
-  test('Hymnentitel oben: verdeckt keine aufgestellten Spieler, Fortschritt läuft', async ({ page }) => {
+  test('Hymne: rein akustisch – kein Titel, Dateiname oder sonstiger Text während der Wiedergabe', async ({ page }) => {
     await open(page, fx('home-anthem-ai'));
     await waitWalkout(page);
     await anthemPlaying(page);
-    // Aufstellung abwarten (Spieler stehen vor der Haupttribüne)
     await page.waitForFunction(() => ((window as any).__fd.pitch()?.walkoutP ?? 0) >= 0.7, null, { timeout: 20_000 });
-    const title = page.getByTestId('anthem-title');
-    await expect(title).toBeVisible();
-    const canvas = await page.locator('canvas').first().boundingBox();
-    const box = await title.boundingBox();
-    const p = await pitch(page);
-    const titleBottom = box!.y + box!.height - canvas!.y;
-    expect(titleBottom).toBeLessThan(p.lineupTopPx); // Titel endet oberhalb der Spielerreihe
-    expect(box!.y - canvas!.y).toBeLessThan(canvas!.height * 0.2); // am oberen Rand
-    const w1 = await title.locator('div > div > div').evaluate((e) => parseFloat((e as HTMLElement).style.width));
-    await page.waitForTimeout(1500);
-    const w2 = await title.locator('div > div > div').evaluate((e) => parseFloat((e as HTMLElement).style.width));
-    expect(w2).toBeGreaterThan(w1); // Fortschrittsanzeige läuft
-    await page.screenshot({ path: 'test-results/hymne-titel.png' });
+    await expect(page.getByTestId('anthem-title')).toHaveCount(0);
+    // weder der Hymnenname („Testhymne“) noch ein Notensymbol steht irgendwo auf der Seite
+    const text = await page.evaluate(() => document.body.innerText);
+    expect(text).not.toMatch(/Testhymne|anthem|♪|\.wav|\.mp3/i);
+    expect((await mix(page)).anthem.length).toBe(1); // die Hymne läuft tatsächlich
     const t = Date.now();
     await page.getByTestId('skip-walkout').click();
     await expectImmediateKickoff(page, t);
