@@ -19,6 +19,7 @@ export const FINANCE_GROUPS: Record<string, { label: string; side: FinanceSide; 
   ticket_sales: { label: 'Ticketverkäufe', side: 'income', color: '#34d399' },
   match_bonus: { label: 'Spielprämien', side: 'income', color: '#2dd4bf' },
   sponsors: { label: 'Sponsoren', side: 'income', color: '#60a5fa' },
+  merchandising: { label: 'Fanshop', side: 'income', color: '#22d3ee' },
   transfer_sales: { label: 'Transferverkäufe', side: 'income', color: '#a3e635' },
   competition_prizes: { label: 'Wettbewerbsprämien', side: 'income', color: '#fbbf24' },
   other_income: { label: 'Sonstige Einnahmen', side: 'income', color: '#94a3b8' },
@@ -26,10 +27,12 @@ export const FINANCE_GROUPS: Record<string, { label: string; side: FinanceSide; 
   transfer_purchases: { label: 'Transferkäufe', side: 'expense', color: '#fb923c' },
   stadium_expansion: { label: 'Stadionausbau', side: 'expense', color: '#c084fc' },
   contract_termination: { label: 'Vertragsauflösungen', side: 'expense', color: '#f472b6' },
+  merch_costs: { label: 'Fanshop-Kosten', side: 'expense', color: '#e879f9' },
+  interest: { label: 'Kreditzinsen', side: 'expense', color: '#ef4444' },
   other_expense: { label: 'Sonstige Ausgaben', side: 'expense', color: '#94a3b8' },
 };
-export const INCOME_ORDER = ['ticket_sales', 'match_bonus', 'sponsors', 'transfer_sales', 'competition_prizes', 'other_income'];
-export const EXPENSE_ORDER = ['salaries', 'transfer_purchases', 'stadium_expansion', 'contract_termination', 'other_expense'];
+export const INCOME_ORDER = ['ticket_sales', 'match_bonus', 'sponsors', 'merchandising', 'transfer_sales', 'competition_prizes', 'other_income'];
+export const EXPENSE_ORDER = ['salaries', 'transfer_purchases', 'stadium_expansion', 'contract_termination', 'merch_costs', 'interest', 'other_expense'];
 
 export function groupLabel(key: string): string { return FINANCE_GROUPS[key]?.label ?? key; }
 

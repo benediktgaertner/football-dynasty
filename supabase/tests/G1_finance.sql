@@ -47,7 +47,7 @@ reset role;
 
 select tests.assert(:'rep'::jsonb = :'rep2'::jsonb and :'rep'::jsonb = :'rep3'::jsonb, 'ohne Saison = laufende Saison');
 select tests.assert((:'rep'::jsonb ->> 'club_id')::uuid = :'host_club', 'Bericht gehört zum eigenen Verein');
-select tests.assert(not (:'rep'::jsonb ->> 'empty')::boolean and jsonb_array_length(:'rep'::jsonb -> 'groups') = 11, 'Saison nicht leer, 11 Gruppen');
+select tests.assert(not (:'rep'::jsonb ->> 'empty')::boolean and jsonb_array_length(:'rep'::jsonb -> 'groups') = 14, 'Saison nicht leer, 14 Gruppen');
 
 -- Summen = Rohbuchungen (ohne Doppelzählung: doppelte Idempotenz-Buchung zählt einmal)
 select coalesce(sum(amount), 0) as raw_sum, count(*) as raw_n from public.financial_transactions where club_id = :'host_club' and (season_id = :'cur' or (season_id is null and id >= (select min(id) from public.financial_transactions where club_id = :'host_club' and season_id = :'cur'))) \gset

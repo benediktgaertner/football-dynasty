@@ -1,5 +1,6 @@
 import { StadiumDesigner } from '../components/StadiumDesigner';
 import { FinanceDashboard } from '../components/FinanceDashboard';
+import { FanShop } from '../components/FanShop';
 import { requireSupabase } from '../lib/supabase';
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -49,7 +50,7 @@ export function Finance() {
           <p className={`display mt-1 text-5xl font-extrabold ${data.balance < 0 ? 'text-danger' : ''}`}>{formatEuro(data.balance)}</p>
           <p className="mt-2 text-sm text-cream-dim">Gehälter: {formatEuro(data.salaries)} pro Jahr für {data.squad_size} Spieler ({formatEuro(Math.round(data.salaries / data.league_slots))} je Ligatermin, {data.league_slots} Termine)</p>
           {!data.ledger_ok && <p className="mt-2 text-sm text-danger">Achtung: Kontostand und Buchungen weichen voneinander ab. Bitte melden.</p>}
-          {data.balance < 0 && <p className="mt-2 text-sm text-danger">Das Konto ist im Minus – Transfers sind erst wieder mit Guthaben möglich.</p>}
+          {data.balance < 0 && <p className="mt-2 text-sm text-danger">Das Konto ist im Minus – es fallen Kreditzinsen an (Details unten), Transfers sind erst wieder mit Guthaben möglich.</p>}
         </Card>
         <Card>
           <p className="display text-sm font-semibold uppercase tracking-[0.2em] text-gold">Stadion</p>
@@ -74,6 +75,7 @@ export function Finance() {
         </Card>
       </div>
       <FinanceDashboard worldId={worldId} refreshKey={data.balance} />
+      <FanShop worldId={worldId} onChange={() => void load()} />
       <div className="mt-4">
         <StadiumDesigner name={data.stadium.name} capacity={data.stadium.capacity} attendance={data.last_attendance?.attendance ?? null}
           design={data.stadium.design ?? {}} homeColors={colors} worldId={worldId}

@@ -276,6 +276,12 @@ export const seasonApi = {
     transactions: Array<{ id: number; kind: string; amount: number; balance_after: number; description: string; created_at: string }>;
     last_attendance: { attendance: number; label: string } | null;
   }>('finance_overview', { p_world: worldId }),
+  /** Fanshop und Schulden (Migration 0047) */
+  merchOverview: (worldId: string) => rpc<MerchOverview>('merch_overview', { p_world: worldId }),
+  merchSetPrice: (worldId: string, product: string, price: number) => rpc<void>('merch_set_price', { p_world: worldId, p_product: product, p_price: price }),
+  merchOrder: (worldId: string, product: string, qty: number) => rpc<{ stock: number; cost: number }>('merch_order', { p_world: worldId, p_product: product, p_qty: qty }),
+  merchSetReorder: (worldId: string, product: string, target: number) => rpc<void>('merch_set_reorder', { p_world: worldId, p_product: product, p_target: target }),
+  financeDebt: (worldId: string) => rpc<FinanceDebt>('finance_debt', { p_world: worldId }),
   /** Finanzdashboard (Migration 0037): Saisonanalyse aus den echten Buchungen, ein Aufruf je Ansicht */
   financeReport: (worldId: string, seasonId: string | null) => rpc<import('./financeReport').FinanceReport>('finance_season_report', { p_world: worldId, p_season_id: seasonId }),
   setTickets: (worldId: string, league: number, cup: number, intl: number) => rpc<void>('set_ticket_prices', { p_world: worldId, p_league: league, p_cup: cup, p_international: intl }),
@@ -304,10 +310,22 @@ export function estimateSalary(overall: number, age: number): number {
 export const STAGE_LABEL: Record<string, string> = {
   round_of_64: '1. Runde', round_of_32: '2. Runde', round_of_16: 'Achtelfinale', quarter_final: 'Viertelfinale', semi_final: 'Halbfinale', final: 'Finale', relegation: 'Relegation',
 };
+export interface MerchProduct {
+  key: string; label: string; price: number; base_price: number; unit_cost: number; stock: number; reorder_target: number; margin: number;
+  season_units: number; season_revenue: number; season_profit: number; recent_units: number; reorder_needed: boolean;
+}
+export interface MerchOverview {
+  products: MerchProduct[];
+  timeline: Array<{ ordinal: number; label: string; revenue: number; profit: number; units: number; home: boolean }>;
+  season: { revenue: number; units: number; profit: number; margin: number; storage: number };
+  balance: number; slot_live: boolean;
+}
+export interface FinanceDebt { balance: number; debt: number; interest_per_matchday: number; interest_season: number; tiers: Array<{ upto: number | null; rate: number }> }
 export const TX_LABEL: Record<string, string> = {
   starting_capital: 'Startkapital', stadium_build: 'Stadionbau', stadium_expansion: 'Stadionausbau', draft_purchase: 'Draft', transfer_fee_paid: 'Ablöse gezahlt',
   transfer_fee_received: 'Ablöse erhalten', salary: 'Gehälter', ticket_income: 'Ticketverkauf', match_bonus: 'Spielprämien', placement_prize: 'Platzierungsprämie',
   sponsor: 'Sponsor', competition_prize: 'Wettbewerbsprämien', stadium_running_cost: 'Stadionbetrieb', adjustment: 'Sonstiges', youth_academy: 'Jugendabteilung',
+  merchandising: 'Fanshop', merch_purchase: 'Fanshop-Einkauf', merch_storage: 'Fanshop-Lager', loan_interest: 'Kreditzinsen',
 };
 
 /** Spielerentwicklung (Migration 0023): Bilanz je Spieler und Saison */

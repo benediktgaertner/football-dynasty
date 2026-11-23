@@ -6,9 +6,9 @@ const pt = (x: number, balance: number, extra: Partial<FinanceTimelinePoint> = {
 const BOX = { width: 700, height: 300, left: 60, right: 20, top: 20, bottom: 40 };
 
 describe('Finanzdashboard: Diagrammdaten', () => {
-  it('Gruppen: 6 Einnahme- und 5 Ausgabegruppen, alle mit Name und Farbe', () => {
-    expect(INCOME_ORDER).toHaveLength(6);
-    expect(EXPENSE_ORDER).toHaveLength(5);
+  it('Gruppen: 7 Einnahme- und 7 Ausgabegruppen, alle mit Name und Farbe', () => {
+    expect(INCOME_ORDER).toHaveLength(7);
+    expect(EXPENSE_ORDER).toHaveLength(7);
     for (const k of [...INCOME_ORDER, ...EXPENSE_ORDER]) { expect(FINANCE_GROUPS[k]!.label.length).toBeGreaterThan(2); expect(FINANCE_GROUPS[k]!.color).toMatch(/^#/); }
     expect(INCOME_ORDER.every((k) => FINANCE_GROUPS[k]!.side === 'income')).toBe(true);
     expect(EXPENSE_ORDER.every((k) => FINANCE_GROUPS[k]!.side === 'expense')).toBe(true);
@@ -48,7 +48,7 @@ describe('Finanzdashboard: Diagrammdaten', () => {
   });
   it('Einnahmen/Ausgaben: gemeinsame Skala, fehlende Gruppen = 0', () => {
     const f = buildFlowRows([{ key: 'ticket_sales', side: 'income', amount: 4_000_000, count: 10 }, { key: 'salaries', side: 'expense', amount: 8_000_000, count: 38 }]);
-    expect(f.rows).toHaveLength(11);
+    expect(f.rows).toHaveLength(14);
     expect(f.rows.find((r) => r.key === 'salaries')!.ratio).toBe(1);
     expect(f.rows.find((r) => r.key === 'ticket_sales')!.ratio).toBeCloseTo(0.5);
     expect(f.rows.find((r) => r.key === 'sponsors')!.amount).toBe(0);
