@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, ErrorBanner, Spinner, TextInput } from './ui';
 import { formatEuro, formatEuroSigned } from '../lib/api';
-import { seasonApi, type FinanceDebt, type MerchOverview } from '../lib/seasonApi';
+import type { CrestConfig } from '@fd/shared';
+import { MerchPreview } from './MerchPreview';
+import { MERCH_PALETTE, MERCH_PATTERNS, PRODUCT_FAMILY, effectiveDesign, type ClubColors, type MerchDesign } from '../lib/merchDesign';
+import { requireSupabase } from '../lib/supabase';
+import { seasonApi, type FinanceDebt, type MerchOverview, type MerchProduct } from '../lib/seasonApi';
 
 /** Fanshop im Finanzbereich: Preise, Lager, Nachbestellung und Auswertung (Daten ausschließlich aus merch_overview). */
 export function FanShop({ worldId, onChange }: { worldId: string; onChange?: () => void }) {
@@ -10,6 +14,21 @@ export function FanShop({ worldId, onChange }: { worldId: string; onChange?: () 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [edit, setEdit] = useState<Record<string, { price?: number; qty?: number; target?: number }>>({});
+  const [club, setClub] = useState<{ colors: ClubColors; crest: CrestConfig | null }>({ colors: { primary: '#1d4ed8', secondary: '#ffffff', accent: '#f2c14e' }, crest: null });
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState<MerchDesign | null>(null);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const sb = requireSupabase();
+        const { data: u } = await sb.auth.getUser();
+        const { data } = await sb.from('club_branding').select('primary_color, secondary_color, accent_color, crest, kit, clubs!inner(world_id, manager_user_id)').eq('clubs.world_id', worldId);
+        const mine = (data ?? []).find((b: any) => b.clubs?.manager_user_id === u.user?.id) as any;
+        if (mine) setClub({ colors: { primary: mine.primary_color, secondary: mine.secondary_color, accent: mine.accent_color, kitPattern: mine.kit?.pattern }, crest: mine.crest ?? null });
+      } catch { /* Vorschau bleibt in Standardfarben */ }
+    })();
+  }, [worldId]);
+  const openEditor = (p: MerchProduct) => { setEditing(p.key); setDraft(effectiveDesign(p.key, p.design, club.colors)); };
   const load = useCallback(async () => {
     try { const [o, d] = await Promise.all([seasonApi.merchOverview(worldId), seasonApi.financeDebt(worldId)]); setOv(o); setDebt(d); setError(null); }
     catch (e) { setError((e as Error).message); }
@@ -48,7 +67,13 @@ export function FanShop({ worldId, onChange }: { worldId: string; onChange?: () 
                 const e = edit[p.key] ?? {};
                 return (
                   <tr key={p.key} className="border-t border-olive-700/50 align-middle" data-testid={`merch-${p.key}`}>
-                    <td className="py-1 font-semibold">{p.label}{p.reorder_needed && <span className="ml-1 rounded bg-gold/20 px-1 text-xs text-gold">Nachbestellen</span>}</td>
+                    <td className="py-1 font-semibold">
+                      <div className="flex items-center gap-2">
+                        <MerchPreview product={p.key} design={effectiveDesign(p.key, p.design, club.colors)} crest={club.crest} size={44} label={`${p.label} (Vorschau)`} />
+                        <div>{p.label}{p.reorder_needed && <span className="ml-1 rounded bg-gold/20 px-1 text-xs text-gold">Nachbestellen</span>}
+                          <div><button type="button" className="text-xs font-normal text-gold underline" data-testid={`merch-design-${p.key}`} onClick={() => openEditor(p)}>Design anpassen</button></div></div>
+                      </div>
+                    </td>
                     <td>
                       <div className="flex items-center gap-1">
                         <TextInput type="number" className="w-20" value={e.price ?? p.price} onChange={(x) => setEdit({ ...edit, [p.key]: { ...e, price: Number(x.target.value) } })} />
@@ -78,6 +103,54 @@ export function FanShop({ worldId, onChange }: { worldId: string; onChange?: () 
         {ov.slot_live && <p className="mt-2 text-xs text-gold">Während eines laufenden Spieltags sind die Preise gesperrt.</p>}
         <p className="mt-2 text-xs text-cream-dim">Die Nachfrage hängt von Zuschauern, Stadion, Ruf und Tabellenplatz ab; höhere Preise bringen mehr Marge, aber weniger Verkäufe. Verkauft wird nur aus dem Lager, Einkauf wird sofort bezahlt, Lagerbestand kostet je Spieltag.</p>
       </Card>
+      {editing && draft && (() => {
+        const prod = ov.products.find((x) => x.key === editing)!;
+        const fam = PRODUCT_FAMILY[editing] ?? 'jersey';
+        const swatches = [...new Set([club.colors.primary, club.colors.secondary, club.colors.accent, ...MERCH_PALETTE])];
+        const set = (patch: Partial<MerchDesign>) => setDraft({ ...draft, ...patch });
+        const colorRow = (label: string, key: 'c1' | 'c2' | 'c3') => (
+          <div key={key} className="flex flex-wrap items-center gap-2">
+            <span className="w-24 text-sm">{label}</span>
+            <input type="color" aria-label={label} value={draft[key]} onChange={(e) => set({ [key]: e.target.value })} className="h-11 w-14 rounded-lg border border-olive-600 bg-olive-800" data-testid={`merch-color-${key}`} />
+            <div className="flex flex-wrap gap-1">{swatches.map((c) => <button key={c} type="button" aria-label={`${label} ${c}`} onClick={() => set({ [key]: c })} className={`h-8 w-8 rounded-full border-2 ${draft[key].toLowerCase() === c.toLowerCase() ? 'border-gold' : 'border-olive-600'}`} style={{ background: c }} />)}</div>
+          </div>
+        );
+        return (
+          <Card data-testid="merch-editor">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="display text-lg font-bold uppercase">Design: {prod.label}</h3>
+              <button type="button" className="text-sm text-cream-dim underline" onClick={() => { setEditing(null); setDraft(null); }}>Schließen</button>
+            </div>
+            <div className="mt-3 grid gap-4 md:grid-cols-[200px_1fr]">
+              <div className="flex flex-col items-center gap-2 rounded-xl bg-olive-800 p-3">
+                <MerchPreview product={editing} design={draft} crest={club.crest} size={176} label={`${prod.label} – Live-Vorschau`} />
+                <p className="text-center text-xs text-cream-dim">Live-Vorschau. Das Design ist kostenlos und ändert weder Nachfrage noch Preis oder Erlös.</p>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <p className="mb-1 text-sm font-semibold">Muster</p>
+                  <div className="flex flex-wrap gap-2">
+                    {MERCH_PATTERNS[fam].map((pt) => (
+                      <button key={pt.key} type="button" data-testid={`merch-pattern-${pt.key}`} aria-pressed={draft.pattern === pt.key} onClick={() => set({ pattern: pt.key })}
+                        className={`min-h-11 rounded-xl border px-3 text-sm ${draft.pattern === pt.key ? 'border-gold bg-gold/20 text-gold' : 'border-olive-600 bg-olive-800'}`}>{pt.label}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-2">{colorRow('Hauptfarbe', 'c1')}{colorRow('Zweitfarbe', 'c2')}{colorRow('Akzent', 'c3')}</div>
+                <div className="flex flex-wrap items-center gap-4">
+                  <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" className="h-5 w-5" checked={draft.crest} onChange={(e) => set({ crest: e.target.checked })} data-testid="merch-crest" /> Vereinslogo</label>
+                  <label className="flex items-center gap-2 text-sm">Aufdruck
+                    <TextInput value={draft.text} maxLength={16} placeholder="z. B. Ultras 1904" data-testid="merch-text" onChange={(e) => set({ text: e.target.value.replace(/[^A-Za-zÄÖÜäöüß0-9 .!&-]/g, '') })} /></label>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button busy={busy === 'design'} onClick={() => act('design', async () => { await seasonApi.merchSetDesign(worldId, editing, draft); setEditing(null); setDraft(null); })}>Design speichern</Button>
+                  <Button variant="secondary" onClick={() => setDraft(effectiveDesign(editing, null, club.colors))}>Auf Vereinsfarben zurücksetzen</Button>
+                </div>
+              </div>
+            </div>
+          </Card>
+        );
+      })()}
       {ov.timeline.length > 0 && (
         <Card>
           <h3 className="display text-lg font-bold uppercase">Umsatz je Spieltermin</h3>

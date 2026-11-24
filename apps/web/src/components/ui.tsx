@@ -30,8 +30,8 @@ export function Button({
   );
 }
 
-export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-2xl border border-olive-700/80 bg-olive-900/85 p-5 shadow-xl backdrop-blur ${className}`}>{children}</div>;
+export function Card({ children, className = '', 'data-testid': testId }: { children: ReactNode; className?: string; 'data-testid'?: string }) {
+  return <div data-testid={testId} className={`rounded-2xl border border-olive-700/80 bg-olive-900/85 p-5 shadow-xl backdrop-blur ${className}`}>{children}</div>;
 }
 
 export function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string | null; children: ReactNode }) {

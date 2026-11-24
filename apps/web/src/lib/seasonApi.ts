@@ -285,6 +285,7 @@ export const seasonApi = {
   merchOverview: (worldId: string) => rpc<MerchOverview>('merch_overview', { p_world: worldId }),
   merchSetPrice: (worldId: string, product: string, price: number) => rpc<void>('merch_set_price', { p_world: worldId, p_product: product, p_price: price }),
   merchOrder: (worldId: string, product: string, qty: number) => rpc<{ stock: number; cost: number }>('merch_order', { p_world: worldId, p_product: product, p_qty: qty }),
+  merchSetDesign: (worldId: string, product: string, design: Partial<import('./merchDesign').MerchDesign>) => rpc<void>('merch_set_design', { p_world: worldId, p_product: product, p_design: design }),
   merchSetReorder: (worldId: string, product: string, target: number) => rpc<void>('merch_set_reorder', { p_world: worldId, p_product: product, p_target: target }),
   financeDebt: (worldId: string) => rpc<FinanceDebt>('finance_debt', { p_world: worldId }),
   /** Finanzdashboard (Migration 0037): Saisonanalyse aus den echten Buchungen, ein Aufruf je Ansicht */
@@ -327,6 +328,8 @@ export const STADIUM_VERDICT: Record<NonNullable<StadiumQuote['verdict']>, strin
 export interface MerchProduct {
   key: string; label: string; price: number; base_price: number; unit_cost: number; stock: number; reorder_target: number; margin: number;
   season_units: number; season_revenue: number; season_profit: number; recent_units: number; reorder_needed: boolean;
+  /** Migration 0050 */
+  family?: string; design?: Partial<import('./merchDesign').MerchDesign>;
 }
 export interface MerchOverview {
   products: MerchProduct[];
