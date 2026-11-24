@@ -1,5 +1,5 @@
 import { ClubLink, PlayerLink } from '../components/links';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { PlayerAvatar } from '../components/PlayerAvatar';
 import { FaNegotiation } from '../components/FaNegotiation';
@@ -8,6 +8,7 @@ import { Button, Card, ErrorBanner, Pill, Shell, Spinner, TextInput } from '../c
 import { formatEuro } from '../lib/api';
 import { estimateSalary, seasonApi, type FaOverview, type Negotiation, type MarketFilters, type MarketOptions, type MarketPlayer, type TransferOffer, type WindowInfo } from '../lib/seasonApi';
 import { requireSupabase } from '../lib/supabase';
+import { clearMarketState, loadMarketState, saveMarketState } from '../lib/marketState';
 
 const POSITIONS = ['', 'GK', 'CB', 'LB', 'RB', 'LWB', 'RWB', 'CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'CF', 'ST'];
 const STATUS: Record<string, string> = { pending: 'Offen', countered: 'Gegenangebot', accepted: 'Angenommen', rejected: 'Abgelehnt', withdrawn: 'Zurückgezogen', expired: 'Erledigt', completed: 'Abgeschlossen' };
@@ -34,14 +35,16 @@ const mio = (v: number) => `${(v / 1e6).toLocaleString('de-DE', { maximumFractio
 /** H1–H4: Transfermarkt, Free Agents, Verhandlungen, Verkäufe */
 export function Transfers() {
   const { worldId = '' } = useParams();
-  const [tab, setTab] = useState<'market' | 'free' | 'offers' | 'squad'>('market');
+  const saved = useRef(loadMarketState<UiFilters>(worldId));
+  const restoreScroll = useRef<number | null>(saved.current?.scrollY ?? null);
+  const [tab, setTab] = useState<'market' | 'free' | 'offers' | 'squad'>((['market', 'free', 'offers', 'squad'] as const).find((t) => t === saved.current?.tab) ?? 'market');
   const [win, setWin] = useState<WindowInfo | null>(null);
   const [myClub, setMyClub] = useState<string | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
-  const [filters, setFilters] = useState<UiFilters>(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState<UiFilters>(saved.current ? { ...DEFAULT_FILTERS, ...saved.current.filters } : DEFAULT_FILTERS);
   const [players, setPlayers] = useState<MarketPlayer[] | null>(null);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(saved.current?.page ?? 0);
   const [options, setOptions] = useState<MarketOptions | null>(null);
   const [europe, setEurope] = useState<{ done: number; total: number; building: boolean } | null>(null);
   const [offers, setOffers] = useState<TransferOffer[]>([]);
@@ -70,11 +73,27 @@ export function Transfers() {
     setPlayers(null);
     try {
       const r = await seasonApi.marketSearch(worldId, toApiFilters(f, tab === 'free'), PAGE, pg * PAGE);
-      setPlayers(r.rows); setTotal(r.total); setPage(pg);
+      setPlayers(r.rows); setTotal(r.total); setPage(pg); saved.current = null;
     } catch (e) { setError((e as Error).message); setPlayers([]); setTotal(0); }
   }, [worldId, filters, tab]);
 
-  useEffect(() => { void loadMeta().then(() => search(null, 0)).catch((e) => setError((e as Error).message)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [worldId, tab]);
+  useEffect(() => {
+    const pg = saved.current?.page ?? 0; // gespeicherte Seite nur für die erste Suche nach dem Öffnen
+    void loadMeta().then(() => search(null, pg)).catch((e) => setError((e as Error).message));
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [worldId, tab]);
+
+  // Ansicht merken (Filter, Seite, Reiter) und Scrollposition nach dem Laden der Ergebnisse wiederherstellen
+  useEffect(() => { saveMarketState(worldId, { tab, filters, page, scrollY: window.scrollY }); }, [worldId, tab, filters, page]);
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const onScroll = () => { clearTimeout(t); t = setTimeout(() => saveMarketState(worldId, { tab, filters, page, scrollY: window.scrollY }), 150); };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => { clearTimeout(t); window.removeEventListener('scroll', onScroll); };
+  }, [worldId, tab, filters, page]);
+  useEffect(() => {
+    if (players && restoreScroll.current !== null) { const y = restoreScroll.current; restoreScroll.current = null; requestAnimationFrame(() => window.scrollTo(0, y)); }
+  }, [players]);
 
   // Europaweiter Markt: fehlende Ligen einmalig im Hintergrund anlegen (bestehende Welten werden ergänzt)
   useEffect(() => {
@@ -137,7 +156,7 @@ export function Transfers() {
       {(tab === 'market' || tab === 'free') && (
         <Card>
           <MarketFilterBar filters={filters} options={options} free={tab === 'free'} onChange={setFilters}
-            onSearch={(f) => void search(myClub, 0, f)} onReset={() => { setFilters(DEFAULT_FILTERS); void search(myClub, 0, DEFAULT_FILTERS); }} />
+            onSearch={(f) => void search(myClub, 0, f)} onReset={() => { clearMarketState(worldId); setFilters(DEFAULT_FILTERS); void search(myClub, 0, DEFAULT_FILTERS); }} />
           {!players ? <Spinner label="Suche …" /> : (
             <>
               <div className="mb-2 text-sm text-cream-dim">{total.toLocaleString('de-DE')} Spieler gefunden{total > PAGE ? ` · ${page * PAGE + 1}–${Math.min(total, (page + 1) * PAGE)}` : ''}</div>
