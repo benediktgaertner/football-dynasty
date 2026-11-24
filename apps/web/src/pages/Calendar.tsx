@@ -16,12 +16,25 @@ export function Calendar() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void (async () => {
+    let stopped = false;
+    let loading = false;
+    const load = async () => {
+      if (loading) return;
+      loading = true;
       try {
         const s = await seasonApi.matchday(worldId);
-        setState(s);
-      } catch (e) { setError((e as Error).message); }
-    })();
+        if (!stopped) { setState(s); setError(null); }
+      } catch (e) {
+        if (!stopped) setError((e as Error).message);
+      } finally {
+        loading = false;
+      }
+    };
+    const refreshVisible = () => { if (document.visibilityState === 'visible') void load(); };
+    void load();
+    const poll = setInterval(refreshVisible, 10000);
+    document.addEventListener('visibilitychange', refreshVisible);
+    return () => { stopped = true; clearInterval(poll); document.removeEventListener('visibilitychange', refreshVisible); };
   }, [worldId]);
 
   if (!state) return <Shell><WorldNav worldId={worldId} />{error ? <ErrorBanner error={error} /> : <Spinner label="Kalender wird geladen …" />}</Shell>;
@@ -34,6 +47,7 @@ export function Calendar() {
         <Card>
           <h1 className="display mb-1 text-3xl font-extrabold uppercase">{slot?.label ?? 'Aktueller Termin'}</h1>
           <p className="mb-3 text-sm text-cream-dim">Alle Begegnungen des Termins. Ergebnisse erscheinen gemeinsam, sobald alle Manager fertig sind.</p>
+          {slot?.state === 'live' && <p className="mb-3 text-sm text-cream-dim">{state.fixtures.filter((f) => f.status === 'finished' || f.status === 'released').length} von {state.fixtures.length} Spielen berechnet. Die Übersicht aktualisiert sich automatisch.</p>}
           <ul className="divide-y divide-olive-700/60">
             {state.fixtures.map((f) => (
               <li key={f.id} className={`flex flex-wrap items-center gap-2 py-2 ${f.mine ? 'font-semibold' : ''}`}>

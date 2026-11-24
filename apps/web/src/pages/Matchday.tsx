@@ -15,6 +15,8 @@ const STATUS: Record<string, string> = { scheduled: 'Anstoß offen', live: 'Läu
 export function fixtureStatus(f: SlotFixture): string {
   const ai = f.home.control === 'ai' && f.away.control === 'ai';
   if (f.status === 'released') return 'Beendet';
+  if (ai && f.status === 'finished') return 'Berechnet';
+  if (ai && f.status === 'live') return 'Läuft';
   if (ai) return 'Ergebnis ausstehend';
   return STATUS[f.status] ?? f.status;
 }
@@ -30,6 +32,7 @@ export function Matchday() {
   const [dash, setDash] = useState<DashboardData | null>(null);
   const [seasonEnd, setSeasonEnd] = useState<Awaited<ReturnType<typeof seasonApi.seasonEndStatus>> | null>(null);
   const prevSlot = useRef<string | null>(null);
+  const lastDashboardLoad = useRef(0);
 
   // Neuladen bündeln: Während der Server viele KI-Spiele abschließt, kommen dutzende Realtime-Ereignisse
   // in kurzer Zeit. Höchstens eine Anfrage gleichzeitig, weitere Auslöser werden zusammengefasst.
@@ -40,13 +43,20 @@ export function Matchday() {
     if (loading.current) { again.current = true; return; }
     loading.current = true;
     try {
-      const [s, d] = await Promise.all([seasonApi.matchday(worldId), seasonApi.dashboard(worldId).catch(() => null)]);
-      prevSlot.current = s.slot?.id ?? null;
+      const s = await seasonApi.matchday(worldId);
       setState(s);
-      setDash(d);
+      const slotId = s.slot?.id ?? null;
+      if (prevSlot.current !== slotId || Date.now() - lastDashboardLoad.current >= 30000) {
+        const d = await seasonApi.dashboard(worldId).catch(() => null);
+        if (d) {
+          prevSlot.current = slotId;
+          lastDashboardLoad.current = Date.now();
+          setDash(d);
+          // Nach jeder gemeinsamen Ergebnisfreigabe: Pflicht-Spieltagsübersicht zuerst
+          if (d.pending_review) navigate(`/w/${worldId}/uebersicht/${d.pending_review.slot_id}`, { replace: true });
+        }
+      }
       setSeasonEnd(s.slot?.kind === 'season_end' && s.slot.state === 'live' ? await seasonApi.seasonEndStatus(worldId).catch(() => null) : null);
-      // Nach jeder gemeinsamen Ergebnisfreigabe: Pflicht-Spieltagsübersicht zuerst
-      if (d?.pending_review) navigate(`/w/${worldId}/uebersicht/${d.pending_review.slot_id}`, { replace: true });
       setError(null);
     } catch (e) { setError((e as Error).message); }
     finally {
@@ -61,6 +71,8 @@ export function Matchday() {
   useEffect(() => () => clearTimeout(timer.current), []);
 
   useEffect(() => {
+    lastDashboardLoad.current = 0;
+    prevSlot.current = null;
     void load();
     // Leichtes Nachladen statt Realtime-Abos: Realtime liest jede Datenbankänderung mit und war auf dem
     // Free-Plan die größte Last. Nur wenn der Tab sichtbar ist; sofort beim Zurückkehren in den Tab.
