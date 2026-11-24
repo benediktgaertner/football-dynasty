@@ -64,7 +64,7 @@ export const CASES: Record<string, Case> = {
   'choreo-heavy': { kind: 'league', homeHuman: true, awayHuman: false, anthem: true, choreo: 'heavy', capacity: 50000, style: 'modern' },
   'choreo-none': { kind: 'league', homeHuman: true, awayHuman: false, anthem: true, capacity: 50000, style: 'modern' },
   // Seeds mit frühem Tor (gesucht mit e2e/findGoalSeed.ts): Heimtor nach ≈ 15 s, Auswärtstor nach ≈ 13 s
-  'goal-home-ai': { kind: 'league', homeHuman: true, awayHuman: false, anthem: false, seed: 'goal-seed-9' },
+  'goal-home-ai': { kind: 'league', homeHuman: true, awayHuman: false, anthem: false, seed: 'goal-seed-7' },
   'goal-away-ai': { kind: 'league', homeHuman: true, awayHuman: false, anthem: false, seed: 'goal-seed-22' },
 };
 

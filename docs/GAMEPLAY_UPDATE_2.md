@@ -1,0 +1,11 @@
+# Gameplay- & Management-Update (Migrationen 0049/0050, Engine)
+
+1. **Fanartikel individualisieren** (0050): je Produkt Muster (Trikot 9, Schal 5, Kappe 5, Fahne 6), drei Farben, Vereinslogo, Aufdruck; Live-Vorschau im Fanshop (`MerchPreview`), Speichern über `merch_set_design`. Kostenlos und ohne jede Wirkung auf Nachfrage, Preis oder Erlös (Test G13 vergleicht die Abrechnung mit völlig anderem Design).
+2. **Stadion bis 80.000**, 3. **Ausbauökonomie**: siehe `docs/STADION.md`.
+4. **Transfermarkt-Filter** bleiben erhalten (`lib/marketState.ts`, sessionStorage je Welt): Reiter, alle Filter, Sortierung, Suchbegriff, Seite und Scrollposition werden nach Spielerprofil → Zurück wiederhergestellt; nur „Zurücksetzen“ löscht sie.
+5. **Karten** (Engine): Foulneigung und Kartenschwere ergeben sich aus der Situation (Gefährlichkeit des Angriffs, von hinten nachsetzen, Notbremse, Aggressivität aus Körperlichkeit/Abwehr/Spielintelligenz/Mentalität, Rollentiefe der Aufstellung, Rückstand in der Schlussphase). Verwarnte Spieler foulen seltener und werden bei leichten Fouls seltener erneut verwarnt. Messung (300 Spiele): Gelb 3,3 je Spiel, Gelb-Rot 0,05 (vorher 0,18, davon 73 % bei Stürmern, jetzt ≈ 6 %), Rot 0,04. Anteil Gelb: Verteidiger ≈ 32 %, Mittelfeld ≈ 40 %, Stürmer ≈ 17 %.
+6. **Torwart-Spieleröffnung** (Engine): `keeperDistribute` wählt zwischen kurzem Pass, Abwurf (flacher Bogen, Hand) und langem Abschlag nach Erfolgswahrscheinlichkeit, Raumgewinn, Freiheit des Mitspielers und Kosten eines Ballverlusts (vor dem eigenen Tor am höchsten); Taktik verschiebt die Gewichte. Abschlag nutzt das Attribut „kicking“, Abwurf/kurz „distribution“; schwächere Torhüter verlieren den Ball weiter öfter (Erfolg 59 % bei Attribut 25 vs. 93 % bei 90). Direkte Verluste je Team und Spiel von ≈ 1,3 auf ≈ 0,75. Ziel und Flug (flach/hoch/Abwurfbogen) kommen aus der Engine in die 2D-Ansicht.
+   **Achtung Balancing:** mit den realistischeren Fouls und Eröffnungen steigen Tore je Spiel in der Testmessung von ≈ 2,7 auf ≈ 3,0.
+
+**Auslieferung:** SQL 0049 + 0050 (eine Datei), Web-Code und – wegen der Engine-Änderung – **Fly-Deploy des Match-Servers** (`flyctl deploy -a football-dynasty`).
+Tests: `G12`, `G13`, `cards_keeper.stat.test.ts`, `stadiumArt.test.ts`, `marketState.test.ts`, `merchDesign.test.ts`, E2E `stadium-expansion`, `market-filters`, `merch-design`.

@@ -27,8 +27,8 @@ select set_config('fd.w', :'world', false), set_config('fd.u', :'host', false), 
 do $$
 declare c integer; r numeric; q jsonb;
 begin
-  foreach r in array array[55, 75, 90] loop
-    foreach c in array array[15000, 20000, 25000, 30000, 40000, 50000, 60000, 70000, 75000] loop
+  foreach r in array array[55, 75, 100] loop
+    foreach c in array array[10000, 15000, 20000, 25000, 30000, 40000, 50000, 60000, 70000, 75000] loop
       update public.clubs set reputation = r where id = current_setting('fd.h')::uuid;
       update public.stadiums set capacity = c, ticket_price_league = 25 where club_id = current_setting('fd.h')::uuid;
       perform set_config('request.jwt.claims', json_build_object('sub', current_setting('fd.u'))::text, true);
@@ -68,25 +68,29 @@ select tests.assert((select pb from g12_big where cap = 30000) < (select pb from
 select tests.assert((select net from g12_big where cap = 70000) < 0.5 * (select net from g12_big where cap = 30000), 'Ausbau über die Nachfrage hinaus lohnt kaum noch');
 
 -- Echte Zuschauerfunktion über die Heimspiele einer Saison: Break-even nach Saisons (Ticket + Gastronomie + Fanshop − Betrieb)
+-- Ausgangsgröße je nach Spielklasse des Hostvereins so gewählt, dass die Nachfrage das erweiterte Stadion füllt
 create temp table g12_sim(cap int, per_season numeric);
 do $$
-declare c integer; f record; tot numeric;
+declare c0 integer; c integer; f record; tot numeric; d numeric; sid uuid := (select current_season_id from public.career_worlds where id = current_setting('fd.w')::uuid);
 begin
-  update public.clubs set reputation = 90 where id = current_setting('fd.h')::uuid;
+  update public.clubs set reputation = 100 where id = current_setting('fd.h')::uuid;
   update public.stadiums set ticket_price_league = 25 where club_id = current_setting('fd.h')::uuid;
-  foreach c in array array[20000, 25000] loop
+  d := public.fd_stadium_demand(current_setting('fd.h')::uuid, sid, 'league', 25, 50, 1, 1);
+  c0 := greatest(10000, least(70000, (floor((d / 1.3 - 5000) / 5000) * 5000)::int));
+  foreach c in array array[c0, c0 + 5000] loop
     update public.stadiums set capacity = c where club_id = current_setting('fd.h')::uuid;
     tot := 0;
     for f in select fx.id from public.fixtures fx join public.competitions co on co.id = fx.competition_id
-             where fx.home_club_id = current_setting('fd.h')::uuid and fx.season_id = (select current_season_id from public.career_worlds where id = current_setting('fd.w')::uuid) and co.kind::text = 'league' loop
+             where fx.home_club_id = current_setting('fd.h')::uuid and fx.season_id = sid and co.kind::text = 'league' loop
       tot := tot + public.fd_expected_attendance(f.id) * (25 * 1.28 + 2.4) - public.fd_stadium_running_cost(c);
     end loop;
     insert into g12_sim values (c, tot);
   end loop;
 end $$;
-select (select per_season from g12_sim where cap = 25000) - (select per_season from g12_sim where cap = 20000) as dnet \gset
-select tests.assert(:dnet > 0 and public.fd_stadium_expansion_step_cost(20000) / :dnet between 1.0 and 2.4, 'echte Heimspiele: Mehrertrag deckt Ausbau (20.000 → 25.000) in ' || round(public.fd_stadium_expansion_step_cost(20000) / :dnet, 2) || ' Saisons');
-select tests.assert(public.fd_stadium_expansion_step_cost(20000) / :dnet > 1.0, 'nach Saison 1 noch nicht amortisiert, nach Saison 3 sicher');
+select min(cap) as c0 from g12_sim \gset
+select (select per_season from g12_sim where cap = :c0 + 5000) - (select per_season from g12_sim where cap = :c0) as dnet \gset
+select tests.assert(:dnet > 0 and public.fd_stadium_expansion_step_cost(:c0) / :dnet between 1.0 and 2.4, 'echte Heimspiele: Mehrertrag deckt Ausbau (' || :c0 || ' → ' || (:c0 + 5000) || ') in ' || round(public.fd_stadium_expansion_step_cost(:c0) / :dnet, 2) || ' Saisons');
+select tests.assert(public.fd_stadium_expansion_step_cost(:c0) / :dnet > 1.0, 'nach Saison 1 noch nicht amortisiert');
 
 -- Heimvorteil bleibt im Rahmen
 select fx.id as fxid from public.fixtures fx where fx.home_club_id = :'hclub' and fx.season_id = :'season' order by fx.scheduled_date limit 1 \gset
