@@ -93,7 +93,7 @@ export const MAX_FITNESS = 100;
 
 /** F8: Auswechslungen. */
 export const MAX_SUBSTITUTIONS = 5;
-export const MAX_SUBSTITUTION_WINDOWS = 3;
+export const MAX_SUBSTITUTION_WINDOWS = 5;
 
 /**
  * H1/H2: Transferfenster und Limits.

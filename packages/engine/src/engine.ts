@@ -4,6 +4,8 @@ import {
   effectiveRating,
   fitnessLossWithFactor,
   fitnessPerformanceMultiplier,
+  MAX_SUBSTITUTIONS,
+  MAX_SUBSTITUTION_WINDOWS,
   getFormation,
   positionFromCoordinates,
   tacticLoadFactor,
@@ -43,8 +45,8 @@ import {
  */
 
 const OTHER: Record<Side, Side> = { home: 'away', away: 'home' };
-const MAX_SUBS = 5;
-const MAX_SUB_WINDOWS = 3;
+const MAX_SUBS = MAX_SUBSTITUTIONS;
+const MAX_SUB_WINDOWS = MAX_SUBSTITUTION_WINDOWS;
 const GOAL_U = L;
 const GOAL_V = W / 2;
 const BASE_HOME_ADVANTAGE = 0.02;
@@ -375,7 +377,7 @@ export class MatchEngine {
         if (t.pendingSubs.some((s) => s.outId === out.input.id || s.inId === inn.input.id)) return { ok: false, error: 'Wechsel ist bereits vorgemerkt.' };
         if (t.stats.subsUsed + t.pendingSubs.length >= MAX_SUBS) return { ok: false, error: 'Alle fünf Wechsel sind aufgebraucht.' };
         const atHalftime = this.isHalftime();
-        if (!atHalftime && t.stats.subWindowsUsed >= MAX_SUB_WINDOWS && t.pendingSubs.length === 0) return { ok: false, error: 'Alle drei Wechselfenster sind aufgebraucht.' };
+        if (!atHalftime && t.stats.subWindowsUsed >= MAX_SUB_WINDOWS && t.pendingSubs.length === 0) return { ok: false, error: 'Alle fünf Wechselfenster sind aufgebraucht.' };
         t.pendingSubs.push({ outId: out.input.id, inId: inn.input.id });
         if (t.pendingSubs.length === 1) t.pendingSince = this.tick;
         if (atHalftime || this.phase === 'pre') this.executeSubs(t, true);

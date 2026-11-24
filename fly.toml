@@ -1,6 +1,5 @@
 # Fly.io-Konfiguration für den autoritativen Match-Server (siehe docs/DEPLOYMENT.md)
-# App-Namen beim ersten `fly launch --no-deploy` anpassen.
-app = "football-dynasty-match"
+app = "football-dynasty"
 primary_region = "fra"
 
 [build]

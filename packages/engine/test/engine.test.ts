@@ -75,8 +75,26 @@ describe('Match Engine', () => {
     }
     const t = e.teamView('home');
     expect(t.subsUsed).toBeLessThanOrEqual(5);
-    expect(t.subWindowsUsed).toBeLessThanOrEqual(3);
+    expect(t.subWindowsUsed).toBeLessThanOrEqual(5);
     expect(ok).toBeLessThanOrEqual(5);
+  });
+
+  it('erlaubt fünf einzelne Wechsel in fünf getrennten Wechselfenstern', () => {
+    const e = new MatchEngine(setup('five-windows'));
+    e.step();
+    const view = e.teamView('home');
+    const bench = view.players.filter((p) => !p.onPitch && p.main !== 'GK');
+    const field = view.players.filter((p) => p.onPitch && p.position !== 'GK');
+    for (let i = 0; i < 5; i++) {
+      const result = e.applyCommand('home', { kind: 'sub', outId: field[i]!.id, inId: bench[i]!.id });
+      expect(result).toEqual({ ok: true });
+      const deadline = e.tick + 3000;
+      while (e.teamView('home').subsUsed <= i && !e.isFinished && e.tick < deadline) e.step();
+      expect(e.teamView('home').subsUsed).toBe(i + 1);
+      expect(e.teamView('home').subWindowsUsed).toBe(i + 1);
+    }
+    const result = e.applyCommand('home', { kind: 'sub', outId: field[5]!.id, inId: bench[5]!.id });
+    expect(result.ok).toBe(false);
   });
 
   it('lehnt ungültige Befehle ab', () => {

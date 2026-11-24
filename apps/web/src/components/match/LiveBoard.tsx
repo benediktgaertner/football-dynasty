@@ -1,5 +1,5 @@
 import { OvrChip, RatingChip } from '../team/Ovr';
-import { TEAM_SETTINGS, readableTextColor, type TeamSettingKey } from '@fd/shared';
+import { MAX_SUBSTITUTIONS, MAX_SUBSTITUTION_WINDOWS, TEAM_SETTINGS, readableTextColor, type TeamSettingKey } from '@fd/shared';
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { startDrag } from '../../lib/dragDrop';
 import type { Command, ProfileName, RosterTeam, TeamView } from '../../lib/matchClient';
@@ -33,7 +33,7 @@ export function LiveBoard({ view, team, activeProfile, onClose, send }: {
     .sort((a, b) => ORDER.indexOf(a.main) - ORDER.indexOf(b.main) || b.overall - a.overall);
   const pendingOut = new Set(view.pendingSubs.map((s) => s.outId));
   const pendingIn = new Set(view.pendingSubs.map((s) => s.inId));
-  const subsLeft = 5 - view.subsUsed - view.pendingSubs.length;
+  const subsLeft = MAX_SUBSTITUTIONS - view.subsUsed - view.pendingSubs.length;
 
   const toPitch = (cx: number, cy: number) => {
     const r = pitchRef.current!.getBoundingClientRect();
@@ -65,7 +65,7 @@ export function LiveBoard({ view, team, activeProfile, onClose, send }: {
     <div className="fixed inset-0 z-40 overflow-y-auto bg-ink/90 p-3 backdrop-blur-sm sm:p-5" aria-label="Team-Management">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h2 className="display mr-auto text-3xl font-extrabold uppercase">Aufstellung & Taktik</h2>
-        <span className="text-sm text-cream-dim">Wechsel {view.subsUsed}/5 · Fenster {view.subWindowsUsed}/3 · Das Spiel läuft weiter</span>
+        <span className="text-sm text-cream-dim">Wechsel {view.subsUsed}/{MAX_SUBSTITUTIONS} · Fenster {view.subWindowsUsed}/{MAX_SUBSTITUTION_WINDOWS} · Das Spiel läuft weiter</span>
         <Button variant="secondary" onClick={onClose}>Zurück zum Spiel</Button>
       </div>
       <div className="fd-board-grid fd-board-live">
