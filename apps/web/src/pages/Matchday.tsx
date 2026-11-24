@@ -28,6 +28,7 @@ export function Matchday() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [dash, setDash] = useState<DashboardData | null>(null);
+  const [seasonEnd, setSeasonEnd] = useState<Awaited<ReturnType<typeof seasonApi.seasonEndStatus>> | null>(null);
   const prevSlot = useRef<string | null>(null);
 
   // Neuladen bündeln: Während der Server viele KI-Spiele abschließt, kommen dutzende Realtime-Ereignisse
@@ -43,6 +44,7 @@ export function Matchday() {
       prevSlot.current = s.slot?.id ?? null;
       setState(s);
       setDash(d);
+      setSeasonEnd(s.slot?.kind === 'season_end' && s.slot.state === 'live' ? await seasonApi.seasonEndStatus(worldId).catch(() => null) : null);
       // Nach jeder gemeinsamen Ergebnisfreigabe: Pflicht-Spieltagsübersicht zuerst
       if (d?.pending_review) navigate(`/w/${worldId}/uebersicht/${d.pending_review.slot_id}`, { replace: true });
       setError(null);
@@ -140,7 +142,21 @@ export function Matchday() {
             </div>
           </Card>
 
-          {slot.kind === 'season_end' && (
+          {seasonEnd?.active && (
+            <Card className="mb-4" data-testid="season-end-progress">
+              <h2 className="display text-2xl font-bold uppercase">Saisonwechsel wird berechnet …</h2>
+              <p className="mt-1 text-sm text-cream-dim">Auf- und Abstieg, Verträge, Alterung und Jugend werden auf dem Server in Schritten verarbeitet. Das dauert bei großen Welten etwa ein bis zwei Minuten. Die Seite aktualisiert sich automatisch.</p>
+              <div className="mt-3 h-2 overflow-hidden rounded bg-olive-800"><div className="h-full bg-gold transition-all" style={{ width: `${Math.round(((seasonEnd.step ?? 0) / (seasonEnd.total ?? 7)) * 100)}%` }} /></div>
+              <p className="mt-1 text-xs text-cream-dim">Schritt {Math.min((seasonEnd.step ?? 0) + 1, seasonEnd.total ?? 7)} von {seasonEnd.total ?? 7}</p>
+              {seasonEnd.failed && (
+                <div className="mt-3 rounded-xl border border-danger/50 bg-danger/10 p-3 text-sm">
+                  <p className="text-danger">Der Saisonwechsel ist bei einem Schritt mehrfach fehlgeschlagen{seasonEnd.error ? `: ${seasonEnd.error}` : ''}.</p>
+                  <Button className="mt-2" variant="secondary" onClick={() => act('seretry', async () => { await seasonApi.seasonEndRetry(worldId); await load(); })}>Erneut versuchen (Host)</Button>
+                </div>
+              )}
+            </Card>
+          )}
+          {slot.kind === 'season_end' && !seasonEnd?.active && (
             <Card className="mb-4">
               <h2 className="display text-2xl font-bold uppercase">Saisonabschluss: Verträge & Kaderplanung</h2>
               <p className="mt-1 text-sm text-cream-dim">Verhandle Verlängerungen, Gehälter und Laufzeiten, bevor der Saisonabschluss startet. Reguläre Transfers sind gesperrt.</p>

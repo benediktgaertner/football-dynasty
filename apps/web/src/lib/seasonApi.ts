@@ -276,6 +276,9 @@ export const seasonApi = {
     transactions: Array<{ id: number; kind: string; amount: number; balance_after: number; description: string; created_at: string }>;
     last_attendance: { attendance: number; label: string } | null;
   }>('finance_overview', { p_world: worldId }),
+  /** Saisonwechsel in Schritten (Migration 0048) */
+  seasonEndStatus: (worldId: string) => rpc<{ active: boolean; step?: number; total?: number; attempts?: number; error?: string | null; failed?: boolean }>('season_end_status', { p_world: worldId }),
+  seasonEndRetry: (worldId: string) => rpc<void>('season_end_retry', { p_world: worldId }),
   /** Fanshop und Schulden (Migration 0047) */
   merchOverview: (worldId: string) => rpc<MerchOverview>('merch_overview', { p_world: worldId }),
   merchSetPrice: (worldId: string, product: string, price: number) => rpc<void>('merch_set_price', { p_world: worldId, p_product: product, p_price: price }),
