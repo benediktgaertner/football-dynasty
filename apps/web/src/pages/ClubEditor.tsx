@@ -57,6 +57,13 @@ export function ClubEditor() {
 
   useEffect(() => {
     api.lobbyState(worldId).then((s) => {
+      if (s.world.status !== 'lobby') {
+        let destination = 'team';
+        if (s.world.status === 'draft') destination = 'draft';
+        if (s.world.status === 'season' || s.world.status === 'season_end') destination = 'spieltag';
+        navigate(`/w/${worldId}/${destination}`, { replace: true });
+        return;
+      }
       setLobby(s);
       const mine = s.members.find((m) => m.user_id === s.me.user_id)?.club;
       if (mine) {
@@ -74,7 +81,7 @@ export function ClubEditor() {
         setCrestLinked(false);
       }
     }, (e: Error) => setError(e.message));
-  }, [worldId]);
+  }, [worldId, navigate]);
 
   const set = <K extends keyof ClubCreationInput>(key: K, value: ClubCreationInput[K]) => setClub((c) => ({ ...c, [key]: value }));
   const setCrest = (patch: Partial<CrestConfig>) => setClub((c) => ({ ...c, crest: { ...c.crest, ...patch } }));
