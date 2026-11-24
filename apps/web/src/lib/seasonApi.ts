@@ -276,6 +276,8 @@ export const seasonApi = {
     transactions: Array<{ id: number; kind: string; amount: number; balance_after: number; description: string; created_at: string }>;
     last_attendance: { attendance: number; label: string } | null;
   }>('finance_overview', { p_world: worldId }),
+  /** Stadionausbau-Prognose (Migration 0049) */
+  stadiumQuote: (worldId: string) => rpc<StadiumQuote>('stadium_expansion_quote', { p_world: worldId }),
   /** Saisonwechsel in Schritten (Migration 0048) */
   seasonEndStatus: (worldId: string) => rpc<{ active: boolean; step?: number; total?: number; attempts?: number; error?: string | null; failed?: boolean }>('season_end_status', { p_world: worldId }),
   seasonEndRetry: (worldId: string) => rpc<void>('season_end_retry', { p_world: worldId }),
@@ -313,6 +315,15 @@ export function estimateSalary(overall: number, age: number): number {
 export const STAGE_LABEL: Record<string, string> = {
   round_of_64: '1. Runde', round_of_32: '2. Runde', round_of_16: 'Achtelfinale', quarter_final: 'Viertelfinale', semi_final: 'Halbfinale', final: 'Finale', relegation: 'Relegation',
 };
+export interface StadiumQuote {
+  capacity: number; next_capacity: number | null; max: boolean; cost?: number; demand?: number; attendance_now?: number; attendance_after?: number; extra_attendance?: number;
+  utilization_now?: number; utilization_after?: number; games?: number; annual_tickets?: number; annual_catering?: number; annual_merch?: number;
+  annual_running_extra?: number; annual_net?: number; payback_years?: number | null; verdict?: 'first_season' | 'second_season' | 'third_season' | 'long_term' | 'not_profitable';
+}
+export const STADIUM_VERDICT: Record<NonNullable<StadiumQuote['verdict']>, string> = {
+  first_season: 'Break-even noch in der ersten Saison nach Fertigstellung', second_season: 'Break-even im Laufe der zweiten Saison nach Fertigstellung',
+  third_season: 'Break-even erst in der dritten Saison', long_term: 'Break-even erst nach mehr als drei Saisons', not_profitable: 'Wirtschaftlich nicht sinnvoll: die Nachfrage füllt das Stadion nicht',
+};
 export interface MerchProduct {
   key: string; label: string; price: number; base_price: number; unit_cost: number; stock: number; reorder_target: number; margin: number;
   season_units: number; season_revenue: number; season_profit: number; recent_units: number; reorder_needed: boolean;
@@ -327,7 +338,7 @@ export interface FinanceDebt { balance: number; debt: number; interest_per_match
 export const TX_LABEL: Record<string, string> = {
   starting_capital: 'Startkapital', stadium_build: 'Stadionbau', stadium_expansion: 'Stadionausbau', draft_purchase: 'Draft', transfer_fee_paid: 'Ablöse gezahlt',
   transfer_fee_received: 'Ablöse erhalten', salary: 'Gehälter', ticket_income: 'Ticketverkauf', match_bonus: 'Spielprämien', placement_prize: 'Platzierungsprämie',
-  sponsor: 'Sponsor', competition_prize: 'Wettbewerbsprämien', stadium_running_cost: 'Stadionbetrieb', adjustment: 'Sonstiges', youth_academy: 'Jugendabteilung',
+  sponsor: 'Sponsor', competition_prize: 'Wettbewerbsprämien', stadium_running_cost: 'Stadionbetrieb', adjustment: 'Sonstiges', youth_academy: 'Jugendabteilung', catering_income: 'Gastronomie',
   merchandising: 'Fanshop', merch_purchase: 'Fanshop-Einkauf', merch_storage: 'Fanshop-Lager', loan_interest: 'Kreditzinsen',
 };
 

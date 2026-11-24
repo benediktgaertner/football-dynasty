@@ -7,7 +7,7 @@ import { useParams } from 'react-router-dom';
 import { WorldNav } from '../components/WorldNav';
 import { Button, Card, ErrorBanner, Pill, Shell, Spinner, TextInput } from '../components/ui';
 import { formatEuro, formatEuroSigned } from '../lib/api';
-import { TX_LABEL, seasonApi } from '../lib/seasonApi';
+import { STADIUM_VERDICT, TX_LABEL, seasonApi, type StadiumQuote } from '../lib/seasonApi';
 
 /** I2–I4: Bankkonto, Buchungen, Stadion und Ticketpreise */
 export function Finance() {
@@ -17,6 +17,7 @@ export function Finance() {
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [quote, setQuote] = useState<StadiumQuote | null>(null);
   const [colors, setColors] = useState<[string, string]>(['#1d4ed8', '#ffffff']);
   useEffect(() => {
     void requireSupabase().from('club_branding').select('primary_color, secondary_color, clubs!inner(world_id, manager_user_id)').eq('clubs.world_id', worldId)
@@ -30,6 +31,7 @@ export function Finance() {
     try {
       const d = await seasonApi.finance(worldId);
       setData(d);
+      void seasonApi.stadiumQuote(worldId).then(setQuote).catch(() => setQuote(null));
       setPrices({ league: d.stadium.ticket_price_league, cup: d.stadium.ticket_price_cup, intl: d.stadium.ticket_price_international });
     } catch (e) { setError((e as Error).message); }
   }, [worldId]);
@@ -56,11 +58,27 @@ export function Finance() {
           <p className="display text-sm font-semibold uppercase tracking-[0.2em] text-gold">Stadion</p>
           <h2 className="display text-3xl font-bold uppercase">{data.stadium.name}</h2>
           <p className="text-cream-dim">{data.stadium.capacity.toLocaleString('de-DE')} Plätze{data.last_attendance ? ` · zuletzt ${data.last_attendance.attendance.toLocaleString('de-DE')} Zuschauer (${data.last_attendance.label})` : ''}</p>
-          <Button className="mt-3 w-full" variant="secondary" disabled={data.status !== 'preseason' || data.stadium.capacity >= 50000} busy={busy === 'x'}
-            onClick={() => { if (confirm('Stadion um 5.000 Plätze für 25 Mio. € ausbauen?')) act('x', () => seasonApi.expandStadium(worldId), 'Stadion ausgebaut.'); }}>
-            Ausbau +5.000 (25 Mio. €)
+          {quote && !quote.max && quote.cost !== undefined && (
+            <div className="mt-3 rounded-xl bg-olive-800 p-3 text-sm" data-testid="stadium-quote">
+              <p className="font-semibold">Ausbau auf {quote.next_capacity!.toLocaleString('de-DE')} Plätze: {formatEuro(quote.cost)}</p>
+              <p className={quote.verdict === 'not_profitable' || quote.verdict === 'long_term' ? 'text-danger' : 'text-emerald-300'}>{STADIUM_VERDICT[quote.verdict!]}{quote.payback_years ? ` (≈ ${quote.payback_years.toLocaleString('de-DE')} Jahre)` : ''}</p>
+              <table className="mt-1 w-full text-xs text-cream-dim"><tbody>
+                <tr><td>Zuschauer je Heimspiel</td><td className="text-right">{quote.attendance_now!.toLocaleString('de-DE')} → {quote.attendance_after!.toLocaleString('de-DE')} (Nachfrage {quote.demand!.toLocaleString('de-DE')})</td></tr>
+                <tr><td>Auslastung</td><td className="text-right">{quote.utilization_now} % → {quote.utilization_after} %</td></tr>
+                <tr><td>Tickets / Jahr</td><td className="text-right">+{formatEuro(quote.annual_tickets!)}</td></tr>
+                <tr><td>Gastronomie / Jahr</td><td className="text-right">+{formatEuro(quote.annual_catering!)}</td></tr>
+                <tr><td>Fanshop / Jahr</td><td className="text-right">+{formatEuro(quote.annual_merch!)}</td></tr>
+                <tr><td>Betrieb & Instandhaltung / Jahr</td><td className="text-right">−{formatEuro(quote.annual_running_extra!)}</td></tr>
+                <tr className="font-semibold text-cream"><td>Netto-Ertrag / Jahr</td><td className="text-right">{formatEuroSigned(quote.annual_net!)}</td></tr>
+              </tbody></table>
+              <p className="mt-1 text-xs text-cream-dim">Prognose bei aktuellen Ticketpreisen, normaler Form und {quote.games} Heimspielen pro Saison. Die Nachfrage ändert sich mit Preis, Tabellenplatz und Ruf.</p>
+            </div>
+          )}
+          <Button className="mt-3 w-full" variant="secondary" disabled={data.status !== 'preseason' || data.stadium.capacity >= 80000} busy={busy === 'x'}
+            onClick={() => { if (confirm(`Stadion um 5.000 Plätze für ${formatEuro(quote?.cost ?? 0)} ausbauen?${quote?.verdict ? `\n${STADIUM_VERDICT[quote.verdict]}.` : ''}`)) act('x', () => seasonApi.expandStadium(worldId), 'Stadion ausgebaut.'); }}>
+            {data.stadium.capacity >= 80000 ? 'Maximale Größe erreicht (80.000)' : `Ausbau +5.000${quote?.cost ? ` (${formatEuro(quote.cost)})` : ''}`}
           </Button>
-          <p className="mt-1 text-xs text-cream-dim">Ausbau nur zum Saisonwechsel (Saisonvorbereitung), maximal 50.000 Plätze. Ein volles großes Stadion gibt mehr Heimvorteil.</p>
+          <p className="mt-1 text-xs text-cream-dim">Ausbau nur zum Saisonwechsel (Saisonvorbereitung), maximal 80.000 Plätze. Ein größeres Stadion bringt nur dann mehr Zuschauer, wenn die Nachfrage es füllt.</p>
         </Card>
         <Card>
           <p className="display text-sm font-semibold uppercase tracking-[0.2em] text-gold">Ticketpreise</p>

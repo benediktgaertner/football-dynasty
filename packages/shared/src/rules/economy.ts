@@ -2,7 +2,9 @@ import {
   MARKET_VALUE_ANCHORS,
   MILLION,
   STADIUM_CAPACITY_STEP,
-  STADIUM_EXPANSION_COST_PER_STEP,
+  STADIUM_BUILD_MAX_CAPACITY,
+  STADIUM_EXPANSION_BASE_COST,
+  STADIUM_EXPANSION_COST_PER_SEAT,
   STADIUM_MAX_CAPACITY,
   STADIUM_MIN_CAPACITY,
 } from '../constants.js';
@@ -104,7 +106,7 @@ export function annualSalary(overall: number, ageAtSigning: number): number {
   return contractSalary(overall, ageAtSigning, typicalTier(overall), 50, 3);
 }
 
-/** I3: Gültige Stadionkapazität? */
+/** I3: Gültige Stadionkapazität (Bestand/Ausbau, 10.000 – 80.000 in 5.000er-Schritten)? */
 export function isValidStadiumCapacity(capacity: number): boolean {
   return (
     Number.isInteger(capacity) &&
@@ -114,21 +116,34 @@ export function isValidStadiumCapacity(capacity: number): boolean {
   );
 }
 
+/** Neubau beim Vereinsstart: höchstens 50.000 Plätze (größere Arenen entstehen durch Ausbau). */
+export function isValidStadiumBuildCapacity(capacity: number): boolean {
+  return isValidStadiumCapacity(capacity) && capacity <= STADIUM_BUILD_MAX_CAPACITY;
+}
+
 /** I3: Kosten = Kapazität × 1.000 € × 0,98^((Kapazität − 10.000) / 5.000), auf ganze Euro gerundet. */
 export function stadiumBuildCost(capacity: number): number {
-  if (!isValidStadiumCapacity(capacity)) {
+  if (!isValidStadiumBuildCapacity(capacity)) {
     throw new RangeError(`Ungültige Stadionkapazität: ${capacity}`);
   }
   const steps = (capacity - STADIUM_MIN_CAPACITY) / STADIUM_CAPACITY_STEP;
   return Math.round(capacity * 1_000 * Math.pow(0.98, steps));
 }
 
-/** I3: Ausbau um ganze 5.000er-Schritte, nur zum Saisonwechsel (Prüfung des Zeitpunkts serverseitig). */
+/** Ein Ausbauschritt (+5.000 Plätze) bei der Ausgangsgröße: 3,2 Mio. € + 30 € je vorhandenem Platz (Weltfaktor 1). */
+export function stadiumExpansionStepCost(fromCapacity: number): number {
+  if (!isValidStadiumCapacity(fromCapacity) || fromCapacity >= STADIUM_MAX_CAPACITY) throw new RangeError(`Ungültiger Ausbau ab ${fromCapacity}`);
+  return STADIUM_EXPANSION_BASE_COST + STADIUM_EXPANSION_COST_PER_SEAT * fromCapacity;
+}
+
+/** I3: Ausbau um ganze 5.000er-Schritte (Summe der Schritte); Zeitpunkt wird serverseitig geprüft. */
 export function stadiumExpansionCost(fromCapacity: number, toCapacity: number): number {
   if (!isValidStadiumCapacity(fromCapacity) || !isValidStadiumCapacity(toCapacity) || toCapacity <= fromCapacity) {
     throw new RangeError(`Ungültiger Ausbau ${fromCapacity} → ${toCapacity}`);
   }
-  return ((toCapacity - fromCapacity) / STADIUM_CAPACITY_STEP) * STADIUM_EXPANSION_COST_PER_STEP;
+  let sum = 0;
+  for (let c = fromCapacity; c < toCapacity; c += STADIUM_CAPACITY_STEP) sum += stadiumExpansionStepCost(c);
+  return sum;
 }
 
 function roundTo(value: number, step: number): number {

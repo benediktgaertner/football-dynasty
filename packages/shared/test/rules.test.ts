@@ -36,6 +36,7 @@ import {
   snakeDraftManagerIndex,
   stadiumBuildCost,
   stadiumExpansionCost,
+  stadiumExpansionStepCost,
   staminaFactor,
   tacticLoadFactor,
   totalDraftPicks,
@@ -106,14 +107,21 @@ describe('I3: Stadion', () => {
     expect(stadiumBuildCost(15_000)).toBe(14_700_000);
     expect(stadiumBuildCost(50_000)).toBe(Math.round(50_000 * 1000 * Math.pow(0.98, 8)));
   });
-  it('nur 5.000er-Schritte zwischen 10.000 und 50.000', () => {
+  it('nur 5.000er-Schritte zwischen 10.000 und 80.000 (Neubau bis 50.000)', () => {
     expect(isValidStadiumCapacity(12_500)).toBe(false);
-    expect(isValidStadiumCapacity(55_000)).toBe(false);
+    expect(isValidStadiumCapacity(55_000)).toBe(true);
+    expect(isValidStadiumCapacity(80_000)).toBe(true);
+    expect(isValidStadiumCapacity(85_000)).toBe(false);
+    expect(() => stadiumBuildCost(55_000)).toThrow();
     expect(isValidStadiumCapacity(5_000)).toBe(false);
     expect(() => stadiumBuildCost(12_000)).toThrow();
   });
-  it('Ausbau kostet 25 Mio. € je 5.000 Plätze', () => {
-    expect(stadiumExpansionCost(20_000, 30_000)).toBe(50 * MILLION);
+  it('Ausbau kostet 3,2 Mio. € + 30 € je vorhandenem Platz und Schritt; größere Arenen kosten absolut mehr', () => {
+    expect(stadiumExpansionCost(20_000, 30_000)).toBe(3_800_000 + 3_950_000);
+    expect(stadiumExpansionStepCost(30_000)).toBe(4_100_000);
+    expect(stadiumExpansionStepCost(75_000)).toBe(5_450_000);
+    expect(stadiumExpansionStepCost(70_000)).toBeGreaterThan(stadiumExpansionStepCost(20_000));
+    expect(() => stadiumExpansionStepCost(80_000)).toThrow();
     expect(() => stadiumExpansionCost(30_000, 30_000)).toThrow();
   });
 });

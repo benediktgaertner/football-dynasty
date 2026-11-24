@@ -16,7 +16,7 @@ export interface FinanceReport {
 
 /** Anzeigename und Farbe je Gruppe; die Zuordnung der Buchungstypen selbst liegt zentral in der DB (fd_finance_group). */
 export const FINANCE_GROUPS: Record<string, { label: string; side: FinanceSide; color: string }> = {
-  ticket_sales: { label: 'Ticketverkäufe', side: 'income', color: '#34d399' },
+  ticket_sales: { label: 'Tickets & Gastronomie', side: 'income', color: '#34d399' },
   match_bonus: { label: 'Spielprämien', side: 'income', color: '#2dd4bf' },
   sponsors: { label: 'Sponsoren', side: 'income', color: '#60a5fa' },
   merchandising: { label: 'Fanshop', side: 'income', color: '#22d3ee' },

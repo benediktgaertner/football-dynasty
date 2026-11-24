@@ -27,9 +27,13 @@ export const GERMAN_TIERS = 3;
 
 /** I3: Stadion. */
 export const STADIUM_MIN_CAPACITY = 10_000;
-export const STADIUM_MAX_CAPACITY = 50_000;
+/** Größtes Stadion nach Ausbau; beim Vereinsstart (Neubau) sind höchstens STADIUM_BUILD_MAX_CAPACITY möglich. */
+export const STADIUM_MAX_CAPACITY = 80_000;
+export const STADIUM_BUILD_MAX_CAPACITY = 50_000;
 export const STADIUM_CAPACITY_STEP = 5_000;
-export const STADIUM_EXPANSION_COST_PER_STEP = 25 * MILLION;
+/** Ausbau je 5.000er-Schritt: Grundpreis + Preis je vorhandenem Platz (Migration 0049; Welten mit Wirtschaftsfaktor skalieren) */
+export const STADIUM_EXPANSION_BASE_COST = 3_200_000;
+export const STADIUM_EXPANSION_COST_PER_SEAT = 30;
 
 /** D2: Startverteilung der 400 Draft-Spieler. */
 export const DRAFT_POOL_SIZE = 400;

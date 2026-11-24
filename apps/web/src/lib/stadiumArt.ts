@@ -35,20 +35,26 @@ export function withDefaults(d: StadiumDesign | null | undefined): Required<Stad
   return { ...DEFAULT_DESIGN, ...(d ?? {}) } as Required<StadiumDesign>;
 }
 
-/** Anzahl der Tribünenränge aus der Kapazität */
-export function standTiers(capacity: number): 1 | 2 | 3 {
+/** Gezeichnete Ränge: bis 20.000 → 1, bis 40.000 → 2, bis 60.000 → 3, darüber 4 (Zusatzrang für Großarenen bis 80.000) */
+export function visualTiers(capacity: number): 1 | 2 | 3 | 4 {
   if (capacity <= 20000) return 1;
   if (capacity <= 40000) return 2;
-  return 3;
+  if (capacity <= 60000) return 3;
+  return 4;
 }
 
-/** Tribünentiefe in Metern (ohne Umläufe): 10.000 Plätze ≈ 3,4 m, 50.000 Plätze ≈ 10 m */
+/** Logische Ränge (Choreografie, Fanblöcke): höchstens drei; der Zusatzrang zählt zum Oberrang */
+export function standTiers(capacity: number): 1 | 2 | 3 {
+  return Math.min(3, visualTiers(capacity)) as 1 | 2 | 3;
+}
+
+/** Tribünentiefe in Metern (ohne Umläufe): 10.000 Plätze ≈ 3,4 m, 50.000 ≈ 10 m, 80.000 ≈ 15 m */
 export function standDepth(capacity: number): number {
-  return 3.4 + Math.max(0, Math.min(1, (capacity - 10000) / 40000)) * 6.6;
+  return 3.4 + Math.max(0, capacity - 10000) / 40000 * 6.6;
 }
 
 function totalDepth(capacity: number): number {
-  return standDepth(capacity) + (standTiers(capacity) - 1) * CONCOURSE;
+  return standDepth(capacity) + (visualTiers(capacity) - 1) * CONCOURSE;
 }
 
 /** Rand um das Spielfeld (Platz für Tore, Namen und Tribünen) */
@@ -108,7 +114,7 @@ export interface StadiumArtOptions {
 }
 
 type Side = 'top' | 'bottom' | 'left' | 'right';
-interface Band { side: Side; x0: number; y0: number; x1: number; y1: number; tier: number }
+interface Band { side: Side; x0: number; y0: number; x1: number; y1: number; tier: number; vt: number }
 export interface Seat { x: number; y: number; taken: boolean; away: boolean; home: boolean; tier: number; side: Side; corner: boolean }
 
 /** Geometrie: Ränge je Seite und alle Sitzplätze (deterministisch je Größe/Stil/Auslastung) */
@@ -116,22 +122,24 @@ export function stadiumLayout(o: StadiumArtOptions) { return layout(o); }
 function layout(o: StadiumArtOptions) {
   const d = withDefaults(o.design);
   const tiers = standTiers(o.capacity);
+  const vt = visualTiers(o.capacity);
   const depth = standDepth(o.capacity);
-  const tierDepth = depth / tiers;
+  const tierDepth = depth / vt;
   const total = totalDepth(o.capacity);
   const f = (side: Side) => (d.style === 'traditional' ? (side === 'bottom' ? 1.2 : side === 'top' ? 0.75 : 0.6) : d.style === 'arena' && (side === 'left' || side === 'right') ? 1.05 : 1);
   const bands: Band[] = [];
   const closed = d.style === 'modern' || d.style === 'arena';
   for (const side of ['top', 'bottom', 'left', 'right'] as const) {
     const sf = f(side);
-    for (let t = 0; t < tiers; t++) {
+    for (let t = 0; t < vt; t++) {
+      const lt = Math.min(t, tiers - 1);
       const a = GAP + (t * (tierDepth + CONCOURSE)) * sf;
       const b = a + tierDepth * sf;
       const ext = closed ? GAP + total : 0;
-      if (side === 'top') bands.push({ side, tier: t, x0: -ext, x1: L + ext, y0: -b, y1: -a });
-      if (side === 'bottom') bands.push({ side, tier: t, x0: -ext, x1: L + ext, y0: W + a, y1: W + b });
-      if (side === 'left') bands.push({ side, tier: t, x0: -b, x1: -a, y0: -GAP, y1: W + GAP });
-      if (side === 'right') bands.push({ side, tier: t, x0: L + a, x1: L + b, y0: -GAP, y1: W + GAP });
+      if (side === 'top') bands.push({ side, tier: lt, vt: t, x0: -ext, x1: L + ext, y0: -b, y1: -a });
+      if (side === 'bottom') bands.push({ side, tier: lt, vt: t, x0: -ext, x1: L + ext, y0: W + a, y1: W + b });
+      if (side === 'left') bands.push({ side, tier: lt, vt: t, x0: -b, x1: -a, y0: -GAP, y1: W + GAP });
+      if (side === 'right') bands.push({ side, tier: lt, vt: t, x0: L + a, x1: L + b, y0: -GAP, y1: W + GAP });
     }
   }
   const inArena = (x: number, y: number) => {
@@ -164,7 +172,7 @@ function layout(o: StadiumArtOptions) {
       }
     }
   }
-  return { d, tiers, depth, total, bands, seats, closed };
+  return { d, tiers, vt, depth, total, bands, seats, closed };
 }
 
 /** Bau, Ränge, leere (weiße) Sitze, Dach, Banden und Banner */
@@ -172,7 +180,7 @@ export function renderStadiumLayer(o: StadiumArtOptions): HTMLCanvasElement {
   const cv = document.createElement('canvas');
   cv.width = o.width; cv.height = o.height;
   const ctx = cv.getContext('2d')!;
-  const { d, tiers, total, bands, seats, closed } = layout(o);
+  const { d, vt, total, bands, seats, closed } = layout(o);
   const X = (x: number) => o.ox + x * o.s;
   const Y = (y: number) => o.oy + y * o.s;
 
@@ -186,7 +194,7 @@ export function renderStadiumLayer(o: StadiumArtOptions): HTMLCanvasElement {
     ctx.clip();
   }
   for (const bd of bands) {
-    const lift = tiers === 1 ? 0 : bd.tier / (tiers - 1);
+    const lift = vt === 1 ? 0 : bd.vt / (vt - 1);
     ctx.fillStyle = shade(d.stand, -0.12 + lift * 0.18);
     ctx.fillRect(X(bd.x0), Y(bd.y0), (bd.x1 - bd.x0) * o.s, (bd.y1 - bd.y0) * o.s);
     // Ränge-Kante (Brüstung) in der Akzentfarbe des Designs
@@ -198,10 +206,10 @@ export function renderStadiumLayer(o: StadiumArtOptions): HTMLCanvasElement {
     if (bd.side === 'right') ctx.fillRect(X(bd.x0), Y(bd.y0), lw, (bd.y1 - bd.y0) * o.s);
   }
   // Umläufe zwischen den Rängen
-  if (tiers > 1) {
+  if (vt > 1) {
     ctx.fillStyle = shade(d.stand, -0.45);
     for (const bd of bands) {
-      if (bd.tier === 0) continue;
+      if (bd.vt === 0) continue;
       const c = CONCOURSE * o.s;
       if (bd.side === 'top') ctx.fillRect(X(bd.x0), Y(bd.y1), (bd.x1 - bd.x0) * o.s, c);
       if (bd.side === 'bottom') ctx.fillRect(X(bd.x0), Y(bd.y0) - c, (bd.x1 - bd.x0) * o.s, c);
@@ -227,7 +235,7 @@ export function renderStadiumLayer(o: StadiumArtOptions): HTMLCanvasElement {
       ctx.stroke();
     } else {
       for (const bd of bands) {
-        if (bd.tier !== tiers - 1 || (d.style === 'traditional' && bd.side !== 'bottom')) continue;
+        if (bd.vt !== vt - 1 || (d.style === 'traditional' && bd.side !== 'bottom')) continue;
         ctx.fillStyle = 'rgba(0,0,0,0.16)';
         const sh = (bd.side === 'top' || bd.side === 'bottom' ? bd.y1 - bd.y0 : bd.x1 - bd.x0) * 0.35 * o.s;
         if (bd.side === 'top') ctx.fillRect(X(bd.x0), Y(bd.y0), (bd.x1 - bd.x0) * o.s, sh);

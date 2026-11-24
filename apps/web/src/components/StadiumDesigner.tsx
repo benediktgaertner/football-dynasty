@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { StadiumDesign } from '../lib/matchClient';
-import { DEFAULT_DESIGN, L, STADIUM_STYLES, W, renderFanLayers, renderStadiumLayer, stadiumMargin, standTiers, withDefaults } from '../lib/stadiumArt';
+import { DEFAULT_DESIGN, L, STADIUM_STYLES, W, renderFanLayers, renderStadiumLayer, stadiumMargin, visualTiers, withDefaults } from '../lib/stadiumArt';
 import { Button, Card, TextInput } from './ui';
 
 /** Vorschau: Stadion mit der zuletzt bekannten (oder angenommenen) Auslastung */
@@ -28,7 +28,7 @@ export function StadiumPreview({ capacity, attendance, design, homeColors, awayC
     ctx.beginPath(); ctx.arc(ox + (L / 2) * s, oy + (W / 2) * s, 9.15 * s, 0, Math.PI * 2); ctx.stroke();
   }, [capacity, attendance, design, homeColors, awayColor]);
   const m = stadiumMargin(capacity);
-  const tiers = standTiers(capacity);
+  const tiers = visualTiers(capacity);
   return (
     <div>
       <canvas ref={ref} className="block w-full rounded-xl" style={{ aspectRatio: `${L + 2 * m} / ${W + 2 * m}` }} aria-label="Stadionvorschau" />

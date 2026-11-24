@@ -4,7 +4,7 @@ import {
   CREST_SYMBOLS,
   KIT_PATTERNS,
   STADIUM_CAPACITY_STEP,
-  STADIUM_MAX_CAPACITY,
+  STADIUM_BUILD_MAX_CAPACITY,
   STADIUM_MIN_CAPACITY,
   clubCreationSchema,
   contrastRatio,
@@ -257,7 +257,7 @@ export function ClubEditor() {
                 <input
                   type="range"
                   min={STADIUM_MIN_CAPACITY}
-                  max={STADIUM_MAX_CAPACITY}
+                  max={STADIUM_BUILD_MAX_CAPACITY}
                   step={STADIUM_CAPACITY_STEP}
                   value={club.stadiumCapacity}
                   onChange={(e) => set('stadiumCapacity', Number(e.target.value))}
