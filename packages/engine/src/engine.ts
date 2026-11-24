@@ -110,6 +110,13 @@ export interface AiDiagnostics {
   crosses: number;
   shields: number;
   blocks: number;
+  /** Torwart-Spieleröffnung: Anzahl, davon erfolgreich; je Art (kurz, Abwurf, langer Abschlag) */
+  gkDist: number;
+  gkDistWon: number;
+  gkShort: number;
+  gkThrow: number;
+  gkLong: number;
+  gkLongWon: number;
 }
 
 type RunKind = 'behind' | 'overlap' | 'inside' | 'drop' | 'box' | 'support' | 'give_go';
@@ -164,10 +171,13 @@ export interface CommandRecord { tick: number; side: Side; cmd: MatchCommand }
 
 const clamp = (x: number, a: number, b: number) => (x < a ? a : x > b ? b : x);
 const dist = (u1: number, v1: number, u2: number, v2: number) => Math.hypot(u1 - u2, v1 - v2);
+/** Kalibrierung Fouls/Karten (Stichprobenmessung, siehe test/cards.stat.test.ts) */
+const FOUL_SCALE = 1.0;
+const CARD_SCALE = 0.72;
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
 
 function emptyDiag(): AiDiagnostics {
-  return { decisions: 0, shotZone: 0, shotZoneShots: 0, shotZoneBackPasses: 0, throughBalls: 0, throughBallsCompleted: 0, takeOns: 0, takeOnsWon: 0, crosses: 0, shields: 0, blocks: 0 };
+  return { decisions: 0, shotZone: 0, shotZoneShots: 0, shotZoneBackPasses: 0, throughBalls: 0, throughBallsCompleted: 0, takeOns: 0, takeOnsWon: 0, crosses: 0, shields: 0, blocks: 0, gkDist: 0, gkDistWon: 0, gkShort: 0, gkThrow: 0, gkLong: 0, gkLongWon: 0 };
 }
 
 function emptyTeamStats(): TeamMatchStats {
@@ -1131,6 +1141,17 @@ export class MatchEngine {
   }
 
   /** Gegner zwischen Ball und Tor im Umkreis r */
+  /** Gegnerische Feldspieler zwischen Ballführer und Tor (seitlich bis 25 m) – 0/1 = Angreifer ist (fast) durch */
+  private outfieldersGoalside(c: LivePlayer): number {
+    let n = 0;
+    for (const o of this.onPitch(OTHER[c.side])) {
+      if (o.slotPos === 'GK') continue;
+      const [ou, ov] = this.posIn(o, c.side);
+      if (ou > c.u + 1 && Math.abs(ov - c.v) < 25) n++;
+    }
+    return n;
+  }
+
   private goalSideDefenders(c: LivePlayer, r: number): number {
     let n = 0;
     for (const o of this.onPitch(OTHER[c.side])) {
@@ -1178,8 +1199,22 @@ export class MatchEngine {
     // Foul?
     const [cu, cv] = [c.u, c.v];
     const inBox = cu > L - 16.5 && Math.abs(cv - GOAL_V) < 20.16;
-    const foulP = (0.45 + (ot.adv.tackling - 2) * 0.08 + (att > def ? 0.06 : 0)) * (inBox ? 0.2 : 1);
-    if (this.rng.next() < foulP) { this.foul(op, c, cu, cv); return; }
+    // Foulneigung aus der Situation: je weiter der Angriff, desto eher wird ein Foul „gebraucht“; Aggressivität des Verteidigers,
+    // unterlegener Zweikampf (Verzweiflungsfoul), späte Spielphase im Rückstand. Verwarnte Spieler gehen vorsichtiger in den Zweikampf.
+    const aggr = this.aggression(op);
+    const desperation = clamp((att - def) / 25, -1, 1);
+    const danger = clamp((cu - 30) / 45, 0.15, 1.1);
+    const lastMan = cu > 60 && !inBox && this.outfieldersGoalside(c) <= 1;
+    const [mine, theirs] = op.side === 'home' ? this.score : [this.score[1], this.score[0]];
+    const frustrated = this.minute > 70 && mine < theirs ? 1.12 : 1;
+    // Von hinten/seitlich nachsetzender Verteidiger (Angreifer ist vorbei) foult häufiger und härter als ein frontal stehender (Pressing)
+    const [opU] = this.posIn(op, c.side);
+    const chasing = opU < c.u - 0.5;
+    // Rollentiefe (0 = Sturm, 1 = Abwehr aus der Aufstellung): defensive Spieler stehen häufiger im harten Zweikampf, Pressing-Stürmer eher selten
+    const depth = clamp(1 - op.ay / 100, 0, 1);
+    let foulP = FOUL_SCALE * (0.22 + 0.4 * danger) * (chasing ? 1.5 : 0.8) * (0.3 + 1.4 * depth) * (0.65 + 0.7 * aggr) * (1 + 0.25 * desperation) * (0.85 + (ot.adv.tackling - 2) * 0.12) * frustrated * (inBox ? 0.2 : 1);
+    if (op.yellow === 1) foulP *= 0.6;
+    if (this.rng.next() < foulP) { this.foul(op, c, cu, cv, { danger, aggr, desperation, lastMan, chasing }); return; }
     if (this.rng.next() < pWin) {
       op.stats.tacklesWon++;
       this.giveBall(op, Math.round(2 * TS));
@@ -1192,17 +1227,31 @@ export class MatchEngine {
     }
   }
 
-  private foul(offender: LivePlayer, victim: LivePlayer, u: number, v: number): void {
+  /** Abgeleitete Zweikampfhärte (0,15–0,85): Körperlichkeit und Abwehrarbeit, wenig Spielintelligenz/Gelassenheit → ruppiger */
+  private aggression(p: LivePlayer): number {
+    if (p.input.kind === 'goalkeeper') return 0.25;
+    const a = p.input.attributes;
+    return clamp(((a.physical ?? 50) * 0.35 + (a.defending ?? 50) * 0.15 + (100 - (a.gameIntelligence ?? 50)) * 0.25 + (100 - (a.mentality ?? 50)) * 0.25) / 100, 0.15, 0.85);
+  }
+
+  private foul(offender: LivePlayer, victim: LivePlayer, u: number, v: number, ctx: { danger: number; aggr: number; desperation: number; lastMan: boolean; chasing: boolean }): void {
     const ot = this.teams[offender.side];
     const vt = this.teams[victim.side];
     ot.stats.fouls++; offender.stats.fouls++;
     this.log({ type: 'foul', side: offender.side, playerId: offender.input.id, otherId: victim.input.id, text: `Foul von ${offender.input.name} an ${victim.input.name}` });
     // Karten
+    // Schwere des Fouls: gefährlicher Angriff, Aggressivität, Notbremse/Verzweiflungsfoul, Zweikampfhärte der Mannschaft.
+    // Die Kartenverteilung nach Position entsteht aus diesen Situationen (Verteidiger und defensive Mittelfeldspieler stehen häufiger
+    // im Zweikampf gegen weit vorgerückte Angreifer, Stürmer pressen meist harmlos weit vorn).
     const hard = ot.adv.tackling - 2;
+    const sev = 0.02 + 0.55 * ctx.danger ** 2 + 0.12 * ctx.aggr + Math.max(0, ctx.desperation) * 0.08 + (ctx.lastMan ? 0.24 : 0) + (ctx.chasing ? 0.04 : 0) + hard * 0.04;
+    // Defensive Spieler werden für taktische Fouls eher verwarnt, Pressing-Stürmer kommen bei Foulspiel weit vorn glimpflicher davon
+    let pBook = clamp(sev, 0.03, 0.85) * CARD_SCALE * (0.55 + 0.9 * clamp(1 - offender.ay / 100, 0, 1));
+    if (offender.yellow === 1) pBook *= 0.4;  // verwarnte Spieler foulen weniger rüde
+    const pRed = (ctx.lastMan ? 0.015 + ctx.aggr * 0.04 : 0.0008 + ctx.aggr * 0.0025) + hard * 0.001;
     const r = this.rng.next();
-    const inDanger = u > 75;
-    if (r < 0.0015 + hard * 0.002 + (inDanger ? 0.001 : 0)) this.sendOff(offender, 'red');
-    else if (r < 0.28 + hard * 0.05 + (inDanger ? 0.04 : 0)) this.book(offender);
+    if (r < pRed) this.sendOff(offender, 'red');
+    else if (r < pRed + pBook) this.book(offender);
     // Verletzung
     if (this.rng.next() < 0.015 + hard * 0.01) this.injure(victim);
     // Standard
@@ -1350,12 +1399,15 @@ export class MatchEngine {
   }
 
   /** Geschätzte Passerfolgsquote – dieselbe Formel nutzt passTo für die Ausführung */
-  private passSuccess(c: LivePlayer, t: TeamState, toU: number, toV: number, pressure: number, opt: { through?: boolean; lofted?: boolean; finish?: boolean }): number {
+  private passSuccess(c: LivePlayer, t: TeamState, toU: number, toV: number, pressure: number, opt: { through?: boolean; lofted?: boolean; finish?: boolean; gk?: 'short' | 'throw' | 'long' }): number {
     const d = dist(c.u, c.v, toU, toV);
     const { op: marker, d: open } = this.nearestOpponentAt(t.side, toU, toV);
     // Gute Verteidiger stehen enger am Gegenspieler und antizipieren
     const mDefQ = marker ? this.skill(marker, 'defending') * 0.7 + this.skill(marker, 'gameIntelligence') * 0.3 : 0;
-    const passing = this.skill(c, 'passing') * 0.75 + this.skill(c, 'gameIntelligence') * 0.25;
+    // Langer Abschlag: Passgenauigkeit aus dem Torwart-Attribut „Abschlag“ (kicking), Abwurf/kurz aus „Abstoß/Verteilung“ (distribution)
+    const passing = opt.gk === 'long' && c.input.kind === 'goalkeeper'
+      ? this.skill(c, 'kicking') * 0.6 + this.skill(c, 'passing') * 0.2 + this.skill(c, 'gameIntelligence') * 0.2
+      : this.skill(c, 'passing') * 0.75 + this.skill(c, 'gameIntelligence') * 0.25;
     // Passqualität relativ zur Abwehrqualität des Gegners (gleich stark ≈ 0,7)
     const pq = clamp(0.7 + (passing - this.teamQuality(OTHER[t.side]).def) / Q_PASS, 0.25, 1.05);
     const mDef = marker ? clamp(Math.exp((mDefQ - passing) / 25), 0.45, 2.2) : 1;
@@ -1377,7 +1429,7 @@ export class MatchEngine {
 
   private decide(c: LivePlayer, t: TeamState, pressure: number): void {
     const ti = t.ti;
-    if (c.slotPos === 'GK') { this.pass(c, t, pressure, true); return; }
+    if (c.slotPos === 'GK') { this.keeperDistribute(c, t, pressure); return; }
     const dg = this.diagnostics[t.side];
     dg.decisions++;
     const gi = this.skill(c, 'gameIntelligence') / 99;
@@ -1542,6 +1594,39 @@ export class MatchEngine {
     return { u: m.u, v: m.v, running: false };
   }
 
+  /**
+   * Torwart-Spieleröffnung: kurzer Pass, Abwurf oder langer Abschlag. Bewertet werden Erfolgswahrscheinlichkeit (aus den
+   * Torwart- und Gegnerwerten), Raumgewinn, Freiheit des Mitspielers und die Kosten eines Ballverlusts (vor dem eigenen Tor am
+   * höchsten). Freie Mitspieler werden bevorzugt; Taktik (Aufbauspiel, Anweisungen) verschiebt die Gewichte nur.
+   */
+  private keeperDistribute(c: LivePlayer, t: TeamState, pressure: number): void {
+    const ti = t.ti;
+    const mates = this.onPitch(t.side).filter((p) => p !== c && p.slotPos !== 'GK');
+    if (mates.length === 0) { this.dribble(c, pressure); return; }
+    const gi = this.skill(c, 'gameIntelligence') / 99;
+    const style = c.instr.has('long_kicks') ? 1.5 : c.instr.has('short_distribution') ? 0.55 : ti.buildUp === 'long' ? 1.35 : ti.buildUp === 'short' ? 0.7 : 1;
+    const offLine = this.offsideLine(t.side);
+    let best: { m: LivePlayer; mode: 'short' | 'throw' | 'long'; ev: number } | null = null;
+    for (const m of mates) {
+      const d = dist(c.u, c.v, m.u, m.v);
+      if (d < 5) continue;
+      const modes: Array<'short' | 'throw' | 'long'> = d <= 24 ? ['short'] : d <= 42 ? ['throw', 'long'] : ['long'];
+      const open = Math.min(this.nearestOpponentTo(t.side, m.u, m.v), 9);
+      for (const mode of modes) {
+        const p = this.passSuccess(c, t, m.u, m.v, pressure, { lofted: mode === 'long', gk: mode });
+        const prog = clamp((m.u - c.u) / 60, -0.2, 1);
+        const lossCost = m.u < 30 ? 1.3 : m.u < 55 ? 0.8 : 0.4;
+        let ev = p * (1 + prog * 0.6 + open * 0.025) - (1 - p) * lossCost;
+        ev += mode === 'long' ? 0.14 + (style - 1) * 0.25 : mode === 'short' ? (1 - style) * 0.2 : 0;
+        if (m.u > offLine + 0.3 && m.u > L / 2) ev -= 0.8;
+        ev += this.rng.normal(0, 0.1 * (1.3 - gi));
+        if (!best || ev > best.ev) best = { m, mode, ev };
+      }
+    }
+    if (!best) { this.dribble(c, pressure); return; }
+    this.passTo(c, t, best.m, pressure, { lofted: best.mode === 'long', gk: best.mode });
+  }
+
   /** Torwart-Abspiel (Aufbau von hinten oder langer Abschlag) */
   private pass(c: LivePlayer, t: TeamState, pressure: number, fromKeeper: boolean): void {
     const ti = t.ti;
@@ -1559,7 +1644,7 @@ export class MatchEngine {
       if (sc > bestScore) { bestScore = sc; best = m; }
     }
     if (!best) { this.dribble(c, pressure); return; }
-    this.passTo(c, t, best, pressure, { lofted: dist(c.u, c.v, best.u, best.v) > 35 });
+    this.passTo(c, t, best, pressure, { lofted: dist(c.u, c.v, best.u, best.v) > 35, gk: fromKeeper ? (dist(c.u, c.v, best.u, best.v) > 35 ? 'long' : 'short') : undefined });
   }
 
   private nearestOpponentAt(side: Side, u: number, v: number): { op: LivePlayer | null; d: number } {
@@ -1575,24 +1660,30 @@ export class MatchEngine {
   }
 
   /** Pass ausführen: Erfolg, Abseits und Flugzeit werden beim Abspiel bestimmt, aufgelöst bei Ankunft. */
-  private passTo(c: LivePlayer, t: TeamState, recv: LivePlayer, pressure: number, opt: { lead?: [number, number]; through?: boolean; lofted?: boolean; finish?: boolean }): void {
+  private passTo(c: LivePlayer, t: TeamState, recv: LivePlayer, pressure: number, opt: { lead?: [number, number]; through?: boolean; lofted?: boolean; finish?: boolean; gk?: 'short' | 'throw' | 'long' }): void {
     const offLine = this.offsideLine(t.side);
     const [toU0, toV0] = opt.lead ?? [recv.u, recv.v];
     const toU = clamp(toU0, 1, L - 2), toV = clamp(toV0, 1, W - 1);
     const d = dist(c.u, c.v, toU, toV);
-    const pSucc = this.passSuccess(c, t, toU, toV, pressure, opt);
+    let pSucc = this.passSuccess(c, t, toU, toV, pressure, opt);
+    if (opt.gk && c.input.kind === 'goalkeeper') {
+      // Gelegentliche Fehlschläge schwächerer Torhüter (Abschlag: mehr, Abwurf: kaum)
+      const kick = (c.input.attributes.kicking ?? 50) / 99;
+      pSucc *= 1 - (1 - kick) * (opt.gk === 'long' ? 0.10 : opt.gk === 'throw' ? 0.025 : 0.04);
+    }
     t.stats.passes++; c.stats.passes++;
     const success = this.rng.next() < pSucc;
+    if (opt.gk) { const dg = this.diagnostics[t.side]; dg.gkDist++; if (success) dg.gkDistWon++; if (opt.gk === 'short') dg.gkShort++; else if (opt.gk === 'throw') dg.gkThrow++; else { dg.gkLong++; if (success) dg.gkLongWon++; } }
     const defT = this.teams[OTHER[t.side]];
     const trapShift = defT.adv.offsideTrap ? (this.rng.next() < 0.5 ? 1.6 : 0) : 0;
     const offside = recv.slotPos !== 'GK' && recv.u > offLine - trapShift + 0.3 && recv.u > L / 2 && c.u < recv.u;
     // Ballgeschwindigkeit in „Fernsehtempo“: flache Pässe schneller, hohe Bälle langsamer
-    const ballSpeed = opt.lofted ? 17 : 20 + Math.min(8, d / 6);
+    const ballSpeed = opt.gk === 'throw' ? 15 : opt.lofted ? 17 : 20 + Math.min(8, d / 6);
     const total = Math.max(3, Math.round(d / (ballSpeed * VIS)));
     const fromU = c.u, fromV = c.v;
     this.carrier = null;
     this.flight = {
-      fromU, fromV, toU, toV, ticks: total, total, height: opt.lofted ? Math.min(9, d / 5) : d > 30 ? 1.5 : 0, kind: opt.lofted ? 'lofted' : recv.u > c.u + 12 ? 'through' : 'ground',
+      fromU, fromV, toU, toV, ticks: total, total, height: opt.lofted ? Math.min(9, d / 5) : opt.gk === 'throw' ? 1.6 : d > 30 ? 1.5 : 0, kind: opt.lofted ? 'lofted' : recv.u > c.u + 12 ? 'through' : 'ground',
       resolve: () => {
         if (offside) {
           t.stats.offsides++;
