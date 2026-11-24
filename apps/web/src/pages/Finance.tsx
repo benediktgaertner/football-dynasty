@@ -78,7 +78,8 @@ export function Finance() {
               <p className="font-semibold">Ausbau auf {quote.next_capacity!.toLocaleString('de-DE')} Plätze: {formatEuro(quote.cost)}</p>
               <p className={quote.verdict === 'not_profitable' || quote.verdict === 'long_term' ? 'text-danger' : 'text-emerald-300'}>{STADIUM_VERDICT[quote.verdict!]}{quote.payback_years ? ` (≈ ${quote.payback_years.toLocaleString('de-DE')} Jahre)` : ''}</p>
               <table className="mt-1 w-full text-xs text-cream-dim"><tbody>
-                <tr><td>Zuschauer je Heimspiel</td><td className="text-right">{quote.attendance_now!.toLocaleString('de-DE')} → {quote.attendance_after!.toLocaleString('de-DE')} (Nachfrage {quote.demand!.toLocaleString('de-DE')})</td></tr>
+                <tr><td>Zuschauer je Heimspiel</td><td className="text-right">{quote.attendance_now!.toLocaleString('de-DE')} → {quote.attendance_after!.toLocaleString('de-DE')}</td></tr>
+                <tr><td>Nachfrage</td><td className="text-right">{quote.demand!.toLocaleString('de-DE')}{quote.demand_after != null ? ` → ${quote.demand_after.toLocaleString('de-DE')}` : ''}</td></tr>
                 <tr><td>Auslastung</td><td className="text-right">{quote.utilization_now} % → {quote.utilization_after} %</td></tr>
                 <tr><td>Tickets / Jahr</td><td className="text-right">+{formatEuro(quote.annual_tickets!)}</td></tr>
                 <tr><td>Gastronomie / Jahr</td><td className="text-right">+{formatEuro(quote.annual_catering!)}</td></tr>
@@ -93,7 +94,7 @@ export function Finance() {
             onClick={() => { if (confirm(`Stadion um 5.000 Plätze für ${formatEuro(quote?.cost ?? 0)} ausbauen?${quote?.verdict ? `\n${STADIUM_VERDICT[quote.verdict]}.` : ''}`)) act('x', () => seasonApi.expandStadium(worldId), 'Stadion ausgebaut.'); }}>
             {data.stadium.capacity >= 80000 ? 'Maximale Größe erreicht (80.000)' : `Ausbau +5.000${quote?.cost ? ` (${formatEuro(quote.cost)})` : ''}`}
           </Button>
-          <p className="mt-1 text-xs text-cream-dim">Ausbau nur zum Saisonwechsel (Saisonvorbereitung), maximal 80.000 Plätze. Ein größeres Stadion bringt nur dann mehr Zuschauer, wenn die Nachfrage es füllt.</p>
+          <p className="mt-1 text-xs text-cream-dim">Ausbau nur zum Saisonwechsel (Saisonvorbereitung), maximal 80.000 Plätze. Ein größeres Stadion erhöht das Fanpotenzial und schafft zusätzliche Plätze.</p>
         </Card>
         <Card>
           <p className="display text-sm font-semibold uppercase tracking-[0.2em] text-gold">Ticketpreise</p>
@@ -115,7 +116,7 @@ export function Finance() {
               <p>Auslastung {forecast.current_utilization.toLocaleString('de-DE')} % → {forecast.proposed_utilization.toLocaleString('de-DE')} %</p>
               <p>Nachfrage {forecast.current_demand.toLocaleString('de-DE')} → {forecast.proposed_demand.toLocaleString('de-DE')} Plätze</p>
               <p className="mt-2 text-xs text-cream-dim">Auslastung = Zuschauer ÷ {forecast.capacity.toLocaleString('de-DE')} Plätze. Liga {forecast.tier}, Vereinsruf {forecast.reputation}, Gegner-Ruf {forecast.opponent_reputation}. {forecast.form_factor === 1 ? 'Neutraler Tabellenfaktor' : `Tabellenplatz ${forecast.league_position} von ${forecast.league_teams}: ${forecast.form_factor > 1 ? '+' : ''}${((forecast.form_factor - 1) * 100).toLocaleString('de-DE', { maximumFractionDigits: 1 })} % Nachfrage`}. Die tatsächliche Zahl berücksichtigt zusätzlich die Spielbedeutung und eine spielabhängige Schwankung von ±3 %.</p>
-              <p className="mt-1 text-xs text-cream-dim">Ein niedrigerer Preis erhöht die Nachfrage bis zur Preisgrenze. Ein Ausbau erhöht die Kapazität. Liga und Vereinsruf beeinflussen die Nachfrage; die Stadiongröße begrenzt die Zuschauerzahl.</p>
+              <p className="mt-1 text-xs text-cream-dim">Ein niedrigerer Preis erhöht die Nachfrage bis zur Preisgrenze. Ein Ausbau erhöht das Fanpotenzial und die Kapazität. Liga und Vereinsruf beeinflussen ebenfalls die Nachfrage.</p>
             </div>
           )}
           {forecastError && <p className="mt-2 text-xs text-danger">Prognose: {forecastError}</p>}

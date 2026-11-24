@@ -336,7 +336,7 @@ export interface StadiumAttendanceForecast {
 }
 
 export interface StadiumQuote {
-  capacity: number; next_capacity: number | null; max: boolean; cost?: number; demand?: number; attendance_now?: number; attendance_after?: number; extra_attendance?: number;
+  capacity: number; next_capacity: number | null; max: boolean; cost?: number; demand?: number; demand_after?: number; attendance_now?: number; attendance_after?: number; extra_attendance?: number;
   utilization_now?: number; utilization_after?: number; games?: number; annual_tickets?: number; annual_catering?: number; annual_merch?: number;
   annual_running_extra?: number; annual_net?: number; payback_years?: number | null; verdict?: 'first_season' | 'second_season' | 'third_season' | 'long_term' | 'not_profitable';
 }
