@@ -116,7 +116,7 @@ export function Finance() {
               <p>Auslastung {forecast.current_utilization.toLocaleString('de-DE')} % → {forecast.proposed_utilization.toLocaleString('de-DE')} %</p>
               <p>Nachfrage {forecast.current_demand.toLocaleString('de-DE')} → {forecast.proposed_demand.toLocaleString('de-DE')} Plätze</p>
               <p className="mt-2 text-xs text-cream-dim">Auslastung = Zuschauer ÷ {forecast.capacity.toLocaleString('de-DE')} Plätze. Liga {forecast.tier}, Vereinsruf {forecast.reputation}, Gegner-Ruf {forecast.opponent_reputation}. {forecast.form_factor === 1 ? 'Neutraler Tabellenfaktor' : `Tabellenplatz ${forecast.league_position} von ${forecast.league_teams}: ${forecast.form_factor > 1 ? '+' : ''}${((forecast.form_factor - 1) * 100).toLocaleString('de-DE', { maximumFractionDigits: 1 })} % Nachfrage`}. Die tatsächliche Zahl berücksichtigt zusätzlich die Spielbedeutung und eine spielabhängige Schwankung von ±3 %.</p>
-              <p className="mt-1 text-xs text-cream-dim">Ein niedrigerer Preis erhöht die Nachfrage bis zur Preisgrenze. Ein Ausbau erhöht das Fanpotenzial und die Kapazität. Liga und Vereinsruf beeinflussen ebenfalls die Nachfrage.</p>
+              <p className="mt-1 text-xs text-cream-dim">Der Gegner beeinflusst die Nachfrage stärker als der Ticketpreis. Ein Ausbau erhöht das Fanpotenzial und die Kapazität; Vereinsruf und Tabellenplatz wirken ebenfalls mit.</p>
             </div>
           )}
           {forecastError && <p className="mt-2 text-xs text-danger">Prognose: {forecastError}</p>}
