@@ -170,7 +170,7 @@ export class MatchClient {
       ws.send(JSON.stringify({ t: 'hello', token, fixtureId: this.fixtureId, sid: this.sid, ...(this.state.teams ? { since: this.state.events.length } : {}) }));
       // Antwortet der Server nicht, neu verbinden statt endlos zu warten
       clearTimeout(this.initTimer);
-      this.initTimer = setTimeout(() => { if (this.ws === ws && !this.gotInit) this.dropped(ws, 4008); }, 12000);
+      this.initTimer = setTimeout(() => { if (this.ws === ws && !this.gotInit) this.dropped(ws, 4008); }, 45000);
     };
     ws.onmessage = (e) => {
       if (this.ws !== ws) return;
@@ -382,8 +382,10 @@ export class MatchClient {
         break;
       case 'error':
         // vorübergehende Serverfehler (m.transient) lösen die automatische Wiederverbindung aus statt eines Abbruchs
-        if (!this.state.teams && !m.transient) this.fatal = true;
-        if (!m.transient) this.emit({ error: m.message });
+        // Ältere Server senden bei einem langsamen Spielstart irrtümlich diesen Fehler.
+        if (m.transient || m.message === 'Keine Anmeldung.') break;
+        if (!this.state.teams) this.fatal = true;
+        this.emit({ error: m.message });
         break;
     }
   }

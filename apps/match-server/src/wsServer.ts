@@ -46,7 +46,7 @@ export function attachMatchServer(server: Server, backend: Backend, opts: { allo
     const fail = (message: string, code = 4000, transient = false) => {
       try { ws.send(JSON.stringify({ t: 'error', message, transient })); ws.close(code, message.slice(0, 100)); } catch { /* Socket schon zu */ }
     };
-    const helloTimeout = setTimeout(() => { if (!client) fail('Keine Anmeldung.', 4001); }, 10_000);
+    let helloTimeout = setTimeout(() => { if (!client) fail('Anmeldung wurde nicht empfangen. Bitte neu verbinden.', 4502, true); }, 10_000);
     let alive = true;
     ws.on('pong', () => { alive = true; });
     const heartbeat = setInterval(() => { if (!alive) ws.terminate(); alive = false; ws.ping(); }, 20_000);
@@ -64,6 +64,9 @@ export function attachMatchServer(server: Server, backend: Backend, opts: { allo
       if (m.t === 'hello') {
         if (client || busy) return;
         busy = true;
+        clearTimeout(helloTimeout);
+        // Tokenprüfung und Laden des Spiels benötigen unter Last länger als das Empfangen von hello.
+        helloTimeout = setTimeout(() => { if (!client) fail('Das Spiel lädt zu lange. Verbindung wird erneut aufgebaut.', 4502, true); }, 40_000);
         try {
           const userId = await backend.verifyToken(m.token);
           if (!userId) return fail('Sitzung ungültig oder abgelaufen.', 4401);

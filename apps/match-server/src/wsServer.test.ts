@@ -21,7 +21,13 @@ const checkpoints: Array<{ tick: number; data: unknown }> = [];
 const users: Record<string, string> = { 'token-home-xxxx': 'u-home', 'token-away-xxxx': 'u-away', 'token-fan-xxxxx': 'u-fan' };
 let stored: DbSetup['checkpoint'] = null;
 const backend: Backend = {
-  async verifyToken(t) { return users[t] ?? null; },
+  async verifyToken(t) {
+    if (t === 'token-slow-xxxx') {
+      await new Promise((resolve) => setTimeout(resolve, 10_200));
+      return 'u-home';
+    }
+    return users[t] ?? null;
+  },
   async role(_f, u) { return u === 'u-home' ? 'home' : u === 'u-away' ? 'away' : u === 'u-fan' ? 'spectator' : null; },
   async setup(f) {
     // league-ai-*: Gegner ist KI · league-anthem-*: Heimhymne 30 s gespeichert · league-measure-*: Hymne ohne gespeicherte Länge
@@ -79,6 +85,13 @@ function connect(token: string, fixtureId: string, origin = 'http://ok.test', si
 }
 
 describe('Match-Server (echte WebSocket-Clients)', () => {
+  it('wartet nach empfangener Anmeldung auf eine langsame Tokenprüfung', async () => {
+    const client = await connect('token-slow-xxxx', 'slow-login');
+    const init = await client.wait((message) => message.t === 'init', 14_000);
+    expect(init.role).toBe('home');
+    expect(client.msgs.some((message) => message.t === 'error')).toBe(false);
+    client.ws.close();
+  }, 20_000);
   it('Pflichtspiel: Einlaufzeremonie für alle gleich, Anpfiff serverseitig (Start-Befehl beschleunigt nichts)', async () => {
     const home = await connect('token-home-xxxx', 'league-1');
     const ih = await home.wait((m) => m.t === 'init');
