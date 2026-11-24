@@ -19,6 +19,7 @@ export function Finance() {
   const [busy, setBusy] = useState<string | null>(null);
   const [quote, setQuote] = useState<StadiumQuote | null>(null);
   const [forecast, setForecast] = useState<StadiumAttendanceForecast | null>(null);
+  const [opponentReputation, setOpponentReputation] = useState(50);
   const [forecastError, setForecastError] = useState<string | null>(null);
   const [colors, setColors] = useState<[string, string]>(['#1d4ed8', '#ffffff']);
   useEffect(() => {
@@ -42,14 +43,14 @@ export function Finance() {
     if (!data || !Number.isInteger(prices.league) || prices.league < 5 || prices.league > 500) { setForecast(null); return; }
     let active = true;
     const timer = setTimeout(() => {
-      void seasonApi.stadiumAttendanceForecast(worldId, prices.league).then((result) => {
+      void seasonApi.stadiumAttendanceForecast(worldId, prices.league, opponentReputation).then((result) => {
         if (active) { setForecast(result); setForecastError(null); }
       }).catch((error: unknown) => {
         if (active) { setForecast(null); setForecastError(error instanceof Error ? error.message : 'Prognose nicht verfügbar.'); }
       });
     }, 300);
     return () => { active = false; clearTimeout(timer); };
-  }, [worldId, prices.league, data]);
+  }, [worldId, prices.league, opponentReputation, data]);
   const act = (k: string, fn: () => Promise<unknown>, ok: string) => void (async () => {
     setBusy(k); setError(null); setMsg(null);
     try { await fn(); setMsg(ok); await load(); } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
@@ -103,14 +104,17 @@ export function Finance() {
           </div>
           {data.slot_live && <p className="mt-2 text-xs text-gold">Während eines laufenden Spieltags sind die Preise gesperrt.</p>}
           <Button className="mt-3 w-full" busy={busy === 't'} disabled={data.slot_live} onClick={() => act('t', () => seasonApi.setTickets(worldId, prices.league, prices.cup, prices.intl), 'Ticketpreise gespeichert.')}>Speichern</Button>
-          {forecast && forecast.proposed_price === prices.league && (
+          <label className="mt-3 block text-sm">Gegner-Ruf für die Prognose: {opponentReputation}
+            <input className="mt-1 w-full" type="range" min="0" max="100" value={opponentReputation} onChange={(e) => setOpponentReputation(Number(e.target.value))} />
+          </label>
+          {forecast && forecast.proposed_price === prices.league && forecast.opponent_reputation === opponentReputation && (
             <div className="mt-3 rounded-xl bg-olive-800 p-3 text-sm" aria-live="polite">
               <p className="font-semibold">Prognose für ein Ligaspiel</p>
               <p className="mt-1">Ticketpreis {forecast.current_price} € → {forecast.proposed_price} €</p>
               <p>Erwartete Zuschauer {forecast.current_attendance.toLocaleString('de-DE')} → {forecast.proposed_attendance.toLocaleString('de-DE')}</p>
               <p>Auslastung {forecast.current_utilization.toLocaleString('de-DE')} % → {forecast.proposed_utilization.toLocaleString('de-DE')} %</p>
               <p>Nachfrage {forecast.current_demand.toLocaleString('de-DE')} → {forecast.proposed_demand.toLocaleString('de-DE')} Plätze</p>
-              <p className="mt-2 text-xs text-cream-dim">Auslastung = Zuschauer ÷ {forecast.capacity.toLocaleString('de-DE')} Plätze. Prognose für Liga {forecast.tier}, Vereinsruf {forecast.reputation}, neutralen Tabellenstand und Gegner mit Ruf 50. Die tatsächliche Zahl hängt zusätzlich vom Tabellenplatz, Gegner, Spielbedeutung und einer spielabhängigen Schwankung von ±3 % ab.</p>
+              <p className="mt-2 text-xs text-cream-dim">Auslastung = Zuschauer ÷ {forecast.capacity.toLocaleString('de-DE')} Plätze. Liga {forecast.tier}, Vereinsruf {forecast.reputation}, Gegner-Ruf {forecast.opponent_reputation}. {forecast.form_factor === 1 ? 'Neutraler Tabellenfaktor' : `Tabellenplatz ${forecast.league_position} von ${forecast.league_teams}: ${forecast.form_factor > 1 ? '+' : ''}${((forecast.form_factor - 1) * 100).toLocaleString('de-DE', { maximumFractionDigits: 1 })} % Nachfrage`}. Die tatsächliche Zahl berücksichtigt zusätzlich die Spielbedeutung und eine spielabhängige Schwankung von ±3 %.</p>
               <p className="mt-1 text-xs text-cream-dim">Ein niedrigerer Preis erhöht die Nachfrage bis zur Preisgrenze. Ein Ausbau erhöht die Kapazität. Liga und Vereinsruf beeinflussen die Nachfrage; die Stadiongröße begrenzt die Zuschauerzahl.</p>
             </div>
           )}

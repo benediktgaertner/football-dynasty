@@ -278,7 +278,7 @@ export const seasonApi = {
   }>('finance_overview', { p_world: worldId }),
   /** Stadionausbau-Prognose (Migration 0049) */
   stadiumQuote: (worldId: string) => rpc<StadiumQuote>('stadium_expansion_quote', { p_world: worldId }),
-  stadiumAttendanceForecast: (worldId: string, price: number) => rpc<StadiumAttendanceForecast>('stadium_attendance_forecast', { p_world: worldId, p_price: price }),
+  stadiumAttendanceForecast: (worldId: string, price: number, opponentReputation: number) => rpc<StadiumAttendanceForecast>('stadium_attendance_scenario', { p_world: worldId, p_price: price, p_away_rep: opponentReputation }),
   /** Saisonwechsel in Schritten (Migration 0048) */
   seasonEndStatus: (worldId: string) => rpc<{ active: boolean; step?: number; total?: number; attempts?: number; error?: string | null; failed?: boolean }>('season_end_status', { p_world: worldId }),
   seasonEndRetry: (worldId: string) => rpc<void>('season_end_retry', { p_world: worldId }),
@@ -318,6 +318,10 @@ export const STAGE_LABEL: Record<string, string> = {
   round_of_64: '1. Runde', round_of_32: '2. Runde', round_of_16: 'Achtelfinale', quarter_final: 'Viertelfinale', semi_final: 'Halbfinale', final: 'Finale', relegation: 'Relegation',
 };
 export interface StadiumAttendanceForecast {
+  opponent_reputation: number;
+  league_position: number | null;
+  league_teams: number | null;
+  form_factor: number;
   capacity: number;
   tier: number;
   reputation: number;
