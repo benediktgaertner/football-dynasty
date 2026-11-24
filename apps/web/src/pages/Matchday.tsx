@@ -92,8 +92,19 @@ export function Matchday() {
     && state.fixtures.every((f) => f.status === 'finished' || f.status === 'released');
   useEffect(() => {
     if (!allDone) return;
-    const t = setTimeout(() => void seasonApi.retryRelease(worldId).then(() => load()).catch(() => undefined), 2500);
-    return () => clearTimeout(t);
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const retry = async () => {
+      try {
+        await seasonApi.retryRelease(worldId);
+        if (!stopped) await load();
+      } catch {
+        // Ein vorübergehender Verbindungsfehler wird beim nächsten Versuch erneut geprüft.
+      }
+      if (!stopped) timer = setTimeout(() => void retry(), 5000);
+    };
+    timer = setTimeout(() => void retry(), 2500);
+    return () => { stopped = true; clearTimeout(timer); };
   }, [allDone, worldId, load]);
 
 

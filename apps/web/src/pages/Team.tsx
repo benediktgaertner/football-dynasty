@@ -152,7 +152,11 @@ export function Team() {
           }}
         />
       )}
-      {profileOpen && <PlayerProfile player={profileOpen} kit={kit} onClose={() => setProfileOpen(null)} />}
+      {profileOpen && <PlayerProfile key={profileOpen.id} player={profileOpen} kit={kit} onClose={() => setProfileOpen(null)} onShirtNumber={async (number) => {
+        await teamApi.setShirtNumber(worldId, profileOpen.id, number);
+        setProfileOpen({ ...profileOpen, shirt_number: number });
+        await reload(false);
+      }} />}
     </Shell>
   );
 }

@@ -43,7 +43,10 @@ function FitnessBar({ value }: { value: number }) {
 // ---------------------------------------------------------------------------
 // Spielerprofil
 // ---------------------------------------------------------------------------
-export function PlayerProfile({ player, kit, onClose }: { player: SquadPlayer; kit: { primary: string; secondary: string }; onClose: () => void }) {
+export function PlayerProfile({ player, kit, onClose, onShirtNumber }: { player: SquadPlayer; kit: { primary: string; secondary: string }; onClose: () => void; onShirtNumber: (number: number) => Promise<void> }) {
+  const [number, setNumber] = useState(String(player.shirt_number ?? ''));
+  const [numberError, setNumberError] = useState<string | null>(null);
+  const [savingNumber, setSavingNumber] = useState(false);
   const positions = POSITIONS.filter((p) => (player.main_position === 'GK') === (p === 'GK')) as Position[];
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/70 p-4" onClick={onClose} role="dialog" aria-modal>
@@ -58,6 +61,20 @@ export function PlayerProfile({ player, kit, onClose }: { player: SquadPlayer; k
           </div>
           <div className="display text-6xl font-extrabold text-gold">{player.overall}</div>
         </div>
+        <form className="mt-5 flex flex-wrap items-end gap-2" onSubmit={(event) => {
+          event.preventDefault();
+          const value = Number(number);
+          if (!Number.isInteger(value) || value < 1 || value > 99) { setNumberError('Bitte eine Nummer von 1 bis 99 eingeben.'); return; }
+          setSavingNumber(true);
+          setNumberError(null);
+          void onShirtNumber(value).catch((error: unknown) => setNumberError(error instanceof Error ? error.message : 'Nummer konnte nicht gespeichert werden.')).finally(() => setSavingNumber(false));
+        }}>
+          <label className="text-sm">Trikotnummer
+            <input className="ml-2 w-20 rounded-lg border border-olive-600 bg-anthracite px-3 py-2 text-cream" type="number" min="1" max="99" required value={number} onChange={(event) => setNumber(event.target.value)} />
+          </label>
+          <Button type="submit" busy={savingNumber}>Nummer speichern</Button>
+          {numberError && <p role="alert" className="w-full text-sm text-danger">{numberError}</p>}
+        </form>
         <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
           {Object.entries(player.attributes).map(([k, v]) => (
             <div key={k}>

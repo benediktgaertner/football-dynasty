@@ -187,6 +187,8 @@ export async function loadTeam(worldId: string) {
 }
 
 export const teamApi = {
+  setShirtNumber: (worldId: string, playerId: string, number: number) =>
+    rpc<void>('set_shirt_number', { p_world: worldId, p_player: playerId, p_number: number }),
   saveProfile(worldId: string, profile: ProfileState) {
     const lineupIds = new Set(profile.slots.map((s) => s.playerId));
     return rpc<void>('save_tactical_profile', {

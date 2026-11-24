@@ -7,7 +7,7 @@ import { useParams } from 'react-router-dom';
 import { WorldNav } from '../components/WorldNav';
 import { Button, Card, ErrorBanner, Pill, Shell, Spinner, TextInput } from '../components/ui';
 import { formatEuro, formatEuroSigned } from '../lib/api';
-import { STADIUM_VERDICT, TX_LABEL, seasonApi, type StadiumQuote } from '../lib/seasonApi';
+import { STADIUM_VERDICT, TX_LABEL, seasonApi, type StadiumAttendanceForecast, type StadiumQuote } from '../lib/seasonApi';
 
 /** I2–I4: Bankkonto, Buchungen, Stadion und Ticketpreise */
 export function Finance() {
@@ -18,6 +18,8 @@ export function Finance() {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [quote, setQuote] = useState<StadiumQuote | null>(null);
+  const [forecast, setForecast] = useState<StadiumAttendanceForecast | null>(null);
+  const [forecastError, setForecastError] = useState<string | null>(null);
   const [colors, setColors] = useState<[string, string]>(['#1d4ed8', '#ffffff']);
   useEffect(() => {
     void requireSupabase().from('club_branding').select('primary_color, secondary_color, clubs!inner(world_id, manager_user_id)').eq('clubs.world_id', worldId)
@@ -36,6 +38,18 @@ export function Finance() {
     } catch (e) { setError((e as Error).message); }
   }, [worldId]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!data || !Number.isInteger(prices.league) || prices.league < 5 || prices.league > 500) { setForecast(null); return; }
+    let active = true;
+    const timer = setTimeout(() => {
+      void seasonApi.stadiumAttendanceForecast(worldId, prices.league).then((result) => {
+        if (active) { setForecast(result); setForecastError(null); }
+      }).catch((error: unknown) => {
+        if (active) { setForecast(null); setForecastError(error instanceof Error ? error.message : 'Prognose nicht verfügbar.'); }
+      });
+    }, 300);
+    return () => { active = false; clearTimeout(timer); };
+  }, [worldId, prices.league, data]);
   const act = (k: string, fn: () => Promise<unknown>, ok: string) => void (async () => {
     setBusy(k); setError(null); setMsg(null);
     try { await fn(); setMsg(ok); await load(); } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
@@ -89,7 +103,18 @@ export function Finance() {
           </div>
           {data.slot_live && <p className="mt-2 text-xs text-gold">Während eines laufenden Spieltags sind die Preise gesperrt.</p>}
           <Button className="mt-3 w-full" busy={busy === 't'} disabled={data.slot_live} onClick={() => act('t', () => seasonApi.setTickets(worldId, prices.league, prices.cup, prices.intl), 'Ticketpreise gespeichert.')}>Speichern</Button>
-          <p className="mt-1 text-xs text-cream-dim">Die Nachfrage hängt von Preis, Tabellenplatz, Gegner, Spielbedeutung, Liga, Stadiongröße und Ruf ab. Die Zuschauerzahl zeigt sich nach dem Spiel.</p>
+          {forecast && forecast.proposed_price === prices.league && (
+            <div className="mt-3 rounded-xl bg-olive-800 p-3 text-sm" aria-live="polite">
+              <p className="font-semibold">Prognose für ein Ligaspiel</p>
+              <p className="mt-1">Ticketpreis {forecast.current_price} € → {forecast.proposed_price} €</p>
+              <p>Erwartete Zuschauer {forecast.current_attendance.toLocaleString('de-DE')} → {forecast.proposed_attendance.toLocaleString('de-DE')}</p>
+              <p>Auslastung {forecast.current_utilization.toLocaleString('de-DE')} % → {forecast.proposed_utilization.toLocaleString('de-DE')} %</p>
+              <p>Nachfrage {forecast.current_demand.toLocaleString('de-DE')} → {forecast.proposed_demand.toLocaleString('de-DE')} Plätze</p>
+              <p className="mt-2 text-xs text-cream-dim">Auslastung = Zuschauer ÷ {forecast.capacity.toLocaleString('de-DE')} Plätze. Prognose für Liga {forecast.tier}, Vereinsruf {forecast.reputation}, neutralen Tabellenstand und Gegner mit Ruf 50. Die tatsächliche Zahl hängt zusätzlich vom Tabellenplatz, Gegner, Spielbedeutung und einer spielabhängigen Schwankung von ±3 % ab.</p>
+              <p className="mt-1 text-xs text-cream-dim">Ein niedrigerer Preis erhöht die Nachfrage bis zur Preisgrenze. Ein Ausbau erhöht die Kapazität. Liga und Vereinsruf beeinflussen die Nachfrage; die Stadiongröße begrenzt die Zuschauerzahl.</p>
+            </div>
+          )}
+          {forecastError && <p className="mt-2 text-xs text-danger">Prognose: {forecastError}</p>}
         </Card>
       </div>
       <FinanceDashboard worldId={worldId} refreshKey={data.balance} />
