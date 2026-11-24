@@ -142,6 +142,14 @@ describe('F7/G1/G2: Fitness', () => {
     for (let i = 1; i < values.length; i++) expect(values[i]!).toBeLessThan(values[i - 1]!);
     expect(fitnessPerformanceMultiplier(45, 'mental')).toBeGreaterThan(fitnessPerformanceMultiplier(45, 'physical'));
   });
+  it('Fitness reduziert die Stärke um höchstens zwölf Punkte', () => {
+    for (let fitness = 0; fitness <= 100; fitness++) {
+      for (let strength = 1; strength <= 100; strength++) {
+        expect(strength - Math.round(strength * fitnessPerformanceMultiplier(fitness))).toBeLessThanOrEqual(12);
+      }
+    }
+    expect(fitnessPerformanceMultiplier(55)).toBeCloseTo(0.93);
+  });
   it('Regeneration +15 pro freiem Tag, Deckel 100; Training −20', () => {
     expect(applyRestDays(50, 2)).toBe(80);
     expect(applyRestDays(90, 3)).toBe(100);

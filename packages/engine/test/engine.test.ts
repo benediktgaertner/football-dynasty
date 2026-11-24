@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitnessLossWithFactor } from '@fd/shared';
+import { fitnessLossWithFactor, fitnessPerformanceMultiplier } from '@fd/shared';
 import { MatchEngine, TICKS_PER_HALF, TICK_SECONDS, TOTAL_TICKS, buildTestTeam, expectedGoals, replay, simulate } from '../src/index.js';
 
 const setup = (seed = 's1', h = 70, a = 70) => ({ seed, home: buildTestTeam(`h-${seed}`, h, { control: 'human' }), away: buildTestTeam(`a-${seed}`, a), homeAdvantage: 0.01 });
@@ -29,6 +29,22 @@ describe('Match Engine', () => {
       expect(p.fitnessEnd).toBeLessThanOrEqual(p.fitnessStart);
     }
     expect(r.stats.home.goals + r.stats.away.goals).toBe(r.score[0] + r.score[1]);
+  });
+
+  it('begrenzt den fitnessbedingten Stärkeverlust über ein ganzes Spiel auf zwölf Punkte', () => {
+    const match = setup('fitness-limit');
+    match.home.squad = match.home.squad.map((player) => ({
+      ...player,
+      fitness: 100,
+      attributes: { ...player.attributes, stamina: 1 },
+    }));
+    const engine = new MatchEngine(match);
+    engine.setAutopilot('home', false);
+    while (!engine.isFinished) engine.step();
+    for (const player of engine.teamView('home').players.filter((p) => p.onPitch)) {
+      const effective = Math.round(player.overall * fitnessPerformanceMultiplier(player.fitness));
+      expect(player.overall - effective).toBeLessThanOrEqual(12);
+    }
   });
 
   it('xG-Modell: näher und zentraler ist besser', () => {

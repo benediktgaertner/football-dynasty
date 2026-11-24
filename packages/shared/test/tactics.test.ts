@@ -104,7 +104,7 @@ describe('Aufstellung', () => {
     const st = { main_position: 'ST' as const, secondary_positions: [] as Position[], overall: 80, fitness: 100 };
     expect(effectiveRating(st, 'ST')).toBe(80);
     expect(effectiveRating(st, 'CB')).toBeLessThan(70);
-    expect(matchReadyRating({ ...st, fitness: 50 }, 'ST')).toBeLessThan(70);
+    expect(matchReadyRating({ ...st, fitness: 50 }, 'ST')).toBe(74);
   });
 });
 

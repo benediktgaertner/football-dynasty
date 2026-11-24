@@ -35,18 +35,18 @@ export function clampFitness(value: number): number {
  * F7: Leistungsmultiplikator abhängig von der aktuellen Fitness.
  * Stützpunkte entsprechen den Orientierungsbändern:
  * 90–100 keine, 80–89 sehr geringe, 70–79 leichte, 60–69 spürbare,
- * 50–59 deutliche, 40–49 starke, unter 40 erhebliche Einschränkungen.
+ * 50–59 merkliche, unter 50 zunehmend stärkere Einschränkungen.
  *
  * `kind` = 'physical' für Sprints, Explosivität, Laufarbeit, Zweikampf, Tempo;
  * 'mental' für Spielintelligenz und Mentalität (geringerer Effekt).
  */
 const PHYSICAL_CURVE: ReadonlyArray<readonly [number, number]> = [
-  [0, 0.55],
-  [40, 0.74],
-  [50, 0.82],
-  [60, 0.89],
-  [70, 0.94],
-  [80, 0.975],
+  [0, 0.88],
+  [40, 0.90],
+  [50, 0.92],
+  [60, 0.94],
+  [70, 0.96],
+  [80, 0.98],
   [90, 1.0],
   [100, 1.0],
 ];
