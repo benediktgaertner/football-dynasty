@@ -1,5 +1,5 @@
 import { OvrChip, RatingChip } from '../team/Ovr';
-import { MAX_SUBSTITUTIONS, MAX_SUBSTITUTION_WINDOWS, TEAM_SETTINGS, readableTextColor, type TeamSettingKey } from '@fd/shared';
+import { MAX_SUBSTITUTIONS, MAX_SUBSTITUTION_WINDOWS, TEAM_SETTINGS, fitnessPerformanceMultiplier, readableTextColor, type TeamSettingKey } from '@fd/shared';
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { startDrag } from '../../lib/dragDrop';
 import type { Command, ProfileName, RosterTeam, TeamView } from '../../lib/matchClient';
@@ -10,6 +10,7 @@ const PROFILE_LABEL: Record<ProfileName, string> = { offensive: 'Offensiv', neut
 const ORDER = ['GK', 'CB', 'LB', 'RB', 'LWB', 'RWB', 'CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'CF', 'ST'];
 
 function fitnessTone(f: number) { return f >= 75 ? 'bg-emerald-400' : f >= 55 ? 'bg-gold' : 'bg-danger'; }
+function currentStrength(overall: number, fitness: number) { return Math.round(overall * fitnessPerformanceMultiplier(fitness)); }
 
 /**
  * F11: Team-Management während der Partie – dasselbe große Fenster wie das Taktikfenster,
@@ -68,6 +69,7 @@ export function LiveBoard({ view, team, activeProfile, onClose, send }: {
         <span className="text-sm text-cream-dim">Wechsel {view.subsUsed}/{MAX_SUBSTITUTIONS} · Fenster {view.subWindowsUsed}/{MAX_SUBSTITUTION_WINDOWS} · Das Spiel läuft weiter</span>
         <Button variant="secondary" onClick={onClose}>Zurück zum Spiel</Button>
       </div>
+      <p className="mb-3 text-xs text-cream-dim">Stärke berücksichtigt die aktuelle Fitness · ★ zeigt die Matchnote</p>
       <div className="fd-board-grid fd-board-live">
         {/* Spielfeld */}
         <div
@@ -97,7 +99,7 @@ export function LiveBoard({ view, team, activeProfile, onClose, send }: {
                 <span className="display mt-0.5 rounded bg-ink/70 px-1 text-[10px] font-semibold uppercase leading-4 text-gold">{POS_LABEL[p.position] ?? p.position}</span>
                 <span className="flex max-w-full items-center gap-1 rounded bg-ink/60 px-1">
                   <span className="min-w-0 truncate text-[11px] leading-4 text-cream">{p.name}{pendingOut.has(p.id) ? ' ⇄' : ''}</span>
-                  <OvrChip value={p.overall} />
+                  <OvrChip value={currentStrength(p.overall, p.fitness)} title={`Aktuelle Stärke mit Fitness (Grundstärke ${p.overall})`} />
                 </span>
                 <span className="mt-0.5 flex items-center gap-1">
                   <span className="h-1 w-10 overflow-hidden rounded bg-ink/60"><span className={`block h-full ${fitnessTone(p.fitness)}`} style={{ width: `${p.fitness}%` }} /></span>
@@ -125,7 +127,9 @@ export function LiveBoard({ view, team, activeProfile, onClose, send }: {
                   <span className="w-6 text-right tabular-nums text-cream-dim">{p.shirt}</span>
                   <span className="min-w-0 flex-1 truncate font-semibold">{p.name}{pendingIn.has(p.id) ? ' (kommt)' : ''}</span>
                   <span className="text-xs tabular-nums text-cream-dim">{p.fitness}%</span>
-                  <span className="display w-7 text-right text-lg font-bold">{p.overall}</span>
+                  <span className="display w-7 text-right text-lg font-bold" title={`Aktuelle Stärke mit Fitness (Grundstärke ${p.overall})`} aria-label={`Aktuelle Stärke mit Fitness: ${currentStrength(p.overall, p.fitness)}`}>
+                    {currentStrength(p.overall, p.fitness)}
+                  </span>
                 </button>
               </li>
             ))}
